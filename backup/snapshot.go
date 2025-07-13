@@ -7,27 +7,27 @@ package backup
 import (
 	"fmt"
 
-	"github.com/greenplum-db/gp-common-go-libs/dbconn"
-	"github.com/greenplum-db/gp-common-go-libs/gplog"
+	"github.com/cloudberrydb/gp-common-go-libs/dbconn"
+	"github.com/cloudberrydb/gp-common-go-libs/gplog"
 )
 
 const (
 	SNAPSHOT_GPDB_MIN_VERSION = "6.21.0"
 )
 
- // Export synchronized snapshot using connection 0 and return snapshotId value as string
- func GetSynchronizedSnapshot(connectionPool *dbconn.DBConn) (string, error) {
-	 var snapshotId string
-	 err := connectionPool.Get(&snapshotId, "SELECT pg_catalog.pg_export_snapshot()", 0)
-	 if err != nil {
-		 return "", err
-	 }
-	 gplog.Debug("Exported synchronized snapshot %s", snapshotId)
-	 return snapshotId, nil
- }
+// Export synchronized snapshot using connection 0 and return snapshotId value as string
+func GetSynchronizedSnapshot(connectionPool *dbconn.DBConn) (string, error) {
+	var snapshotId string
+	err := connectionPool.Get(&snapshotId, "SELECT pg_catalog.pg_export_snapshot()", 0)
+	if err != nil {
+		return "", err
+	}
+	gplog.Debug("Exported synchronized snapshot %s", snapshotId)
+	return snapshotId, nil
+}
 
 // Set synchronized snapshot for connNum to snapshotId
-func SetSynchronizedSnapshot(connectionPool *dbconn.DBConn, connNum int,  snapshotId string) error {
+func SetSynchronizedSnapshot(connectionPool *dbconn.DBConn, connNum int, snapshotId string) error {
 	if connectionPool.Tx[connNum] == nil {
 		err := connectionPool.Begin(connNum) // Begins transaction in repeatable read
 		if err != nil {

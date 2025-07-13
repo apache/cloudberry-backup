@@ -1,7 +1,7 @@
 package utils_test
 
 import (
-	"github.com/greenplum-db/gp-common-go-libs/testhelper"
+	"github.com/cloudberrydb/gp-common-go-libs/testhelper"
 	"github.com/greenplum-db/gpbackup/utils"
 
 	. "github.com/onsi/ginkgo/v2"

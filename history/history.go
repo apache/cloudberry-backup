@@ -7,8 +7,8 @@ import (
 	"io/ioutil"
 	"os"
 
-	"github.com/greenplum-db/gp-common-go-libs/gplog"
-	"github.com/greenplum-db/gp-common-go-libs/operating"
+	"github.com/cloudberrydb/gp-common-go-libs/gplog"
+	"github.com/cloudberrydb/gp-common-go-libs/operating"
 	"github.com/greenplum-db/gpbackup/utils"
 	_ "github.com/mattn/go-sqlite3"
 	"gopkg.in/yaml.v2"
@@ -20,9 +20,9 @@ type RestorePlanEntry struct {
 }
 
 const (
-    BackupStatusInProgress = "In Progress"
-	BackupStatusSucceed = "Success"
-	BackupStatusFailed  = "Failure"
+	BackupStatusInProgress = "In Progress"
+	BackupStatusSucceed    = "Success"
+	BackupStatusFailed     = "Failure"
 )
 
 type BackupConfig struct {

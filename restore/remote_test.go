@@ -3,9 +3,9 @@ package restore_test
 import (
 	"os/user"
 
-	"github.com/greenplum-db/gp-common-go-libs/cluster"
-	"github.com/greenplum-db/gp-common-go-libs/operating"
-	"github.com/greenplum-db/gp-common-go-libs/testhelper"
+	"github.com/cloudberrydb/gp-common-go-libs/cluster"
+	"github.com/cloudberrydb/gp-common-go-libs/operating"
+	"github.com/cloudberrydb/gp-common-go-libs/testhelper"
 	"github.com/greenplum-db/gpbackup/filepath"
 	"github.com/greenplum-db/gpbackup/history"
 	"github.com/greenplum-db/gpbackup/options"
@@ -92,8 +92,8 @@ var _ = Describe("restore/remote tests", func() {
 		It("panics if it cannot verify some backup file counts", func() {
 			testExecutor.ClusterOutput = &cluster.RemoteOutput{
 				NumErrors: 1,
-				FailedCommands: []*cluster.ShellCommand{
-					&cluster.ShellCommand{Content: 1, Stdout: "1"},
+				FailedCommands: []cluster.ShellCommand{
+					{Content: 1, Stdout: "1"},
 				},
 			}
 			testCluster.Executor = testExecutor

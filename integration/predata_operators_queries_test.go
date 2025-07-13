@@ -1,8 +1,8 @@
 package integration
 
 import (
-	"github.com/greenplum-db/gp-common-go-libs/structmatcher"
-	"github.com/greenplum-db/gp-common-go-libs/testhelper"
+	"github.com/cloudberrydb/gp-common-go-libs/structmatcher"
+	"github.com/cloudberrydb/gp-common-go-libs/testhelper"
 	"github.com/greenplum-db/gpbackup/backup"
 	"github.com/greenplum-db/gpbackup/options"
 	"github.com/greenplum-db/gpbackup/testutils"
@@ -179,7 +179,7 @@ var _ = Describe("backup integration tests", func() {
 			results := backup.GetOperatorClasses(connectionPool)
 
 			Expect(results).To(HaveLen(1))
-				structmatcher.ExpectStructsToMatchExcluding(&expected, &results[0], "Oid")
+			structmatcher.ExpectStructsToMatchExcluding(&expected, &results[0], "Oid")
 
 		})
 		It("returns a slice of operator classes with an operator with a sort family", func() {

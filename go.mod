@@ -1,12 +1,12 @@
 module github.com/greenplum-db/gpbackup
 
-go 1.19
+go 1.21
 
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.0
 	github.com/blang/semver v3.5.1+incompatible
 	github.com/blang/vfs v1.0.0
-	github.com/greenplum-db/gp-common-go-libs v1.0.19
+	github.com/cloudberrydb/gp-common-go-libs v1.0.12-0.20250723025810-7e1b684694b9
 	github.com/jackc/pgconn v1.14.3
 	github.com/jmoiron/sqlx v1.3.5
 	github.com/klauspost/compress v1.15.15

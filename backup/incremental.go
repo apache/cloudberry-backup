@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"path"
 
-	"github.com/greenplum-db/gp-common-go-libs/gplog"
-	"github.com/greenplum-db/gp-common-go-libs/operating"
+	"github.com/cloudberrydb/gp-common-go-libs/gplog"
+	"github.com/cloudberrydb/gp-common-go-libs/operating"
 	"github.com/greenplum-db/gpbackup/history"
 	"github.com/greenplum-db/gpbackup/options"
 	"github.com/greenplum-db/gpbackup/toc"
@@ -77,7 +77,7 @@ func GetLatestMatchingBackupConfig(historyDBPath string, currentBackupConfig *hi
 		currentBackupConfig.Plugin,
 		MustGetFlagBool(options.SINGLE_DATA_FILE),
 		currentBackupConfig.Compressed,
-        history.BackupStatusSucceed)
+		history.BackupStatusSucceed)
 
 	getBackupTimetampsQuery := fmt.Sprintf(`
 		SELECT timestamp
