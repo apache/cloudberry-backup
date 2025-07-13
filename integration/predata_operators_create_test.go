@@ -109,7 +109,7 @@ var _ = Describe("backup integration create statement tests", func() {
 			operatorClass.Functions = []backup.OperatorClassFunction{{ClassOid: 0, SupportNumber: 1, RightType: "integer", LeftType: "integer", FunctionName: "abs(integer)"}}
 
 			expectedRecheck := false
-			if connectionPool.Version.Before("6") {
+			if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("6") {
 				expectedRecheck = true
 			}
 			operatorClass.Operators = []backup.OperatorClassOperator{{ClassOid: 0, StrategyNumber: 1, Operator: "=(integer,integer)", Recheck: expectedRecheck}}

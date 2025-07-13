@@ -319,7 +319,7 @@ func skipIfOldBackupVersionBefore(version string) {
 }
 
 func createGlobalObjects(conn *dbconn.DBConn) {
-	if conn.Version.Before("6") {
+	if conn.Version.IsGPDB() && conn.Version.Before("6") {
 		testhelper.AssertQueryRuns(conn, "CREATE TABLESPACE test_tablespace FILESPACE test_dir")
 	} else {
 		testhelper.AssertQueryRuns(conn, "CREATE TABLESPACE test_tablespace LOCATION '/tmp/test_dir';")
@@ -331,9 +331,9 @@ func createGlobalObjects(conn *dbconn.DBConn) {
 	testhelper.AssertQueryRuns(conn, "CREATE DATABASE global_db TABLESPACE test_tablespace;")
 	testhelper.AssertQueryRuns(conn, "ALTER DATABASE global_db OWNER TO global_role;")
 	testhelper.AssertQueryRuns(conn, "ALTER ROLE global_role SET search_path TO public,pg_catalog;")
-	if conn.Version.Is("5") || conn.Version.Is("6") {
+	if conn.Version.IsGPDB() && (conn.Version.Is("5") || conn.Version.Is("6")) {
 		testhelper.AssertQueryRuns(conn, "CREATE RESOURCE GROUP test_group WITH (CPU_RATE_LIMIT=1, MEMORY_LIMIT=1);")
-	} else if conn.Version.AtLeast("7") {
+	} else if (conn.Version.IsGPDB() && conn.Version.AtLeast("7")) || conn.Version.IsCBDB() {
 		testhelper.AssertQueryRuns(conn, "CREATE RESOURCE GROUP test_group WITH (CPU_MAX_PERCENT=1, MEMORY_QUOTA=1);")
 	}
 
@@ -548,7 +548,7 @@ options:
 	segConfig := cluster.MustGetSegmentConfiguration(backupConn)
 	backupCluster = cluster.NewCluster(segConfig)
 
-	if backupConn.Version.Before("6") {
+	if backupConn.Version.IsGPDB() && backupConn.Version.Before("6") {
 		testutils.SetupTestFilespace(backupConn, backupCluster)
 	} else {
 		remoteOutput := backupCluster.GenerateAndExecuteCommand(
@@ -584,7 +584,7 @@ var _ = AfterSuite(func() {
 	}
 	_ = utils.CopyFile(saveHistoryFilePath, historyFilePath)
 
-	if backupConn.Version.Before("6") {
+	if backupConn.Version.IsGPDB() && backupConn.Version.Before("6") {
 		testutils.DestroyTestFilespace(backupConn)
 	} else {
 		_ = exec.Command("psql", "postgres",
@@ -625,14 +625,14 @@ func end_to_end_setup() {
 	// We can't use AssertQueryRuns since if an object doesn't exist it will error out, and these objects don't have IF EXISTS as an option
 	backupConn.Exec("DROP ROLE testrole; DROP ROLE global_role; DROP RESOURCE QUEUE test_queue; DROP RESOURCE GROUP rg_test_group; DROP TABLESPACE test_tablespace;")
 	restoreConn.Exec("DROP ROLE testrole; DROP ROLE global_role; DROP RESOURCE QUEUE test_queue; DROP RESOURCE GROUP rg_test_group; DROP TABLESPACE test_tablespace;")
-	if backupConn.Version.AtLeast("6") {
+	if (backupConn.Version.IsGPDB() && backupConn.Version.AtLeast("6")) || backupConn.Version.IsCBDB() {
 		backupConn.Exec("DROP FOREIGN DATA WRAPPER fdw CASCADE;")
 		restoreConn.Exec("DROP FOREIGN DATA WRAPPER fdw CASCADE;")
 	}
 	// The gp_toolkit extension should be created automatically, but in some cases it either isn't
 	// being created or is being dropped, so for now we explicitly create it to avoid spurious failures.
 	// TODO: Track down the cause of the issue so we don't need to manually create it.
-	if backupConn.Version.AtLeast("7") {
+	if (backupConn.Version.IsGPDB() && backupConn.Version.AtLeast("7")) || backupConn.Version.IsCBDB() {
 		backupConn.Exec("CREATE EXTENSION gp_toolkit;")
 		restoreConn.Exec("CREATE EXTENSION gp_toolkit;")
 	}
@@ -691,7 +691,7 @@ var _ = Describe("backup and restore end to end tests", func() {
 		It("runs gpbackup and gprestore with --with-globals and --create-db", func() {
 			skipIfOldBackupVersionBefore("1.8.2")
 			createGlobalObjects(backupConn)
-			if backupConn.Version.AtLeast("6") {
+			if (backupConn.Version.IsGPDB() && backupConn.Version.AtLeast("6")) || backupConn.Version.IsCBDB() {
 				testhelper.AssertQueryRuns(backupConn,
 					"ALTER ROLE global_role IN DATABASE global_db SET search_path TO public,pg_catalog;")
 			}
@@ -783,7 +783,7 @@ var _ = Describe("backup and restore end to end tests", func() {
 		It(`Creates skip file on segments for corrupted table for helpers to discover the file and skip it with --single-data-file and --on-error-continue`, func() {
 			if useOldBackupVersion {
 				Skip("This test is not needed for old backup versions")
-			} else if restoreConn.Version.Before("6") {
+			} else if restoreConn.Version.IsGPDB() && restoreConn.Version.Before("6") {
 				Skip("This test does not apply to GPDB versions before 6X")
 			} else if segmentCount != 3 {
 				Skip("Restoring from a tarred backup currently requires a 3-segment cluster to test.")
@@ -1696,7 +1696,7 @@ var _ = Describe("backup and restore end to end tests", func() {
 				Skip("This test is not needed for old backup versions")
 			}
 
-			if backupConn.Version.Before("6") {
+			if backupConn.Version.IsGPDB() && backupConn.Version.Before("6") {
 				testhelper.AssertQueryRuns(backupConn, "CREATE TABLESPACE test_tablespace FILESPACE test_dir")
 			} else {
 				testhelper.AssertQueryRuns(backupConn, "CREATE TABLESPACE test_tablespace LOCATION '/tmp/test_dir';")
@@ -1718,7 +1718,7 @@ var _ = Describe("backup and restore end to end tests", func() {
 			testhelper.AssertQueryRuns(backupConn, "COMMENT ON INDEX postdata_metadata.fooidx2 IS 'hello';")
 			testhelper.AssertQueryRuns(backupConn, "COMMENT ON INDEX postdata_metadata.fooidx3 IS 'hello';")
 			testhelper.AssertQueryRuns(backupConn, "ALTER TABLE postdata_metadata.foobar CLUSTER ON fooidx3;")
-			if backupConn.Version.AtLeast("6") {
+			if (backupConn.Version.IsGPDB() && backupConn.Version.AtLeast("6")) || backupConn.Version.IsCBDB() {
 				testhelper.AssertQueryRuns(backupConn, "ALTER TABLE postdata_metadata.foobar REPLICA IDENTITY USING INDEX fooidx3")
 			}
 
@@ -1726,7 +1726,7 @@ var _ = Describe("backup and restore end to end tests", func() {
 			testhelper.AssertQueryRuns(backupConn, "CREATE RULE postdata_rule AS ON UPDATE TO postdata_metadata.foobar DO SELECT * FROM postdata_metadata.foobar;")
 			testhelper.AssertQueryRuns(backupConn, "COMMENT ON RULE postdata_rule ON postdata_metadata.foobar IS 'hello';")
 
-			if backupConn.Version.Before("7") {
+			if backupConn.Version.IsGPDB() && backupConn.Version.Before("7") {
 				// TODO: Remove this once support is added
 				// Triggers on statements not yet supported in GPDB7, per src/backend/parser/gram.y:39460,39488
 
@@ -1737,7 +1737,7 @@ var _ = Describe("backup and restore end to end tests", func() {
 
 			// Create an event trigger. Currently for event triggers, there are 2 possible
 			// pieces of metadata: ENABLE and COMMENT.
-			if backupConn.Version.AtLeast("6") {
+			if (backupConn.Version.IsGPDB() && backupConn.Version.AtLeast("6")) || backupConn.Version.IsCBDB() {
 				testhelper.AssertQueryRuns(backupConn, "CREATE OR REPLACE FUNCTION postdata_metadata.postdata_eventtrigger_func() RETURNS event_trigger AS $$ BEGIN END $$ LANGUAGE plpgsql;")
 				testhelper.AssertQueryRuns(backupConn, "CREATE EVENT TRIGGER postdata_eventtrigger ON sql_drop EXECUTE PROCEDURE postdata_metadata.postdata_eventtrigger_func();")
 				testhelper.AssertQueryRuns(backupConn, "ALTER EVENT TRIGGER postdata_eventtrigger DISABLE;")
@@ -1786,7 +1786,7 @@ var _ = Describe("backup and restore end to end tests", func() {
 				Expect(tableCopyCount).To(Equal(strconv.Itoa(1)))
 			})
 			It("does not retrieve trigger constraints  with the rest of the constraints", func() {
-				if backupConn.Version.Is("7") {
+				if (backupConn.Version.IsGPDB() && backupConn.Version.Is("7")) || backupConn.Version.IsCBDB() {
 					// TODO: Remove this once support is added
 					Skip("Triggers on statements not yet supported in GPDB7, per src/backend/parser/gram.y:39460,39488")
 				}
@@ -2417,7 +2417,7 @@ LANGUAGE plpgsql NO SQL;`)
 			// Indexes do not need to be renamed on partition exchange in GPDB7+ due to new syntax.
 			expectedValue := false
 			indexSuffix := "idx"
-			if backupConn.Version.Is("6") {
+			if backupConn.Version.IsGPDB() && backupConn.Version.Is("6") {
 				// In GPDB6, indexes are automatically cascaded down and so in exchange case they must be renamed to avoid name collision breaking restore
 				expectedValue = true
 			}
@@ -2478,7 +2478,7 @@ LANGUAGE plpgsql NO SQL;`)
 			metadataFileContents := getMetdataFileContents(backupDir, timestamp, "metadata.sql")
 			Expect(metadataFileContents).ToNot(BeEmpty())
 
-			if backupConn.Version.AtLeast("7") {
+			if (backupConn.Version.IsGPDB() && backupConn.Version.AtLeast("7")) || backupConn.Version.IsCBDB() {
 				//GPDB7+ has new "attach table" partition syntax, does not require exchanging for external partitions
 				Expect(string(metadataFileContents)).To(ContainSubstring("CREATE READABLE EXTERNAL TABLE testchema.multipartition_1_prt_dec16_2_prt_apj ("))
 				Expect(string(metadataFileContents)).To(ContainSubstring("ALTER TABLE ONLY testchema.multipartition_1_prt_dec16 ATTACH PARTITION testchema.multipartition_1_prt_dec16_2_prt_apj FOR VALUES IN ('apj');"))

@@ -69,7 +69,7 @@ func (db Database) FQN() string {
 
 func GetDefaultDatabaseEncodingInfo(connectionPool *dbconn.DBConn) Database {
 	lcQuery := ""
-	if connectionPool.Version.AtLeast("6") {
+	if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("6")) || connectionPool.Version.IsCBDB() {
 		lcQuery = "datcollate AS collate, datctype AS ctype,"
 	}
 
@@ -88,7 +88,7 @@ func GetDefaultDatabaseEncodingInfo(connectionPool *dbconn.DBConn) Database {
 
 func GetDatabaseInfo(connectionPool *dbconn.DBConn) Database {
 	lcQuery := ""
-	if connectionPool.Version.AtLeast("6") {
+	if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("6")) || connectionPool.Version.IsCBDB() {
 		lcQuery = "datcollate AS collate, datctype AS ctype,"
 	}
 	query := fmt.Sprintf(`
@@ -116,7 +116,7 @@ func GetDatabaseGUCs(connectionPool *dbconn.DBConn) []string {
 		ELSE ('SET ' || option_name || ' TO ''' || option_value || '''')
 	END AS string
 	FROM pg_options_to_table((%s))`
-	if connectionPool.Version.Before("6") {
+	if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("6") {
 		subQuery := fmt.Sprintf("SELECT datconfig FROM pg_database WHERE datname = '%s'", utils.EscapeSingleQuotes(connectionPool.DBName))
 		query = fmt.Sprintf(query, subQuery)
 	} else {
@@ -227,7 +227,7 @@ type ResourceGroupAtLeast7 struct {
 func GetResourceGroups[T ResourceGroupBefore7 | ResourceGroupAtLeast7](connectionPool *dbconn.DBConn) []T {
 	var query string
 
-	if connectionPool.Version.Before("7") {
+	if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("7") {
 		before7SelectClause := ""
 		// This is when pg_dumpall was changed to use the actual values
 		if connectionPool.Version.AtLeast("5.2.0") {
@@ -359,14 +359,14 @@ func GetRoles(connectionPool *dbconn.DBConn) []Role {
 	replicationQuery := ""
 	readExtHdfs := "rolcreaterexthdfs,"
 	writeExtHdfs := "rolcreatewexthdfs,"
-	if connectionPool.Version.AtLeast("6") {
+	if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("6")) || connectionPool.Version.IsCBDB() {
 		replicationQuery = "rolreplication,"
 		readExtHdfs = ""
 		writeExtHdfs = ""
 	}
 
 	var whereClause string
-	if connectionPool.Version.AtLeast("7") {
+	if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 		whereClause = `
 	WHERE rolname !~ '^pg_'`
 	}
@@ -439,7 +439,7 @@ func GetRoleGUCs(connectionPool *dbconn.DBConn) map[string][]RoleGUC {
 		END AS config`
 
 	var gucsForDBQuery string
-	if connectionPool.Version.AtLeast("6") {
+	if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("6")) || connectionPool.Version.IsCBDB() {
 		gucsForDBQuery = `UNION
 	SELECT quote_ident(r.rolname) AS rolename,
 		quote_ident(d.datname) AS dbname,
@@ -457,7 +457,7 @@ func GetRoleGUCs(connectionPool *dbconn.DBConn) map[string][]RoleGUC {
 			FROM pg_roles %s) AS options`, gucsForDBQuery)
 
 	var whereClause string
-	if connectionPool.Version.AtLeast("7") {
+	if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 		whereClause = `
 	WHERE rolename !~ '^pg_'`
 	}
@@ -522,7 +522,7 @@ func (rm RoleMember) GetMetadataEntry() (string, toc.MetadataEntry) {
 func GetRoleMembers(connectionPool *dbconn.DBConn) []RoleMember {
 	var whereClause string
 
-	if connectionPool.Version.AtLeast("7") {
+	if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 		whereClause = fmt.Sprintf(`WHERE roleid >= %d`, FIRST_NORMAL_OBJECT_ID)
 	} else {
 		whereClause = ``
@@ -593,7 +593,7 @@ func GetTablespaces(connectionPool *dbconn.DBConn) []Tablespace {
 
 	results := make([]Tablespace, 0)
 	var err error
-	if connectionPool.Version.Before("6") {
+	if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("6") {
 		err = connectionPool.Select(&results, before6Query)
 	} else {
 		err = connectionPool.Select(&results, atLeast6Query)

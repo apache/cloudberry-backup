@@ -32,7 +32,7 @@ func PrintCreateIndexStatements(metadataFile *utils.FileWithByteCount, objToc *t
 				metadataFile.MustPrintf("\nALTER INDEX %s SET TABLESPACE %s;", index.FQN(), index.Tablespace)
 				objToc.AddMetadataEntry(section, entry, start, metadataFile.ByteCount, []uint32{0, 0})
 			}
-			if index.ParentIndexFQN != "" && connectionPool.Version.AtLeast("7") {
+			if index.ParentIndexFQN != "" && ((connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB()) {
 				start := metadataFile.ByteCount
 				metadataFile.MustPrintf("\nALTER INDEX %s ATTACH PARTITION %s;", index.ParentIndexFQN, index.FQN())
 				objToc.AddMetadataEntry(section, entry, start, metadataFile.ByteCount, []uint32{0, 0})
@@ -98,7 +98,7 @@ func PrintCreateEventTriggerStatements(metadataFile *utils.FileWithByteCount, ob
 		if eventTrigger.EventTags != "" {
 			metadataFile.MustPrintf("\nWHEN TAG IN (%s)", eventTrigger.EventTags)
 		}
-		if connectionPool.Version.AtLeast("7") {
+		if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 			metadataFile.MustPrintf("\nEXECUTE FUNCTION %s();", eventTrigger.FunctionName)
 		} else {
 			metadataFile.MustPrintf("\nEXECUTE PROCEDURE %s();", eventTrigger.FunctionName)

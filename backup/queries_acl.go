@@ -73,7 +73,7 @@ var (
 func InitializeMetadataParams(connectionPool *dbconn.DBConn) {
 	TYPE_ACCESS_METHOD = MetadataQueryParams{ObjectType: toc.OBJ_ACCESS_METHOD, NameField: "amname", OidField: "oid", CatalogTable: "pg_am"}
 	TYPE_AGGREGATE = MetadataQueryParams{ObjectType: toc.OBJ_AGGREGATE, NameField: "proname", SchemaField: "pronamespace", ACLField: "proacl", OwnerField: "proowner", CatalogTable: "pg_proc"}
-	if connectionPool.Version.AtLeast("7") {
+	if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 		TYPE_AGGREGATE.FilterClause = "prokind = 'a'"
 	} else {
 		TYPE_AGGREGATE.FilterClause = "proisagg = 't'"
@@ -88,7 +88,7 @@ func InitializeMetadataParams(connectionPool *dbconn.DBConn) {
 	TYPE_FOREIGN_DATA_WRAPPER = MetadataQueryParams{ObjectType: toc.OBJ_FOREIGN_DATA_WRAPPER, NameField: "fdwname", ACLField: "fdwacl", OwnerField: "fdwowner", CatalogTable: "pg_foreign_data_wrapper"}
 	TYPE_FOREIGN_SERVER = MetadataQueryParams{ObjectType: toc.OBJ_SERVER, NameField: "srvname", ACLField: "srvacl", OwnerField: "srvowner", CatalogTable: "pg_foreign_server"}
 	TYPE_FUNCTION = MetadataQueryParams{ObjectType: toc.OBJ_FUNCTION, NameField: "proname", SchemaField: "pronamespace", ACLField: "proacl", OwnerField: "proowner", CatalogTable: "pg_proc"}
-	if connectionPool.Version.AtLeast("7") {
+	if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 		TYPE_FUNCTION.FilterClause = "prokind <> 'a'"
 	} else {
 		TYPE_FUNCTION.FilterClause = "proisagg = 'f'"
@@ -115,7 +115,7 @@ func InitializeMetadataParams(connectionPool *dbconn.DBConn) {
 	TYPE_TS_TEMPLATE = MetadataQueryParams{ObjectType: toc.OBJ_TEXT_SEARCH_TEMPLATE, NameField: "tmplname", OidField: "oid", SchemaField: "tmplnamespace", CatalogTable: "pg_ts_template"}
 	TYPE_TRIGGER = MetadataQueryParams{ObjectType: toc.OBJ_TRIGGER, NameField: "tgname", OidField: "oid", CatalogTable: "pg_trigger"}
 	TYPE_TYPE = MetadataQueryParams{ObjectType: toc.OBJ_TYPE, NameField: "typname", SchemaField: "typnamespace", OwnerField: "typowner", CatalogTable: "pg_type"}
-	if connectionPool.Version.AtLeast("6") {
+	if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("6")) || connectionPool.Version.IsCBDB() {
 		TYPE_TYPE.ACLField = "typacl"
 	}
 }
@@ -148,7 +148,7 @@ func GetMetadataForObjectType(connectionPool *dbconn.DBConn, params MetadataQuer
 		// Cannot use unnest() in CASE statements anymore in GPDB 7+ so convert
 		// it to a LEFT JOIN LATERAL. We do not use LEFT JOIN LATERAL for GPDB 6
 		// because the CASE unnest() logic is more performant.
-		if connectionPool.Version.AtLeast("7") {
+		if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 			aclLateralJoin = fmt.Sprintf(
 				`LEFT JOIN LATERAL unnest(o.%[1]s) ljl_unnest ON o.%[1]s IS NOT NULL AND array_length(o.%[1]s, 1) != 0`, params.ACLField)
 			aclCols = "ljl_unnest"
@@ -183,7 +183,7 @@ func GetMetadataForObjectType(connectionPool *dbconn.DBConn, params MetadataQuer
 		ownerCol = fmt.Sprintf("quote_ident(pg_get_userbyid(%s))", params.OwnerField)
 	}
 	secCols := ""
-	if connectionPool.Version.AtLeast("6") {
+	if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("6")) || connectionPool.Version.IsCBDB() {
 		secCols = `coalesce(sec.label,'') AS securitylabel,
 		coalesce(sec.provider, '') AS securitylabelprovider,`
 		secTable := "pg_seclabel"
@@ -322,7 +322,7 @@ func GetDefaultPrivileges(connectionPool *dbconn.DBConn) []DefaultPrivileges {
 	// because the CASE unnest() logic is more performant.
 	aclCols := "''"
 	aclLateralJoin := ""
-	if connectionPool.Version.AtLeast("7") {
+	if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 		aclLateralJoin =
 			`LEFT JOIN LATERAL unnest(a.defaclacl) ljl_unnest ON a.defaclacl IS NOT NULL AND array_length(a.defaclacl, 1) != 0`
 		aclCols = "ljl_unnest"

@@ -229,8 +229,27 @@ func GetOperatorClassOperators(connectionPool *dbconn.DBConn) map[uint32][]Opera
 		AND classid = 'pg_catalog.pg_amop'::pg_catalog.regclass
 	ORDER BY amopstrategy`
 
+	cloudberryQuery := `
+	SELECT
+		opc.oid AS classoid,
+		amop.amopstrategy AS strategynumber,
+		amop.amopopr::pg_catalog.regoperator AS operator,
+		coalesce(quote_ident(sort_ns.nspname) || '.' || quote_ident(sort_opf.opfname), '') AS orderbyfamily
+	FROM
+		pg_catalog.pg_opclass AS opc
+	JOIN
+		pg_catalog.pg_amop AS amop ON opc.opcfamily = amop.amopfamily AND amop.amoplefttype = opc.opcintype
+	LEFT JOIN
+		pg_catalog.pg_opfamily AS sort_opf ON sort_opf.oid = amop.amopsortfamily
+	LEFT JOIN
+		pg_catalog.pg_namespace AS sort_ns ON sort_ns.oid = sort_opf.opfnamespace
+	ORDER BY
+		classoid, strategynumber`
+
 	query := ""
-	if connectionPool.Version.Is("5") {
+	if connectionPool.Version.IsCBDB() {
+		query = cloudberryQuery
+	} else if connectionPool.Version.IsGPDB() && connectionPool.Version.Is("5") {
 		query = version5Query
 	} else {
 		query = atLeast6Query

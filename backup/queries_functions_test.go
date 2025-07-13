@@ -83,7 +83,7 @@ SET baz to abc`))
 				rowGood, rowNullArg, rowNullIdentArg, rowNullResultType []driver.Value
 			)
 			//The column prodataaccess was removed in GP7 so we declare two sets of variables with and without that column
-			if connectionPool.Version.AtLeast("7") {
+			if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 				header = []string{"oid", "schema", "name", "proretset", "functionbody", "binarypath", "arguments", "identargs", "resulttype",
 					"provolatile", "proisstrict", "prosecdef", "proconfig", "procost", "prorows", "language"}
 				rowGood = []driver.Value{"1", "mock_schema", "mock_table", false, "mock_funcbody", "mock_path",
@@ -127,7 +127,7 @@ SET baz to abc`))
 				IdentArgs: sql.NullString{String: "mock_identargs", Valid: true}, ResultType: sql.NullString{String: "mock_resulttype", Valid: true},
 				Volatility: "mock_volatility", IsStrict: false, IsSecurityDefiner: false, Config: "", Cost: 0,
 				NumRows: 0, DataAccess: "mock_dataaccess", Language: "mock_language"}}
-			if connectionPool.Version.AtLeast("7") {
+			if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 				expectedResult[0].DataAccess = ""
 			}
 

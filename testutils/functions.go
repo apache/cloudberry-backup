@@ -525,19 +525,19 @@ func GetUserByID(connectionPool *dbconn.DBConn, oid uint32) string {
 }
 
 func CreateSecurityLabelIfGPDB6(connectionPool *dbconn.DBConn, objectType string, objectName string) {
-	if connectionPool.Version.AtLeast("6") {
+	if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("6")) || connectionPool.Version.IsCBDB() {
 		testhelper.AssertQueryRuns(connectionPool, fmt.Sprintf("SECURITY LABEL FOR dummy ON %s %s IS 'unclassified';", objectType, objectName))
 	}
 }
 
 func SkipIfBefore6(connectionPool *dbconn.DBConn) {
-	if connectionPool.Version.Before("6") {
+	if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("6") {
 		Skip("Test only applicable to GPDB6 and above")
 	}
 }
 
 func SkipIfBefore7(connectionPool *dbconn.DBConn) {
-	if connectionPool.Version.Before("7") {
+	if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("7") {
 		Skip("Test only applicable to GPDB7 and above")
 	}
 }

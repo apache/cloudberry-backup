@@ -139,7 +139,7 @@ var _ = Describe("End to End plugin tests", func() {
 
 			// In GPDB 7+, we use plpython3u because of default python 3 support.
 			plpythonDropStatement := "DROP PROCEDURAL LANGUAGE IF EXISTS plpythonu;"
-			if backupConn.Version.AtLeast("7") {
+			if (backupConn.Version.IsGPDB() && backupConn.Version.AtLeast("7")) || backupConn.Version.IsCBDB() {
 				plpythonDropStatement = "DROP PROCEDURAL LANGUAGE IF EXISTS plpython3u;"
 			}
 			testhelper.AssertQueryRuns(backupConn, plpythonDropStatement)
@@ -147,23 +147,23 @@ var _ = Describe("End to End plugin tests", func() {
 			defer testhelper.AssertQueryRuns(restoreConn, plpythonDropStatement)
 
 			testutils.ExecuteSQLFile(backupConn, "resources/gpdb4_objects.sql")
-			if backupConn.Version.Before("7") {
+			if backupConn.Version.IsGPDB() && backupConn.Version.Before("7") {
 				testutils.ExecuteSQLFile(backupConn, "resources/gpdb4_compatible_objects_before_gpdb7.sql")
 			} else {
 				testutils.ExecuteSQLFile(backupConn, "resources/gpdb4_compatible_objects_after_gpdb7.sql")
 			}
 
-			if backupConn.Version.AtLeast("5") {
+			if (backupConn.Version.IsGPDB() && backupConn.Version.AtLeast("5")) || backupConn.Version.IsCBDB() {
 				testutils.ExecuteSQLFile(backupConn, "resources/gpdb5_objects.sql")
 			}
-			if backupConn.Version.AtLeast("6") {
+			if (backupConn.Version.IsGPDB() && backupConn.Version.AtLeast("6")) || backupConn.Version.IsCBDB() {
 				testutils.ExecuteSQLFile(backupConn, "resources/gpdb6_objects.sql")
 				defer testhelper.AssertQueryRuns(backupConn,
 					"DROP FOREIGN DATA WRAPPER fdw CASCADE;")
 				defer testhelper.AssertQueryRuns(restoreConn,
 					"DROP FOREIGN DATA WRAPPER fdw CASCADE;")
 			}
-			if backupConn.Version.AtLeast("6.2") {
+			if (backupConn.Version.IsGPDB() && backupConn.Version.AtLeast("6.2")) || backupConn.Version.IsCBDB() {
 				testhelper.AssertQueryRuns(backupConn,
 					"CREATE TABLE mview_table1(i int, j text);")
 				defer testhelper.AssertQueryRuns(restoreConn,
@@ -204,17 +204,17 @@ var _ = Describe("End to End plugin tests", func() {
 			defer testhelper.AssertQueryRuns(backupConn,
 				"DROP ROLE testrole")
 			testutils.ExecuteSQLFile(backupConn, "resources/gpdb4_objects.sql")
-			if backupConn.Version.AtLeast("5") {
+			if (backupConn.Version.IsGPDB() && backupConn.Version.AtLeast("5")) || backupConn.Version.IsCBDB() {
 				testutils.ExecuteSQLFile(backupConn, "resources/gpdb5_objects.sql")
 			}
-			if backupConn.Version.AtLeast("6") {
+			if (backupConn.Version.IsGPDB() && backupConn.Version.AtLeast("6")) || backupConn.Version.IsCBDB() {
 				testutils.ExecuteSQLFile(backupConn, "resources/gpdb6_objects.sql")
 				defer testhelper.AssertQueryRuns(backupConn,
 					"DROP FOREIGN DATA WRAPPER fdw CASCADE;")
 				defer testhelper.AssertQueryRuns(restoreConn,
 					"DROP FOREIGN DATA WRAPPER fdw CASCADE;")
 			}
-			if backupConn.Version.AtLeast("6.2") {
+			if (backupConn.Version.IsGPDB() && backupConn.Version.AtLeast("6.2")) || backupConn.Version.IsCBDB() {
 				testhelper.AssertQueryRuns(backupConn,
 					"CREATE TABLE mview_table1(i int, j text);")
 				defer testhelper.AssertQueryRuns(restoreConn,

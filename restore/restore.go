@@ -435,7 +435,8 @@ func editStatementsRedirectSchema(statements []toc.StatementWithType, redirectSc
 		}
 
 		// ALTER TABLE schema.root ATTACH PARTITION schema.leaf needs two schema replacements
-		if connectionPool.Version.AtLeast("7") && statements[i].ObjectType == toc.OBJ_TABLE && statements[i].ReferenceObject != "" && strings.Contains(statement, "ATTACH") {
+		if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7") || connectionPool.Version.IsCBDB()) &&
+			statements[i].ObjectType == toc.OBJ_TABLE && statements[i].ReferenceObject != "" && strings.Contains(statement, "ATTACH") {
 			statement = attachRE.ReplaceAllString(statement, fmt.Sprintf("$1 %[1]s$3 %[1]s$5", redirectSchema))
 			replaced = true
 		}

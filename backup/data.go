@@ -85,7 +85,7 @@ func CopyTableOut(connectionPool *dbconn.DBConn, table Table, destinationToWrite
 	copyCommand := fmt.Sprintf("PROGRAM '%s%s %s %s'", checkPipeExistsCommand, customPipeThroughCommand, sendToDestinationCommand, destinationToWrite)
 
 	columnNames := ""
-	if connectionPool.Version.AtLeast("7") {
+	if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 		// process column names to exclude generated columns from data copy out
 		columnNames = ConstructTableAttributesList(table.ColumnDefs)
 	}
@@ -95,7 +95,7 @@ func CopyTableOut(connectionPool *dbconn.DBConn, table Table, destinationToWrite
 		workerInfo = fmt.Sprintf("Worker %d: ", connNum)
 	}
 	query := fmt.Sprintf("COPY %s%s TO %s WITH CSV DELIMITER '%s' ON SEGMENT IGNORE EXTERNAL PARTITIONS;", table.FQN(), columnNames, copyCommand, tableDelim)
-	if connectionPool.Version.AtLeast("7") {
+	if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 		utils.LogProgress(`%sExecuting "%s" on coordinator`, workerInfo, query)
 	} else {
 		utils.LogProgress(`%sExecuting "%s" on master`, workerInfo, query)
@@ -371,7 +371,7 @@ func GetBackupDataSet(tables []Table) ([]Table, int64) {
 // the lock, the call will fail instead of block. Return the failure for handling.
 func LockTableNoWait(dataTable Table, connNum int) error {
 	var lockMode string
-	if connectionPool.Version.AtLeast("7") {
+	if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 		lockMode = `IN ACCESS SHARE MODE NOWAIT COORDINATOR ONLY`
 	} else if connectionPool.Version.AtLeast("6.21.0") {
 		lockMode = `IN ACCESS SHARE MODE NOWAIT MASTER ONLY`

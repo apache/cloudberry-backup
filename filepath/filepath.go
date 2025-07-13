@@ -279,7 +279,7 @@ func GetTimestampFromBackupDirectory(backupDir string) (string, error) {
 
 func GetSegPrefix(connectionPool *dbconn.DBConn) string {
 	query := ""
-	if connectionPool.Version.Before("6") {
+	if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("6") {
 		query = "SELECT fselocation FROM pg_filespace_entry WHERE fsedbid = 1;"
 	} else {
 		query = "SELECT datadir FROM gp_segment_configuration WHERE content = -1 AND role = 'p';"

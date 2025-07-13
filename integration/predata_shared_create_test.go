@@ -79,7 +79,7 @@ var _ = Describe("backup integration create statement tests", func() {
 			testhelper.AssertQueryRuns(connectionPool, "CREATE TABLE public.testtable(a int, b text) DISTRIBUTED BY (b)")
 			objectMetadata = testutils.DefaultMetadataMap(toc.OBJ_CONSTRAINT, false, false, false, false)
 
-			if connectionPool.Version.AtLeast("6") {
+			if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("6")) || connectionPool.Version.IsCBDB() {
 				uniqueConstraint.ConIsLocal = true
 				pkConstraint.ConIsLocal = true
 				fkConstraint.ConIsLocal = true

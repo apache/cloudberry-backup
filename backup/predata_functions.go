@@ -18,7 +18,7 @@ func PrintCreateFunctionStatement(metadataFile *utils.FileWithByteCount, objToc 
 	start := metadataFile.ByteCount
 	funcFQN := utils.MakeFQN(funcDef.Schema, funcDef.Name)
 
-	if connectionPool.Version.AtLeast("7") && funcDef.Kind == "p" {
+	if ((connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB()) && funcDef.Kind == "p" {
 		metadataFile.MustPrintf("\n\nCREATE PROCEDURE %s(%s) AS", funcFQN, funcDef.Arguments.String)
 	} else {
 		metadataFile.MustPrintf("\n\nCREATE FUNCTION %s(%s) RETURNS %s AS", funcFQN, funcDef.Arguments.String, funcDef.ResultType.String)
@@ -53,7 +53,7 @@ func PrintFunctionBodyOrPath(metadataFile *utils.FileWithByteCount, funcDef Func
 
 func PrintFunctionModifiers(metadataFile *utils.FileWithByteCount, funcDef Function) {
 	// DataAccess removed from the catalog in GP7
-	if connectionPool.Version.Before("7") {
+	if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("7") {
 		switch funcDef.DataAccess {
 		case "c":
 			metadataFile.MustPrintf(" CONTAINS SQL")
@@ -95,7 +95,7 @@ func PrintFunctionModifiers(metadataFile *utils.FileWithByteCount, funcDef Funct
 	if funcDef.IsSecurityDefiner {
 		metadataFile.MustPrintf(" SECURITY DEFINER")
 	}
-	if connectionPool.Version.AtLeast("7") {
+	if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 		if funcDef.TransformTypes != "" {
 			metadataFile.MustPrintf("\nTRANSFORM %s\n", funcDef.TransformTypes)
 		}
@@ -116,7 +116,7 @@ func PrintFunctionModifiers(metadataFile *utils.FileWithByteCount, funcDef Funct
 	}
 
 	// Stored procedures do not permit parallelism declarations
-	if connectionPool.Version.AtLeast("7") && funcDef.Kind != "p" {
+	if ((connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB()) && funcDef.Kind != "p" {
 		switch funcDef.Parallel {
 		case "u":
 			metadataFile.MustPrintf(" PARALLEL UNSAFE")
@@ -172,7 +172,7 @@ func PrintCreateAggregateStatement(metadataFile *utils.FileWithByteCount, objToc
 	if aggDef.SortOperator != "" {
 		metadataFile.MustPrintf(",\n\tSORTOP = %s.\"%s\"", aggDef.SortOperatorSchema, aggDef.SortOperator)
 	}
-	if connectionPool.Version.Before("7") {
+	if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("7") {
 		if aggDef.Hypothetical {
 			metadataFile.MustPrintf(",\n\tHYPOTHETICAL")
 		}
@@ -203,7 +203,7 @@ func PrintCreateAggregateStatement(metadataFile *utils.FileWithByteCount, objToc
 		metadataFile.MustPrintf(",\n\tMINITCOND = '%s'", aggDef.MInitialValue)
 	}
 
-	if connectionPool.Version.AtLeast("7") {
+	if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 		var defaultFinalModify string
 		if aggDef.Kind == "o" {
 			defaultFinalModify = "w"
@@ -290,7 +290,7 @@ func PrintCreateCastStatement(metadataFile *utils.FileWithByteCount, objToc *toc
 func PrintCreateExtensionStatements(metadataFile *utils.FileWithByteCount, objToc *toc.TOC, extensionDefs []Extension, extensionMetadata MetadataMap) {
 	for _, extensionDef := range extensionDefs {
 		start := metadataFile.ByteCount
-		if connectionPool.Version.AtLeast("7") {
+		if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 			// changes to gp_toolkit in gpdb7 require explicilty creating the schema before the extension
 			metadataFile.MustPrintf(
 				"\n\nCREATE SCHEMA IF NOT EXISTS %[1]s;\nSET search_path=%[1]s,pg_catalog;\nCREATE EXTENSION IF NOT EXISTS %[2]s WITH SCHEMA %[1]s;\nSET search_path=pg_catalog;\n",
@@ -341,7 +341,7 @@ func PrintCreateLanguageStatements(metadataFile *utils.FileWithByteCount, objToc
 	for _, procLang := range procLangs {
 		start := metadataFile.ByteCount
 		metadataFile.MustPrintf("\n\nCREATE ")
-		if connectionPool.Version.AtLeast("6") {
+		if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("6")) || connectionPool.Version.IsCBDB() {
 			metadataFile.MustPrintf("OR REPLACE ")
 		}
 		if procLang.PlTrusted {

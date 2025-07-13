@@ -285,7 +285,7 @@ var _ = Describe("Deadlock handling", func() {
 		Expect(stdout).To(ContainSubstring("Backup completed successfully"))
 	})
 	It("runs gpbackup and defers 2 deadlocked tables to main worker", func() {
-		if useOldBackupVersion || backupConn.Version.Before(backup.SNAPSHOT_GPDB_MIN_VERSION) {
+		if useOldBackupVersion || (backupConn.Version.IsGPDB() && backupConn.Version.Before(backup.SNAPSHOT_GPDB_MIN_VERSION)) {
 			Skip(fmt.Sprintf("This test is not needed for old backup versions or GPDB versions < %s", backup.SNAPSHOT_GPDB_MIN_VERSION))
 		}
 		// Acquire AccessExclusiveLock on public.foo to block gpbackup when it attempts

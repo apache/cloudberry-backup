@@ -113,7 +113,7 @@ func PrintResetResourceGroupStatements(metadataFile *utils.FileWithByteCount, to
 	}
 	defSettings := make([]DefSetting, 0)
 
-	if connectionPool.Version.Before("7") {
+	if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("7") {
 		defSettings = append(defSettings, DefSetting{"admin_group", "SET CPU_RATE_LIMIT 1"})
 		defSettings = append(defSettings, DefSetting{"admin_group", "SET MEMORY_LIMIT 1"})
 		defSettings = append(defSettings, DefSetting{"default_group", "SET CPU_RATE_LIMIT 1"})
@@ -179,7 +179,7 @@ func PrintCreateResourceGroupStatementsAtLeast7(metadataFile *utils.FileWithByte
 			if !strings.HasPrefix(resGroup.CpuMaxPercent, "-") {
 				/* cpu rate mode */
 				attributes = append(attributes, fmt.Sprintf("CPU_MAX_PERCENT=%s", resGroup.CpuMaxPercent))
-			} else if connectionPool.Version.AtLeast("5.9.0") {
+			} else if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("5.9.0")) || connectionPool.Version.IsCBDB() {
 				/* cpuset mode */
 				attributes = append(attributes, fmt.Sprintf("CPUSET='%s'", resGroup.Cpuset))
 			}
@@ -199,7 +199,7 @@ func PrintCreateResourceGroupStatementsBefore7(metadataFile *utils.FileWithByteC
 		// temporarily special case for 5x resource groups #temp5xResGroup
 		memorySpillRatio := resGroup.MemorySpillRatio
 
-		if connectionPool.Version.Is("5") {
+		if connectionPool.Version.IsGPDB() && connectionPool.Version.Is("5") {
 			/*
 			 * memory_spill_ratio can be set in absolute value format since 5.20,
 			 * such as '1 MB', it has to be set as a quoted string, otherwise set
@@ -236,7 +236,7 @@ func PrintCreateResourceGroupStatementsBefore7(metadataFile *utils.FileWithByteC
 			if !strings.HasPrefix(resGroup.CPURateLimit, "-") {
 				/* cpu rate mode */
 				metadataFile.MustPrintf("\n\nALTER RESOURCE GROUP %s SET CPU_RATE_LIMIT %s;", resGroup.Name, resGroup.CPURateLimit)
-			} else if connectionPool.Version.AtLeast("5.9.0") {
+			} else if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("5.9.0")) || connectionPool.Version.IsCBDB() {
 				/* cpuset mode */
 				metadataFile.MustPrintf("\n\nALTER RESOURCE GROUP %s SET CPUSET '%s';", resGroup.Name, resGroup.Cpuset)
 			}
@@ -251,7 +251,7 @@ func PrintCreateResourceGroupStatementsBefore7(metadataFile *utils.FileWithByteC
 			if !strings.HasPrefix(resGroup.CPURateLimit, "-") {
 				/* cpu rate mode */
 				attributes = append(attributes, fmt.Sprintf("CPU_RATE_LIMIT=%s", resGroup.CPURateLimit))
-			} else if connectionPool.Version.AtLeast("5.9.0") {
+			} else if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("5.9.0")) || connectionPool.Version.IsCBDB() {
 				/* cpuset mode */
 				attributes = append(attributes, fmt.Sprintf("CPUSET='%s'", resGroup.Cpuset))
 			}
@@ -263,7 +263,7 @@ func PrintCreateResourceGroupStatementsBefore7(metadataFile *utils.FileWithByteC
 			 */
 			if resGroup.MemoryAuditor == "1" {
 				attributes = append(attributes, "MEMORY_AUDITOR=cgroup")
-			} else if connectionPool.Version.AtLeast("5.8.0") {
+			} else if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("5.8.0")) || connectionPool.Version.IsCBDB() {
 				attributes = append(attributes, "MEMORY_AUDITOR=vmtracker")
 			}
 

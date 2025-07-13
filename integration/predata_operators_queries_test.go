@@ -143,7 +143,7 @@ var _ = Describe("backup integration tests", func() {
 		It("returns a slice of operator classes with operators and functions", func() {
 			opClassQuery := ""
 			expectedRecheck := false
-			if connectionPool.Version.Before("6") {
+			if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("6") {
 				opClassQuery = "CREATE OPERATOR CLASS public.testclass FOR TYPE int USING gist AS OPERATOR 1 = RECHECK, OPERATOR 2 < , FUNCTION 1 abs(integer), FUNCTION 2 int4out(integer)"
 				expectedRecheck = true
 			} else {

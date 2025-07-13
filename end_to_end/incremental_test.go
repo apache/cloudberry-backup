@@ -82,10 +82,10 @@ var _ = Describe("End to End incremental tests", func() {
 
 			// Ensure two distinct aoseg entries contain 'foobar' data
 			var numRows string
-			if backupConn.Version.Before("6") {
+			if backupConn.Version.IsGPDB() && backupConn.Version.Before("6") {
 				numRows = dbconn.MustSelectString(backupConn,
 					"SELECT count(*) FROM gp_toolkit.__gp_aoseg_name('foobar')")
-			} else if backupConn.Version.Before("7") {
+			} else if backupConn.Version.IsGPDB() && backupConn.Version.Before("7") {
 				numRows = dbconn.MustSelectString(backupConn,
 					"SELECT count(*) FROM gp_toolkit.__gp_aoseg('foobar'::regclass)")
 			} else {
@@ -266,7 +266,7 @@ var _ = Describe("End to End incremental tests", func() {
 				gprestore(gprestorePath, restoreHelperPath, incremental1Timestamp,
 					"--redirect-db", "restoredb")
 
-				if backupConn.Version.Before("7") {
+				if backupConn.Version.IsGPDB() && backupConn.Version.Before("7") {
 					// -2 for public.holds and schema2.ao1, excluded partition will be included anyway but it's data - will not
 					assertRelationsCreated(restoreConn, TOTAL_RELATIONS-2)
 				} else {

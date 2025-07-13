@@ -70,7 +70,7 @@ func (f Function) FQN() string {
 
 func GetFunctions(connectionPool *dbconn.DBConn) []Function {
 	excludeImplicitFunctionsClause := ""
-	if connectionPool.Version.AtLeast("6") {
+	if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("6")) || connectionPool.Version.IsCBDB() {
 		// This excludes implicitly created functions. Currently this is only range type functions
 		excludeImplicitFunctionsClause = `
 	AND NOT EXISTS (
@@ -80,9 +80,9 @@ func GetFunctions(connectionPool *dbconn.DBConn) []Function {
 	}
 
 	locationAtts := ""
-	if connectionPool.Version.Before("6") {
+	if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("6") {
 		locationAtts = "'a' AS proexeclocation,"
-	} else if connectionPool.Version.Is("6") {
+	} else if connectionPool.Version.IsGPDB() && connectionPool.Version.Is("6") {
 		locationAtts = "proiswindow,proexeclocation,proleakproof,"
 	} else {
 		locationAtts = "proexeclocation,proleakproof,proparallel,"
@@ -160,7 +160,7 @@ func GetFunctions(connectionPool *dbconn.DBConn) []Function {
 		excludeImplicitFunctionsClause)
 
 	query := ""
-	if connectionPool.Version.Before("7") {
+	if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("7") {
 		query = before7Query
 	} else {
 		query = atLeast7Query
@@ -181,13 +181,14 @@ func GetFunctions(connectionPool *dbconn.DBConn) []Function {
 	// before the pg_get_function_* functions execute.
 	verifiedResults := make([]Function, 0)
 	for _, result := range results {
-		if connectionPool.Version.AtLeast("7") && result.Kind == "w" {
+		if ((connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB()) && result.Kind == "w" {
 			result.IsWindow = true
 		}
 
 		if result.Arguments.Valid && result.IdentArgs.Valid && result.ResultType.Valid {
 			verifiedResults = append(verifiedResults, result)
-		} else if connectionPool.Version.AtLeast("7") && result.Kind == "p" && !result.ResultType.Valid { // GPDB7+ stored procedure
+		} else if ((connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB()) &&
+			result.Kind == "p" && !result.ResultType.Valid { // GPDB7+ stored procedure
 			verifiedResults = append(verifiedResults, result)
 		} else {
 			gplog.Warn("Function '%s.%s' not backed up, most likely dropped after gpbackup had begun.", result.Schema, result.Name)
@@ -444,9 +445,9 @@ func GetAggregates(connectionPool *dbconn.DBConn) []Aggregate {
 
 	aggregates := make([]Aggregate, 0)
 	query := ""
-	if connectionPool.Version.Is("5") {
+	if connectionPool.Version.IsGPDB() && connectionPool.Version.Is("5") {
 		query = version5query
-	} else if connectionPool.Version.Is("6") {
+	} else if connectionPool.Version.IsGPDB() && connectionPool.Version.Is("6") {
 		query = version6query
 	} else {
 		query = atLeast7Query
@@ -571,7 +572,7 @@ func GetCasts(connectionPool *dbconn.DBConn) []Cast {
 	 * type, or the cast function is user-defined.
 	 */
 	methodStr := ""
-	if connectionPool.Version.AtLeast("6") {
+	if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("6")) || connectionPool.Version.IsCBDB() {
 		methodStr = "castmethod,"
 	} else {
 		methodStr = "CASE WHEN c.castfunc = 0 THEN 'b' ELSE 'f' END AS castmethod,"

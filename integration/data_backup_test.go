@@ -26,7 +26,7 @@ var _ = Describe("backup integration tests", func() {
 			origPipeThroughProgram utils.PipeThroughProgram
 		)
 		BeforeEach(func() {
-			if connectionPool.Version.Before(backup.SNAPSHOT_GPDB_MIN_VERSION) {
+			if connectionPool.Version.IsGPDB() && connectionPool.Version.Before(backup.SNAPSHOT_GPDB_MIN_VERSION) {
 				Skip(fmt.Sprintf("Test only applicable to GPDB %s and above", backup.SNAPSHOT_GPDB_MIN_VERSION))
 			}
 			if useOldBackupVersion && oldBackupSemVer.LT(semver.MustParse("1.29.0")) {

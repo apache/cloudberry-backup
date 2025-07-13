@@ -53,7 +53,7 @@ var _ = Describe("backup integration create statement tests", func() {
 		})
 		It("creates a database with all properties", func() {
 			var db backup.Database
-			if connectionPool.Version.Before("6") {
+			if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("6") {
 				db = backup.Database{Oid: 1, Name: "create_test_db", Tablespace: "pg_default", Encoding: "UTF8", Collate: "", CType: ""}
 			} else {
 				db = backup.Database{Oid: 1, Name: "create_test_db", Tablespace: "pg_default", Encoding: "UTF8", Collate: "en_US.utf-8", CType: "en_US.utf-8"}
@@ -73,7 +73,7 @@ var _ = Describe("backup integration create statement tests", func() {
 			enableNestLoopGUC := "SET enable_nestloop TO 'true'"
 			searchPathGUC := "SET search_path TO pg_catalog, public"
 			defaultStorageGUC := "SET gp_default_storage_options TO 'appendonly=true, compresslevel=6, orientation=row, compresstype=none'"
-			if connectionPool.Version.AtLeast("7") {
+			if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 				defaultStorageGUC = "SET gp_default_storage_options TO 'compresslevel=6, compresstype=none'"
 			}
 
@@ -140,7 +140,7 @@ var _ = Describe("backup integration create statement tests", func() {
 		It("creates a basic resource group", func() {
 			emptyMetadataMap := map[backup.UniqueID]backup.ObjectMetadata{}
 
-			if connectionPool.Version.Before("7") {
+			if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("7") {
 				someGroup := backup.ResourceGroupBefore7{ResourceGroup: backup.ResourceGroup{Oid: 1, Name: "some_group", Concurrency: "15", Cpuset: "-1"}, CPURateLimit: "10", MemoryLimit: "20", MemorySharedQuota: "25", MemorySpillRatio: "30", MemoryAuditor: "0"}
 				backup.PrintCreateResourceGroupStatementsBefore7(backupfile, tocfile, []backup.ResourceGroupBefore7{someGroup}, emptyMetadataMap)
 				testhelper.AssertQueryRuns(connectionPool, buffer.String())
@@ -170,7 +170,7 @@ var _ = Describe("backup integration create statement tests", func() {
 			Fail("Could not find some_group")
 		})
 		It("creates a resource group with defaults", func() {
-			if connectionPool.Version.Before("7") {
+			if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("7") {
 				expectedDefaults := backup.ResourceGroupBefore7{ResourceGroup: backup.ResourceGroup{Oid: 1, Name: "some_group", Concurrency: concurrencyDefault, Cpuset: cpuSetDefault}, CPURateLimit: "10", MemoryLimit: "20",
 					MemorySharedQuota: memSharedDefault, MemorySpillRatio: memSpillDefault, MemoryAuditor: memAuditDefault}
 
@@ -205,11 +205,11 @@ var _ = Describe("backup integration create statement tests", func() {
 		})
 		It("creates a resource group using old format for MemorySpillRatio", func() {
 			// temporarily special case for 5x resource groups #temp5xResGroup
-			if connectionPool.Version.Before("5.20.0") {
+			if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("5.20.0") {
 				Skip("Test only applicable to GPDB 5.20 and above")
 			}
 
-			if connectionPool.Version.Before("7") {
+			if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("7") {
 				expectedDefaults := backup.ResourceGroupBefore7{ResourceGroup: backup.ResourceGroup{Oid: 1, Name: "some_group", Concurrency: concurrencyDefault, Cpuset: cpuSetDefault},
 					CPURateLimit: "10", MemoryLimit: "20", MemorySharedQuota: memSharedDefault, MemorySpillRatio: "19", MemoryAuditor: memAuditDefault}
 
@@ -243,7 +243,7 @@ var _ = Describe("backup integration create statement tests", func() {
 			Fail("Could not find some_group")
 		})
 		It("alters a default resource group", func() {
-			if connectionPool.Version.Before("7") {
+			if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("7") {
 				defaultGroup := backup.ResourceGroupBefore7{ResourceGroup: backup.ResourceGroup{Oid: 1, Name: "default_group", Concurrency: "15", Cpuset: "-1"},
 					CPURateLimit: "10", MemoryLimit: "20", MemorySharedQuota: "25", MemorySpillRatio: "30", MemoryAuditor: "0"}
 				emptyMetadataMap := map[backup.UniqueID]backup.ObjectMetadata{}
@@ -365,7 +365,7 @@ var _ = Describe("backup integration create statement tests", func() {
 
 			role1.ResGroup = "default_group"
 
-			if connectionPool.Version.AtLeast("6") {
+			if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("6")) || connectionPool.Version.IsCBDB() {
 				role1.Createrexthdfs = false
 				role1.Createwexthdfs = false
 			}
@@ -459,7 +459,7 @@ var _ = Describe("backup integration create statement tests", func() {
 		})
 		It("Sets GUCs for a particular role", func() {
 			defaultStorageOptionsString := "appendonly=true, compresslevel=6, orientation=row, compresstype=none"
-			if connectionPool.Version.AtLeast("7") {
+			if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 				defaultStorageOptionsString = "compresslevel=6, compresstype=none"
 			}
 
@@ -480,7 +480,7 @@ var _ = Describe("backup integration create statement tests", func() {
 			testutils.SkipIfBefore6(connectionPool)
 
 			defaultStorageOptionsString := "appendonly=true, compresslevel=6, orientation=row, compresstype=none"
-			if connectionPool.Version.AtLeast("7") {
+			if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 				defaultStorageOptionsString = "compresslevel=6, compresstype=none"
 			}
 
@@ -501,7 +501,7 @@ var _ = Describe("backup integration create statement tests", func() {
 	Describe("PrintCreateTablespaceStatements", func() {
 		var expectedTablespace backup.Tablespace
 		BeforeEach(func() {
-			if connectionPool.Version.AtLeast("6") {
+			if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("6")) || connectionPool.Version.IsCBDB() {
 				expectedTablespace = backup.Tablespace{Oid: 1, Tablespace: "test_tablespace", FileLocation: "'/tmp/test_dir'", SegmentLocations: []string{}}
 			} else {
 				expectedTablespace = backup.Tablespace{Oid: 1, Tablespace: "test_tablespace", FileLocation: "test_dir"}
@@ -560,7 +560,7 @@ var _ = Describe("backup integration create statement tests", func() {
 			tablespaceMetadata := tablespaceMetadataMap[expectedTablespace.GetUniqueID()]
 			backup.PrintCreateTablespaceStatements(backupfile, tocfile, []backup.Tablespace{expectedTablespace}, tablespaceMetadataMap)
 
-			if connectionPool.Version.AtLeast("6") {
+			if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("6")) || connectionPool.Version.IsCBDB() {
 				/*
 				 * In GPDB 6 and later, a CREATE TABLESPACE statement can't be run in a multi-command string
 				 * with other statements, so we execute it separately from the metadata statements.
