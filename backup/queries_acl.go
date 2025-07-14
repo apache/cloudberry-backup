@@ -68,6 +68,7 @@ var (
 	TYPE_TRIGGER              MetadataQueryParams
 	TYPE_TYPE                 MetadataQueryParams
 	TYPE_POLICY               MetadataQueryParams
+	TYPE_STORAGE_SERVER       MetadataQueryParams // CBDB only
 )
 
 func InitializeMetadataParams(connectionPool *dbconn.DBConn) {
@@ -118,6 +119,9 @@ func InitializeMetadataParams(connectionPool *dbconn.DBConn) {
 	if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("6")) || connectionPool.Version.IsCBDB() {
 		TYPE_TYPE.ACLField = "typacl"
 	}
+
+	// CBDB only
+	TYPE_STORAGE_SERVER = MetadataQueryParams{ObjectType: toc.OBJ_STORAGE_SERVER, NameField: "srvname", OidField: "oid", ACLField: "srvacl", OwnerField: "srvowner", CatalogTable: "gp_storage_server", Shared: true}
 }
 
 type MetadataQueryStruct struct {

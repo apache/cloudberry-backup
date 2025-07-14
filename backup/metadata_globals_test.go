@@ -465,7 +465,75 @@ GRANT ALL ON TABLESPACE test_tablespace TO testrole;`,
 			testutils.ExpectEntry(tocfile.GlobalEntries, 0, "", "", "test_tablespace", toc.OBJ_TABLESPACE)
 			testutils.ExpectEntry(tocfile.GlobalEntries, 1, "", "", "test_tablespace", toc.OBJ_TABLESPACE)
 			expectedStatements := []string{`CREATE TABLESPACE test_tablespace LOCATION '/data/dir';`,
-				`ALTER TABLESPACE test_tablespace SET (param1=val1, param2=val2);`}
+				`ALTER TABLESPACE test_tablespace SET (param1 = val1, param2 = val2);`}
+			testutils.AssertBufferContents(tocfile.GlobalEntries, buffer, expectedStatements...)
+		})
+		It("prints a remote tablespace with server, path and handler options", func() {
+			expectedTablespace := backup.Tablespace{
+				Oid:               1,
+				Tablespace:        "remote_ts",
+				FileLocation:      "", // Ignored when path is present
+				Options:           "server=s3_server, path='/bucket/path', random_page_cost=4",
+				Spcfilehandlerbin: "$libdir/dfs_tablespace",
+				Spcfilehandlersrc: "remote_file_handler",
+			}
+			emptyMetadataMap := backup.MetadataMap{}
+			backup.PrintCreateTablespaceStatements(backupfile, tocfile, []backup.Tablespace{expectedTablespace}, emptyMetadataMap)
+
+			expectedStatements := []string{
+				`CREATE TABLESPACE remote_ts LOCATION '/bucket/path' SERVER s3_server HANDLER '$libdir/dfs_tablespace, remote_file_handler';`,
+				`ALTER TABLESPACE remote_ts SET (random_page_cost = 4);`,
+			}
+			testutils.AssertBufferContents(tocfile.GlobalEntries, buffer, expectedStatements...)
+		})
+	})
+
+	Describe("PrintCreateStorageServerStatements", func() {
+		It("prints a storage server without options", func() {
+			expectedServer := backup.StorageServer{Oid: 1, Server: "test_server"}
+			emptyMetadataMap := backup.MetadataMap{}
+
+			backup.PrintCreateStorageServerStatements(backupfile, tocfile, []backup.StorageServer{expectedServer}, emptyMetadataMap)
+
+			testutils.AssertBufferContents(tocfile.GlobalEntries, buffer, `CREATE STORAGE SERVER test_server;`)
+		})
+
+		It("prints a storage server with options", func() {
+			expectedServer := backup.StorageServer{
+				Oid:           1,
+				Server:        "test_server",
+				ServerOptions: "protocol=s3, region=us-east-1, endpoint=s3.example.com",
+			}
+			emptyMetadataMap := backup.MetadataMap{}
+
+			backup.PrintCreateStorageServerStatements(backupfile, tocfile, []backup.StorageServer{expectedServer}, emptyMetadataMap)
+
+			// Note: The order is deterministic because we sort the keys.
+			expectedStatements := []string{`CREATE STORAGE SERVER test_server OPTIONS(endpoint 's3.example.com', protocol 's3', region 'us-east-1');`}
+			testutils.AssertBufferContents(tocfile.GlobalEntries, buffer, expectedStatements...)
+		})
+	})
+
+	Describe("PrintCreateStorageUserMappingStatements", func() {
+		It("prints a storage user mapping without options", func() {
+			expectedUserMapping := backup.StorageUserMapping{Oid: 1, User: "testrole", Server: "test_server"}
+			backup.PrintCreateStorageUserMappingStatements(backupfile, tocfile, []backup.StorageUserMapping{expectedUserMapping})
+
+			testutils.AssertBufferContents(tocfile.GlobalEntries, buffer, `CREATE STORAGE USER MAPPING FOR testrole STORAGE SERVER test_server;`)
+		})
+
+		It("prints a storage user mapping with options", func() {
+			expectedUserMapping := backup.StorageUserMapping{
+				Oid:     1,
+				User:    "testrole",
+				Server:  "test_server",
+				Options: "secretkey=mysecret, accesskey=mykey",
+			}
+
+			backup.PrintCreateStorageUserMappingStatements(backupfile, tocfile, []backup.StorageUserMapping{expectedUserMapping})
+
+			// Note: The order is deterministic because we sort the keys.
+			expectedStatements := []string{`CREATE STORAGE USER MAPPING FOR testrole STORAGE SERVER test_server OPTIONS (accesskey 'mykey', secretkey 'mysecret');`}
 			testutils.AssertBufferContents(tocfile.GlobalEntries, buffer, expectedStatements...)
 		})
 	})

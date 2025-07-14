@@ -551,6 +551,9 @@ type Tablespace struct {
 	FileLocation     string // FILESPACE in 5, LOCATION in 6 and later
 	SegmentLocations []string
 	Options          string
+	// CBDB only
+	Spcfilehandlerbin string
+	Spcfilehandlersrc string
 }
 
 func (t Tablespace) GetMetadataEntry() (string, toc.MetadataEntry) {
@@ -591,17 +594,36 @@ func GetTablespaces(connectionPool *dbconn.DBConn) []Tablespace {
 	WHERE spcname != 'pg_default'
 		AND spcname != 'pg_global'`
 
+	cbdbQuery := `
+	SELECT oid,
+		quote_ident(spcname) AS tablespace,
+		CASE
+			WHEN spcfilehandlerbin IS NOT NULL THEN ''
+			ELSE '''' || pg_catalog.pg_tablespace_location(oid)::text || ''''
+		END AS filelocation,
+		coalesce(array_to_string(spcoptions, ', '), '') AS options,
+		coalesce(spcfilehandlerbin, '') AS spcfilehandlerbin,
+		coalesce(spcfilehandlersrc, '') AS spcfilehandlersrc
+	FROM pg_tablespace
+	WHERE spcname != 'pg_default'
+		AND spcname != 'pg_global'`
+
 	results := make([]Tablespace, 0)
 	var err error
 	if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("6") {
 		err = connectionPool.Select(&results, before6Query)
+	} else if connectionPool.Version.IsCBDB() {
+		err = connectionPool.Select(&results, cbdbQuery)
 	} else {
 		err = connectionPool.Select(&results, atLeast6Query)
+	}
+	gplog.FatalOnError(err)
+
+	if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("6")) || connectionPool.Version.IsCBDB() {
 		for i := 0; i < len(results); i++ {
 			results[i].SegmentLocations = GetSegmentTablespaces(connectionPool, results[i].Oid)
 		}
 	}
-	gplog.FatalOnError(err)
 	return results
 }
 
@@ -623,4 +645,89 @@ func GetDBSize(connectionPool *dbconn.DBConn) string {
 	err := connectionPool.Get(&size, sizeQuery)
 	gplog.FatalOnError(err)
 	return size.DBSize
+}
+
+type StorageUserMapping struct {
+	Oid     uint32
+	User    string
+	Server  string
+	Options string
+}
+
+func (sum StorageUserMapping) GetMetadataEntry() (string, toc.MetadataEntry) {
+	return "global",
+		toc.MetadataEntry{
+			Schema:          "",
+			Name:            sum.FQN(),
+			ObjectType:      toc.OBJ_STORAGE_USER_MAPPING,
+			ReferenceObject: "",
+			StartByte:       0,
+			EndByte:         0,
+		}
+}
+
+func (sum StorageUserMapping) GetUniqueID() UniqueID {
+	return UniqueID{ClassID: GP_STORAGE_USER_MAPPING_OID, Oid: sum.Oid}
+}
+
+func (sum StorageUserMapping) FQN() string {
+	return fmt.Sprintf("%s ON %s", sum.User, sum.Server)
+}
+
+func GetStorageUserMapping(connectionPool *dbconn.DBConn) []StorageUserMapping {
+	usersQuery := `SELECT 
+                    u.oid as Oid,
+                    quote_ident(pg_get_userbyid(u.umuser)) as User,
+				    quote_ident(s.srvname) as Server,
+                    coalesce(array_to_string(u.umoptions, ', '), '') AS options
+                   FROM gp_storage_user_mapping u join gp_storage_server s on u.umserver = s.oid`
+
+	users := make([]StorageUserMapping, 0)
+	if err := connectionPool.Select(&users, usersQuery); err != nil {
+		gplog.FatalOnError(err)
+	}
+	return users
+}
+
+type StorageServer struct {
+	Oid           uint32
+	Server        string
+	ServerOwner   string
+	ServerOptions string
+}
+
+func (ss StorageServer) GetMetadataEntry() (string, toc.MetadataEntry) {
+	return "global",
+		toc.MetadataEntry{
+			Schema:          "",
+			Name:            ss.FQN(),
+			ObjectType:      toc.OBJ_STORAGE_SERVER,
+			ReferenceObject: "",
+			StartByte:       0,
+			EndByte:         0,
+		}
+}
+
+func (ss StorageServer) GetUniqueID() UniqueID {
+	return UniqueID{ClassID: GP_STORAGE_SERVER_OID, Oid: ss.Oid}
+}
+
+func (ss StorageServer) FQN() string {
+	return ss.Server
+}
+
+func GetStorageServers(connectionPool *dbconn.DBConn) []StorageServer {
+	serversQuery := `SELECT 
+                    s.oid as Oid,
+                    quote_ident(s.srvname) as Server,
+                    quote_ident(pg_get_userbyid(s.srvowner)) as ServerOwner,
+                    coalesce(array_to_string(s.srvoptions, ', '), '') AS Serveroptions
+				FROM gp_storage_server s
+				where srvname != 'local_server'`
+
+	servers := make([]StorageServer, 0)
+	if err := connectionPool.Select(&servers, serversQuery); err != nil {
+		gplog.FatalOnError(err)
+	}
+	return servers
 }

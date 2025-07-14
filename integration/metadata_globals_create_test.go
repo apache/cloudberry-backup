@@ -589,5 +589,139 @@ var _ = Describe("backup integration create statement tests", func() {
 			}
 			Fail("Tablespace 'test_tablespace' was not created")
 		})
+
+		It("creates a basic remote tablespace", func() {
+			// TODO: Re-enable this test once Cloudberry natively supports remote tablespaces.
+			// This test is skipped because creating a remote tablespace correctly requires a
+			// specific database extension to be installed. That extension intercepts the
+			// 'CREATE TABLESPACE' command to prevent the database from checking for a local
+			// directory, which does not exist for a remote tablespace and would otherwise
+			// cause an error.
+			Skip("Skipping remote tablespace test: requires a specific database plugin not present in the test environment.")
+
+			// The test logic below is preserved for when this test can be re-enabled.
+			if !connectionPool.Version.IsCBDB() {
+				Skip("Test is for CBDB remote tablespaces only")
+			}
+			testhelper.AssertQueryRuns(connectionPool, `CREATE STORAGE SERVER test_server OPTIONS(protocol 's3', endpoint 's3.example.com')`)
+			defer testhelper.AssertQueryRuns(connectionPool, `DROP STORAGE SERVER test_server`)
+
+			tablespaceToCreate := backup.Tablespace{
+				Tablespace:        "test_remote_tablespace_basic",
+				Options:           "server=test_server, path='/test/path', random_page_cost=4",
+				Spcfilehandlerbin: "$libdir/dfs_tablespace",
+				Spcfilehandlersrc: "remote_file_handler",
+			}
+			emptyMetadataMap := backup.MetadataMap{}
+			numTablespaces := len(backup.GetTablespaces(connectionPool))
+
+			backup.PrintCreateTablespaceStatements(backupfile, tocfile, []backup.Tablespace{tablespaceToCreate}, emptyMetadataMap)
+
+			gbuffer := BufferWithBytes([]byte(buffer.String()))
+			entries, _ := testutils.SliceBufferByEntries(tocfile.GlobalEntries, gbuffer)
+			for _, entry := range entries {
+				testhelper.AssertQueryRuns(connectionPool, entry)
+			}
+			defer testhelper.AssertQueryRuns(connectionPool, "DROP TABLESPACE test_remote_tablespace_basic")
+
+			resultTablespaces := backup.GetTablespaces(connectionPool)
+			Expect(resultTablespaces).To(HaveLen(numTablespaces + 1))
+
+			var resultTablespace backup.Tablespace
+			for _, ts := range resultTablespaces {
+				if ts.Tablespace == "test_remote_tablespace_basic" {
+					resultTablespace = ts
+					break
+				}
+			}
+			if resultTablespace.Tablespace == "" {
+				Fail("Tablespace 'test_remote_tablespace_basic' was not created")
+			}
+
+			Expect(resultTablespace.Options).To(ContainSubstring("server=test_server"))
+			Expect(resultTablespace.Options).To(ContainSubstring("path='/test/path'"))
+			Expect(resultTablespace.Options).To(ContainSubstring("random_page_cost=4"))
+			Expect(resultTablespace.Spcfilehandlerbin).To(Equal(tablespaceToCreate.Spcfilehandlerbin))
+			Expect(resultTablespace.Spcfilehandlersrc).To(Equal(tablespaceToCreate.Spcfilehandlersrc))
+			Expect(resultTablespace.FileLocation).To(BeEmpty())
+		})
+	})
+
+	Describe("PrintCreateStorageServerStatements", func() {
+		It("creates a basic storage server with owner and comment", func() {
+			if !connectionPool.Version.IsCBDB() {
+				Skip("Test is for CBDB storage servers only")
+			}
+
+			serverToCreate := backup.StorageServer{
+				Oid:           1,
+				Server:        "test_server",
+				ServerOptions: "protocol=s3, region=us-east-1, endpoint=s3.example.com",
+			}
+			serverMetadataMap := testutils.DefaultMetadataMap(toc.OBJ_STORAGE_SERVER, false, true, true, false)
+			serverMetadata := serverMetadataMap[serverToCreate.GetUniqueID()]
+			serverMetadata.Owner = "testrole"
+			numServers := len(backup.GetStorageServers(connectionPool))
+
+			backup.PrintCreateStorageServerStatements(backupfile, tocfile, []backup.StorageServer{serverToCreate}, serverMetadataMap)
+			testhelper.AssertQueryRuns(connectionPool, buffer.String())
+			defer testhelper.AssertQueryRuns(connectionPool, "DROP STORAGE SERVER test_server")
+
+			resultServers := backup.GetStorageServers(connectionPool)
+			Expect(resultServers).To(HaveLen(numServers + 1))
+			var resultServer backup.StorageServer
+			for _, srv := range resultServers {
+				if srv.Server == "test_server" {
+					resultServer = srv
+					break
+				}
+			}
+			if resultServer.Server == "" {
+				Fail("Storage Server 'test_server' was not created")
+			}
+			Expect(resultServer.ServerOptions).To(ContainSubstring("protocol=s3"))
+			Expect(resultServer.ServerOptions).To(ContainSubstring("region=us-east-1"))
+			Expect(resultServer.ServerOptions).To(ContainSubstring("endpoint=s3.example.com"))
+		})
+	})
+
+	Describe("PrintCreateStorageUserMappingStatements", func() {
+		It("creates a basic storage user mapping with a comment", func() {
+			if !connectionPool.Version.IsCBDB() {
+				Skip("Test is for CBDB storage user mappings only")
+			}
+
+			testhelper.AssertQueryRuns(connectionPool, `CREATE STORAGE SERVER test_server_for_mapping OPTIONS(protocol 's3', endpoint 's3.example.com')`)
+			defer testhelper.AssertQueryRuns(connectionPool, `DROP STORAGE SERVER test_server_for_mapping`)
+
+			mappingToCreate := backup.StorageUserMapping{
+				Oid:     1,
+				User:    "testrole",
+				Server:  "test_server_for_mapping",
+				Options: "accesskey=mykey, secretkey=mysecret",
+			}
+			numMappings := len(backup.GetStorageUserMapping(connectionPool))
+
+			backup.PrintCreateStorageUserMappingStatements(backupfile, tocfile, []backup.StorageUserMapping{mappingToCreate})
+
+			testhelper.AssertQueryRuns(connectionPool, buffer.String())
+			defer testhelper.AssertQueryRuns(connectionPool, "DROP STORAGE USER MAPPING FOR testrole STORAGE SERVER test_server_for_mapping")
+
+			resultMappings := backup.GetStorageUserMapping(connectionPool)
+			Expect(resultMappings).To(HaveLen(numMappings + 1))
+			var resultMapping backup.StorageUserMapping
+			for _, m := range resultMappings {
+				if m.User == "testrole" && m.Server == "test_server_for_mapping" {
+					resultMapping = m
+					break
+				}
+			}
+			if resultMapping.User == "" {
+				Fail("Storage User Mapping for 'testrole' on 'test_server_for_mapping' was not created")
+			}
+			Expect(resultMapping.Options).To(ContainSubstring("accesskey=mykey"))
+			Expect(resultMapping.Options).To(ContainSubstring("secretkey=mysecret"))
+
+		})
 	})
 })

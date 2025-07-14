@@ -120,6 +120,10 @@ const (
 	OBJ_TYPE                      = "TYPE"
 	OBJ_USER_MAPPING              = "USER MAPPING"
 	OBJ_VIEW                      = "VIEW"
+
+	// CBDB only
+	OBJ_STORAGE_SERVER       = "STORAGE SERVER"
+	OBJ_STORAGE_USER_MAPPING = "STORAGE USER MAPPING"
 )
 
 func NewTOC(filename string) *TOC {
