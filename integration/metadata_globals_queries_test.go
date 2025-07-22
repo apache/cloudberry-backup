@@ -344,6 +344,16 @@ CREATEEXTTABLE (protocol='gphdfs', type='writable')`
 
 			for _, role := range results {
 				if role.Name == "role1" {
+					if connectionPool.Version.IsCBDB() {
+						// Cloudberry uses SCRAM-SHA-256 by default, while the test was
+						// written expecting an MD5 hash. The exact SCRAM hash is
+						// unpredictable due to salting, so we only check its prefix.
+						Expect(role.Password).To(HavePrefix("SCRAM-SHA-256$"))
+						// After checking the prefix, we clear both password fields to prevent
+						// the structmatcher from performing a failing string comparison.
+						expectedRole.Password = ""
+						role.Password = ""
+					}
 					structmatcher.ExpectStructsToMatchExcluding(&expectedRole, role, "TimeConstraints.Oid")
 					return
 				}
