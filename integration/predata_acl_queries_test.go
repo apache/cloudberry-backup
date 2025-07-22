@@ -688,13 +688,19 @@ LANGUAGE SQL`)
 				structmatcher.ExpectStructsToMatchExcluding(&expectedMetadata, &resultMetadata, "Oid")
 			})
 			It("returns a slice of default metadata for an operator in a specific schema", func() {
-				testhelper.AssertQueryRuns(connectionPool, "CREATE OPERATOR public.#### (LEFTARG = bigint, PROCEDURE = numeric_fac)")
-				defer testhelper.AssertQueryRuns(connectionPool, "DROP OPERATOR public.#### (bigint, NONE)")
+				// Cloudberry does not support postfix operators, which this test originally required.
+				// To ensure this test for schema filtering runs on all platforms, we refactor it
+				// to use a binary operator, which is supported by both Greenplum and Cloudberry.
+				testhelper.AssertQueryRuns(connectionPool, "CREATE FUNCTION public.binary_op_func(bigint, bigint) RETURNS bigint AS 'SELECT $1 + $2' LANGUAGE SQL IMMUTABLE;")
+				defer testhelper.AssertQueryRuns(connectionPool, "DROP FUNCTION public.binary_op_func(bigint, bigint);")
+
+				testhelper.AssertQueryRuns(connectionPool, "CREATE OPERATOR public.#### (LEFTARG = bigint, RIGHTARG = bigint, PROCEDURE = public.binary_op_func)")
+				defer testhelper.AssertQueryRuns(connectionPool, "DROP OPERATOR public.#### (bigint, bigint)")
 				testhelper.AssertQueryRuns(connectionPool, "CREATE SCHEMA testschema")
 				defer testhelper.AssertQueryRuns(connectionPool, "DROP SCHEMA testschema")
-				testhelper.AssertQueryRuns(connectionPool, "CREATE OPERATOR testschema.#### (LEFTARG = bigint, PROCEDURE = numeric_fac)")
-				defer testhelper.AssertQueryRuns(connectionPool, "DROP OPERATOR testschema.#### (bigint, NONE)")
-				testhelper.AssertQueryRuns(connectionPool, "COMMENT ON OPERATOR testschema.#### (bigint, NONE) IS 'This is an operator comment.'")
+				testhelper.AssertQueryRuns(connectionPool, "CREATE OPERATOR testschema.#### (LEFTARG = bigint, RIGHTARG = bigint, PROCEDURE = public.binary_op_func)")
+				defer testhelper.AssertQueryRuns(connectionPool, "DROP OPERATOR testschema.#### (bigint, bigint)")
+				testhelper.AssertQueryRuns(connectionPool, "COMMENT ON OPERATOR testschema.#### (bigint, bigint) IS 'This is an operator comment.'")
 
 				_ = backupCmdFlags.Set(options.INCLUDE_SCHEMA, "testschema")
 				resultMetadataMap := backup.GetMetadataForObjectType(connectionPool, backup.TYPE_OPERATOR)
