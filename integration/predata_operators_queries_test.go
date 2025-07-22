@@ -14,6 +14,10 @@ import (
 var _ = Describe("backup integration tests", func() {
 	Describe("GetOperators", func() {
 		It("returns a slice of operators", func() {
+			if connectionPool.Version.IsCBDB() {
+				Skip("Cloudberry does not support postfix operators, which this test requires.")
+			}
+
 			testhelper.AssertQueryRuns(connectionPool, "CREATE OPERATOR public.## (LEFTARG = bigint, PROCEDURE = numeric_fac)")
 			defer testhelper.AssertQueryRuns(connectionPool, "DROP OPERATOR public.## (bigint, NONE)")
 
