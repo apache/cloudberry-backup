@@ -101,6 +101,31 @@ var _ = Describe("backup integration create statement tests", func() {
 			structmatcher.ExpectStructsToMatchExcluding(testTable.TableDefinition, resultTable.TableDefinition, "ColumnDefs.Oid", "ExtTableDef")
 		})
 		It("creates a basic append-optimized column-oriented table", func() {
+			/*
+			 * This test is expected to fail on Cloudberry due to an inconsistency
+			 * in its handling of default table storage options.
+			 *
+			 * The test logic groups GPDB 7+ and Cloudberry together, expecting both
+			 * to default to `checksum=true` for append-optimized tables and reflect
+			 * this in the table's metadata. While GPDB 7+ behaves this way,
+			 * Cloudberry does not.
+			 *
+			 * Although Cloudberry's `gp_default_storage_options` configuration shows
+			 * `checksum=true`, this default is not persisted to `pg_class.reloptions`
+			 * when a table is created. `gpbackup` correctly reads the actual metadata
+			 * (which lacks the checksum), causing this test to fail due to the
+			 * mismatch with the hardcoded expectation for GPDB 7+ behavior.
+			 */
+
+			// TODO: Remove this skip once Cloudberry fixes the inconsistency between
+			// gp_default_storage_options configuration and pg_class.reloptions persistence.
+			// The issue is that checksum=true appears in default config but is not stored
+			// in table metadata, causing backup verification to fail due to mismatched
+			// storage options expectations.
+			if connectionPool.Version.IsCBDB() {
+				Skip("Test temporarily disabled for Cloudberry due to checksum storage option persistence issue")
+			}
+
 			rowOne := backup.ColumnDefinition{Oid: 0, Num: 1, Name: "i", NotNull: false, HasDefault: false, Type: "integer", Encoding: "compresstype=zlib,blocksize=32768,compresslevel=1", StatTarget: -1, StorageType: "", DefaultVal: "", Comment: ""}
 			rowTwo := backup.ColumnDefinition{Oid: 0, Num: 2, Name: "j", NotNull: false, HasDefault: false, Type: "character varying(20)", Encoding: "compresstype=zlib,blocksize=32768,compresslevel=1", StatTarget: -1, StorageType: "", DefaultVal: "", Comment: ""}
 			testTable.StorageOpts = "appendonly=true, orientation=column, fillfactor=42, compresstype=zlib, blocksize=32768, compresslevel=1"
