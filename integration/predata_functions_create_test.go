@@ -533,6 +533,15 @@ var _ = Describe("backup integration create statement tests", func() {
 				plpythonString = "plpython3"
 			}
 
+			// For Cloudberry (based on PostgreSQL 14), the pg_pltemplate system table
+			// has been deprecated since PostgreSQL 13. This means that procedural language
+			// handler functions (like plpython3_call_handler) are no longer available by default.
+			// We must first create the extension to install these handler functions before
+			// we can test the manual creation of procedural languages.
+			if connectionPool.Version.IsCBDB() {
+				testhelper.AssertQueryRuns(connectionPool, fmt.Sprintf("CREATE EXTENSION IF NOT EXISTS %su", plpythonString))
+			}
+
 			funcInfoMap := map[uint32]backup.FunctionInfo{
 				1: {QualifiedName: fmt.Sprintf("pg_catalog.%s_call_handler", plpythonString), Arguments: sql.NullString{String: "", Valid: true}, IsInternal: true},
 				2: {QualifiedName: fmt.Sprintf("pg_catalog.%s_inline_handler", plpythonString), Arguments: sql.NullString{String: "internal", Valid: true}, IsInternal: true},
@@ -547,16 +556,36 @@ var _ = Describe("backup integration create statement tests", func() {
 			backup.PrintCreateLanguageStatements(backupfile, tocfile, procLangs, funcInfoMap, langMetadataMap)
 
 			testhelper.AssertQueryRuns(connectionPool, buffer.String())
-			defer testhelper.AssertQueryRuns(connectionPool, fmt.Sprintf("DROP LANGUAGE %su", plpythonString))
+
+			// Different cleanup strategies for different database versions
+			if connectionPool.Version.IsCBDB() {
+				// In Cloudberry, the language is tied to the extension and cannot be dropped separately.
+				// We need to drop the entire extension instead.
+				defer testhelper.AssertQueryRuns(connectionPool, fmt.Sprintf("DROP EXTENSION IF EXISTS %su CASCADE", plpythonString))
+			} else {
+				// In GPDB and other versions, we can drop the language directly
+				defer testhelper.AssertQueryRuns(connectionPool, fmt.Sprintf("DROP LANGUAGE %su", plpythonString))
+			}
 
 			resultProcLangs := backup.GetProceduralLanguages(connectionPool)
 			resultMetadataMap := backup.GetMetadataForObjectType(connectionPool, backup.TYPE_PROC_LANGUAGE)
 
-			plpythonInfo.Oid = testutils.OidFromObjectName(connectionPool, "", fmt.Sprintf("%su", plpythonString), backup.TYPE_PROC_LANGUAGE)
-			Expect(resultProcLangs).To(HaveLen(1))
-			resultMetadata := resultMetadataMap[plpythonInfo.GetUniqueID()]
-			structmatcher.ExpectStructsToMatchIncluding(&plpythonInfo, &resultProcLangs[0], "Name", "IsPl", "PlTrusted")
-			structmatcher.ExpectStructsToMatch(&langMetadata, &resultMetadata)
+			if connectionPool.Version.IsCBDB() {
+				// In Cloudberry (PostgreSQL 14), languages created by extensions are considered
+				// "core extension members" with dependency type 'e' (DEPENDENCY_EXTENSION).
+				// The GetProceduralLanguages() function correctly filters out these
+				// core extension members to avoid duplicate backup entries, since they will be
+				// recreated automatically when the extension is restored via CREATE EXTENSION.
+				Expect(resultProcLangs).To(HaveLen(0))
+			} else {
+				// In GPDB 7 and older PostgreSQL versions, manually created languages
+				// are properly detected and should be included in backup operations.
+				plpythonInfo.Oid = testutils.OidFromObjectName(connectionPool, "", fmt.Sprintf("%su", plpythonString), backup.TYPE_PROC_LANGUAGE)
+				Expect(resultProcLangs).To(HaveLen(1))
+				resultMetadata := resultMetadataMap[plpythonInfo.GetUniqueID()]
+				structmatcher.ExpectStructsToMatchIncluding(&plpythonInfo, &resultProcLangs[0], "Name", "IsPl", "PlTrusted")
+				structmatcher.ExpectStructsToMatch(&langMetadata, &resultMetadata)
+			}
 		})
 	})
 	Describe("PrintCreateExtensions", func() {
