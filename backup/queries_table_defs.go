@@ -11,8 +11,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/greenplum-db/gp-common-go-libs/dbconn"
-	"github.com/greenplum-db/gp-common-go-libs/gplog"
+	"github.com/cloudberrydb/gp-common-go-libs/dbconn"
+	"github.com/cloudberrydb/gp-common-go-libs/gplog"
 	"github.com/greenplum-db/gpbackup/options"
 	"github.com/greenplum-db/gpbackup/toc"
 )
@@ -428,7 +428,7 @@ func GetDistributionPolicies(connectionPool *dbconn.DBConn, relations interface{
 				tbloids += strconv.Itoa(int(oid))
 			}
 			tbloids += "}"
-		}	else if rels, ok := relations.([]View); ok {
+		} else if rels, ok := relations.([]View); ok {
 			for _, rel := range rels {
 				oid := rel.GetUniqueID().Oid
 				if len(tbloids) > 1 {
@@ -459,7 +459,7 @@ func GetDistributionPolicies(connectionPool *dbconn.DBConn, relations interface{
 				FROM gp_distribution_policy
 				) t 
 			ON t.localoid=distpol.oid
-			LEFT JOIN pg_opclass opc ON opc.oid=t.distclass;`, tbloids, ENUM_TYPE_OID);
+			LEFT JOIN pg_opclass opc ON opc.oid=t.distclass;`, tbloids, ENUM_TYPE_OID)
 	}
 
 	results := make([]DistPolicy, 0)

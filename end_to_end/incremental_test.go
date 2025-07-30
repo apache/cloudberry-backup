@@ -7,8 +7,8 @@ import (
 	"strconv"
 
 	"github.com/blang/semver"
-	"github.com/greenplum-db/gp-common-go-libs/dbconn"
-	"github.com/greenplum-db/gp-common-go-libs/testhelper"
+	"github.com/cloudberrydb/gp-common-go-libs/dbconn"
+	"github.com/cloudberrydb/gp-common-go-libs/testhelper"
 	"github.com/greenplum-db/gpbackup/history"
 
 	. "github.com/onsi/ginkgo/v2"

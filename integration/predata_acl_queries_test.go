@@ -3,8 +3,8 @@ package integration
 import (
 	"fmt"
 
-	"github.com/greenplum-db/gp-common-go-libs/structmatcher"
-	"github.com/greenplum-db/gp-common-go-libs/testhelper"
+	"github.com/cloudberrydb/gp-common-go-libs/structmatcher"
+	"github.com/cloudberrydb/gp-common-go-libs/testhelper"
 	"github.com/greenplum-db/gpbackup/backup"
 	"github.com/greenplum-db/gpbackup/options"
 	"github.com/greenplum-db/gpbackup/testutils"
@@ -199,7 +199,6 @@ LANGUAGE SQL`)
 				testhelper.AssertQueryRuns(connectionPool, `CREATE FUNCTION public.mysfunc_accum(numeric, numeric, numeric) RETURNS numeric AS 'SELECT $1 + $2 + $3' LANGUAGE SQL IMMUTABLE RETURNS NULL ON NULL INPUT`)
 				testhelper.AssertQueryRuns(connectionPool, `CREATE FUNCTION public.mycombine_accum(numeric, numeric) RETURNS numeric AS 'select $1 + $2' LANGUAGE SQL IMMUTABLE RETURNS NULL ON NULL INPUT`)
 				testhelper.AssertQueryRuns(connectionPool, `CREATE AGGREGATE public.agg_prefunc(numeric, numeric) (SFUNC = public.mysfunc_accum, STYPE = numeric, COMBINEFUNC = public.mycombine_accum, INITCOND = '0')`)
-
 
 				defer testhelper.AssertQueryRuns(connectionPool, "DROP FUNCTION public.mysfunc_accum(numeric, numeric, numeric)")
 				defer testhelper.AssertQueryRuns(connectionPool, "DROP FUNCTION public.mycombine_accum(numeric, numeric)")
