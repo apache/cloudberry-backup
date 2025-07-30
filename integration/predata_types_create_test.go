@@ -34,6 +34,21 @@ var _ = Describe("backup integration create statement tests", func() {
 				Send: "", ModIn: "", ModOut: "", InternalLength: 4, IsPassedByValue: true, Alignment: "i", Storage: "p",
 				DefaultVal: "default", Element: "text", Category: "U", Preferred: false, Delimiter: ";", StorageOptions: "compresstype=zlib, compresslevel=1, blocksize=32768",
 			}
+			/*
+			 * In PostgreSQL 14 (which Cloudberry is based on), the validation for CREATE TYPE has become stricter.
+			 * The 'ELEMENT' parameter can only be specified if a 'subscripting function' is also
+			 * provided for the type.
+			 *
+			 * PostgreSQL 12 (GPDB 7 is based on) was more lenient and allowed specifying 'ELEMENT'
+			 * as a metadata-only attribute without enforcing the presence of a subscripting
+			 * function, even though the type would not actually support subscripting.
+			 *
+			 * To make this test compatible, we conditionally remove the ELEMENT attribute from the
+			 * baseType struct when running against Cloudberry.
+			 */
+			if connectionPool.Version.IsCBDB() {
+				baseType.Element = ""
+			}
 			rangeType = backup.RangeType{
 				Oid:            0,
 				Schema:         "public",
@@ -113,6 +128,13 @@ var _ = Describe("backup integration create statement tests", func() {
 					baseType.Category = "N"
 					baseType.Preferred = true
 					baseType.Collatable = true
+				}
+				/*
+				 * To make this test compatible, we conditionally remove the ELEMENT attribute from the
+				 * input struct just for this test case when running against Cloudberry.
+				 */
+				if connectionPool.Version.IsCBDB() {
+					baseType.Element = ""
 				}
 				metadata := testutils.DefaultMetadata(toc.OBJ_TYPE, false, true, true, includeSecurityLabels)
 				backup.PrintCreateBaseTypeStatement(backupfile, tocfile, baseType, metadata)
