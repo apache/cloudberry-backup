@@ -117,6 +117,9 @@ func PrintCreateBaseTypeStatement(metadataFile *utils.FileWithByteCount, objToc 
 	if base.Element != "" {
 		metadataFile.MustPrintf(",\n\tELEMENT = %s", base.Element)
 	}
+	if base.Subscript != "" {
+		metadataFile.MustPrintf(",\n\tSUBSCRIPT = %s", base.Subscript)
+	}
 	if base.Delimiter != "" {
 		metadataFile.MustPrintf(",\n\tDELIMITER = '%s'", base.Delimiter)
 	}
