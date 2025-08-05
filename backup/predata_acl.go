@@ -92,7 +92,7 @@ func PrintObjectMetadata(metadataFile *utils.FileWithByteCount, objToc *toc.TOC,
 	}
 
 	objectType := entry.ObjectType
-	if connectionPool.Version.AtLeast("7") {
+	if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 		switch object := obj.(type) {
 		case Function:
 			if object.Kind == "p" {
@@ -474,7 +474,7 @@ func createPrivilegeStrings(acl ACL, objectType string) (string, string) {
 }
 func (obj ObjectMetadata) GetOwnerStatement(objectName string, objectType string) string {
 	typeStr := objectType
-	if connectionPool.Version.Before("6") && (objectType == toc.OBJ_SEQUENCE || objectType == toc.OBJ_VIEW) {
+	if (connectionPool.Version.IsGPDB() && connectionPool.Version.Before("6")) && (objectType == toc.OBJ_SEQUENCE || objectType == toc.OBJ_VIEW) {
 		// these aren't strictly object types but share use with them so we use the const strings here
 		typeStr = toc.OBJ_TABLE
 	} else if objectType == toc.OBJ_FOREIGN_SERVER {

@@ -183,7 +183,7 @@ func TerminateHangingCopySessions(fpInfo filepath.FilePathInfo, appName string, 
 	termConn.MustConnect(1)
 	defer termConn.Close()
 
-	if termConn.Version.Before("6") {
+	if termConn.Version.IsGPDB() && termConn.Version.Before("6") {
 		pidCol = "procpid"
 		queryCol = "current_query"
 	} else {
@@ -226,7 +226,7 @@ func TerminateHangingCopySessions(fpInfo filepath.FilePathInfo, appName string, 
 }
 
 func ValidateGPDBVersionCompatibility(connectionPool *dbconn.DBConn) {
-	if connectionPool.Version.Before(MINIMUM_GPDB5_VERSION) {
+	if connectionPool.Version.IsGPDB() && connectionPool.Version.Before(MINIMUM_GPDB5_VERSION) {
 		gplog.Fatal(errors.Errorf(`GPDB version %s is not supported. Please upgrade to GPDB %s or later.`, connectionPool.Version.VersionString, MINIMUM_GPDB5_VERSION), "")
 	}
 }

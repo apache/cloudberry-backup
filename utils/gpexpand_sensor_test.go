@@ -29,7 +29,7 @@ var _ = Describe("gpexpand_sensor", func() {
 		tableExistsRow = sqlmock.NewRows([]string{"relname"}).AddRow("some table name")
 		connectionPool.DBName = "postgres"
 
-		if connectionPool.Version.Before("6") {
+		if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("6") {
 			Skip("gpexpand sensor only runs against GPDB 6+")
 		}
 	})

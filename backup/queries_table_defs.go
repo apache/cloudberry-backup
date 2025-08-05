@@ -187,7 +187,7 @@ func GetPartitionTableMap(connectionPool *dbconn.DBConn) map[uint32]PartitionLev
 		WHERE c.relispartition = true OR c.relkind = 'p'`
 
 	query := ""
-	if connectionPool.Version.Before("7") {
+	if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("7") {
 		query = before7Query
 	} else {
 		query = atLeast7Query
@@ -370,9 +370,9 @@ func GetColumnDefinitions(connectionPool *dbconn.DBConn) map[uint32][]ColumnDefi
 	ORDER BY a.attrelid, a.attnum`, relationAndSchemaFilterClause())
 
 	query := ``
-	if connectionPool.Version.Before("6") {
+	if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("6") {
 		query = before6Query
-	} else if connectionPool.Version.Is("6") {
+	} else if connectionPool.Version.IsGPDB() && connectionPool.Version.Is("6") {
 		query = version6Query
 	} else {
 		query = atLeast7Query
@@ -383,7 +383,7 @@ func GetColumnDefinitions(connectionPool *dbconn.DBConn) map[uint32][]ColumnDefi
 	resultMap := make(map[uint32][]ColumnDefinition)
 	for _, result := range results {
 		result.StorageType = storageTypeCodes[result.StorageType]
-		if connectionPool.Version.AtLeast("7") {
+		if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 			result.AttGenerated = attGeneratedCodes[result.AttGenerated]
 		}
 		resultMap[result.Oid] = append(resultMap[result.Oid], result)
@@ -403,7 +403,7 @@ func GetDistributionPolicies(connectionPool *dbconn.DBConn, relations interface{
 	tbloids := "{"
 	query := ""
 
-	if connectionPool.Version.Before("6") {
+	if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("6") {
 		// This query is adapted from the addDistributedBy() function in pg_dump.c.
 		query = `
 		SELECT p.localoid AS oid,
@@ -474,7 +474,7 @@ func GetDistributionPolicies(connectionPool *dbconn.DBConn, relations interface{
 }
 
 func GetTableType(connectionPool *dbconn.DBConn) map[uint32]string {
-	if connectionPool.Version.Before("6") {
+	if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("6") {
 		return map[uint32]string{}
 	}
 	query := `SELECT oid, reloftype::pg_catalog.regtype AS value FROM pg_class WHERE reloftype != 0`
@@ -482,7 +482,7 @@ func GetTableType(connectionPool *dbconn.DBConn) map[uint32]string {
 }
 
 func GetTableAccessMethod(connectionPool *dbconn.DBConn) map[uint32]string {
-	if connectionPool.Version.Before("7") {
+	if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("7") {
 		return map[uint32]string{}
 	}
 	query := `
@@ -495,12 +495,12 @@ func GetTableAccessMethod(connectionPool *dbconn.DBConn) map[uint32]string {
 }
 
 func GetTableReplicaIdentity(connectionPool *dbconn.DBConn) map[uint32]string {
-	if connectionPool.Version.Before("6") {
+	if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("6") {
 		return make(map[uint32]string)
 	}
 
 	relkindFilter := "'r', 'm'"
-	if connectionPool.Version.AtLeast("7") {
+	if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 		relkindFilter = "'r', 'm', 'p'"
 	}
 
@@ -514,7 +514,7 @@ func GetTableReplicaIdentity(connectionPool *dbconn.DBConn) map[uint32]string {
 }
 
 func GetPartitionDetails(connectionPool *dbconn.DBConn) (map[uint32]string, map[uint32]string) {
-	if connectionPool.Version.AtLeast("7") {
+	if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 		// GPDB7 reworked partition tables significantly, to match
 		// how upstream handles them.  These separate details are no
 		// longer needed, and instead partition tables are handled as
@@ -563,7 +563,7 @@ type AlteredPartitionRelation struct {
  * them.
  */
 func GetPartitionAlteredSchema(connectionPool *dbconn.DBConn) map[uint32][]AlteredPartitionRelation {
-	if connectionPool.Version.AtLeast("7") {
+	if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 		return make(map[uint32][]AlteredPartitionRelation)
 	}
 
@@ -626,7 +626,7 @@ func GetTableStorage(connectionPool *dbconn.DBConn) (map[uint32]string, map[uint
 			// no-op. In GPDB7 this was banned server-side. To prevent migration restores from
 			// failing in this case, and because they're garbage values anyway, drop fillfactor for
 			// AO tables.
-			if connectionPool.Version.Before("7") &&
+			if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("7") &&
 				strings.Contains(reloptString, "appendonly") &&
 				strings.Contains(reloptString, "fillfactor") {
 
@@ -646,7 +646,7 @@ func GetTableStorage(connectionPool *dbconn.DBConn) (map[uint32]string, map[uint
 }
 
 func GetUnloggedTables(connectionPool *dbconn.DBConn) map[uint32]bool {
-	if connectionPool.Version.Before("6") {
+	if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("6") {
 		return map[uint32]bool{}
 	}
 	query := `SELECT oid FROM pg_class WHERE relpersistence = 'u'`
@@ -669,7 +669,7 @@ type ForeignTableDefinition struct {
 }
 
 func GetForeignTableDefinitions(connectionPool *dbconn.DBConn) map[uint32]ForeignTableDefinition {
-	if connectionPool.Version.Before("6") {
+	if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("6") {
 		return map[uint32]ForeignTableDefinition{}
 	}
 
@@ -733,7 +733,7 @@ func GetTableInheritance(connectionPool *dbconn.DBConn, tables []Relation) map[u
 // Used to contruct root tables for GPDB 7+, because the root partition must be
 // constructed by itself first.
 func GetPartitionKeyDefs(connectionPool *dbconn.DBConn) map[uint32]string {
-	if connectionPool.Version.Before("7") {
+	if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("7") {
 		return make(map[uint32]string, 0)
 	}
 	query := `
@@ -764,7 +764,7 @@ type AttachPartitionInfo struct {
 }
 
 func GetAttachPartitionInfo(connectionPool *dbconn.DBConn) map[uint32]AttachPartitionInfo {
-	if connectionPool.Version.Before("7") {
+	if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("7") {
 		return make(map[uint32]AttachPartitionInfo, 0)
 	}
 
@@ -792,7 +792,7 @@ func GetAttachPartitionInfo(connectionPool *dbconn.DBConn) map[uint32]AttachPart
 
 func GetForceRowSecurity(connectionPool *dbconn.DBConn) map[uint32]bool {
 	resultMap := make(map[uint32]bool)
-	if connectionPool.Version.Before("7") {
+	if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("7") {
 		return resultMap
 	}
 

@@ -91,11 +91,11 @@ SET default_with_oids = off;
 `
 
 	setupQuery += "SET gp_ignore_error_table = on;\n"
-	if connectionPool.Version.Before("6") {
+	if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("6") {
 		setupQuery += "SET allow_system_table_mods = 'DML';\n"
 	}
 
-	if connectionPool.Version.AtLeast("6") {
+	if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("6")) || connectionPool.Version.IsCBDB() {
 		setupQuery += "SET allow_system_table_mods = true;\n"
 		setupQuery += "SET lock_timeout = 0;\n"
 		setupQuery += "SET default_transaction_read_only = off;\n"
@@ -131,7 +131,7 @@ SET default_with_oids = off;
 	// GPDB7 removed support for QuickLZ.  To support creating tables
 	// from backups done with QuickLZ, a GUC was added to allow silent
 	// fallback to zstd
-	if connectionPool.Version.AtLeast("7") {
+	if connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7") {
 		setupQuery += "SET gp_quicklz_fallback = on;\n"
 	}
 
@@ -141,12 +141,12 @@ SET default_with_oids = off;
 }
 
 func SetMaxCsvLineLengthQuery(connectionPool *dbconn.DBConn) string {
-	if connectionPool.Version.AtLeast("6") {
+	if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("6")) || connectionPool.Version.IsCBDB() {
 		return ""
 	}
 
 	var maxLineLength int
-	if connectionPool.Version.Is("5") && connectionPool.Version.AtLeast("5.11.0") {
+	if connectionPool.Version.IsGPDB() && connectionPool.Version.Is("5") && connectionPool.Version.AtLeast("5.11.0") {
 		maxLineLength = 1024 * 1024 * 1024
 	} else {
 		maxLineLength = 4 * 1024 * 1024 // 4MB
@@ -382,11 +382,11 @@ func GetExistingTableFQNs() ([]string, error) {
 	existingTableFQNs := make([]string, 0)
 	var relkindFilter string
 
-	if connectionPool.Version.Before("6") {
+	if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("6") {
 		relkindFilter = "'r', 'S'"
-	} else if connectionPool.Version.Is("6") {
+	} else if connectionPool.Version.IsGPDB() && connectionPool.Version.Is("6") {
 		relkindFilter = "'r', 'S', 'f'"
-	} else if connectionPool.Version.AtLeast("7") {
+	} else if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 		relkindFilter = "'r', 'S', 'f', 'p'"
 	}
 	query := fmt.Sprintf(`SELECT quote_ident(n.nspname) || '.' || quote_ident(c.relname)

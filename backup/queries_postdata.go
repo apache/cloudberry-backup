@@ -83,7 +83,7 @@ func (i IndexDefinition) FQN() string {
  */
 func GetIndexes(connectionPool *dbconn.DBConn) []IndexDefinition {
 	implicitIndexStr := ""
-	if connectionPool.Version.Before("6") {
+	if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("6") {
 		indexOidList := ConstructImplicitIndexOidList(connectionPool)
 
 		if indexOidList != "" {
@@ -174,9 +174,9 @@ func GetIndexes(connectionPool *dbconn.DBConn) []IndexDefinition {
 		relationAndSchemaFilterClause(), FIRST_NORMAL_OBJECT_ID, ExtensionFilterClause("c"))
 
 	query := ""
-	if connectionPool.Version.Before("6") {
+	if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("6") {
 		query = before6Query
-	} else if connectionPool.Version.Is("6") {
+	} else if connectionPool.Version.IsGPDB() && connectionPool.Version.Is("6") {
 		query = version6Query
 	} else {
 		query = atLeast7Query
@@ -194,7 +194,7 @@ func GetIndexes(connectionPool *dbconn.DBConn) []IndexDefinition {
 	for _, index := range resultIndexes {
 		if index.Def.Valid {
 			verifiedResultIndexes = append(verifiedResultIndexes, index)
-			if connectionPool.Version.AtLeast("7") {
+			if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 				indexMap[index.Oid] = index // hash index for topological sort
 			}
 		} else {
@@ -203,7 +203,7 @@ func GetIndexes(connectionPool *dbconn.DBConn) []IndexDefinition {
 		}
 	}
 
-	if connectionPool.Version.Before("7") {
+	if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("7") {
 		return verifiedResultIndexes
 	}
 
@@ -285,7 +285,7 @@ func GetRenameExchangedPartitionQuery() string {
                 ON c.relnamespace = n.oid
         WHERE %s;`, relationAndSchemaFilterClause())
 
-	if connectionPool.Version.Before("7") {
+	if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("7") {
 		return before7Query
 	} else {
 		return atLeast7Query
@@ -436,7 +436,7 @@ func (t TriggerDefinition) FQN() string {
 
 func GetTriggers(connectionPool *dbconn.DBConn) []TriggerDefinition {
 	constraintClause := "NOT tgisinternal"
-	if connectionPool.Version.Before("6") {
+	if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("6") {
 		constraintClause = "tgisconstraint = 'f'"
 	}
 	query := fmt.Sprintf(`

@@ -54,7 +54,7 @@ var _ = Describe("backup integration tests", func() {
 
 			Expect(result.Name).To(Equal("template0"))
 			Expect(result.Encoding).To(Equal("UTF8"))
-			if connectionPool.Version.AtLeast("6") {
+			if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("6")) || connectionPool.Version.IsCBDB() {
 				/*
 				 * These values are slightly different between mac and linux
 				 * so we use a regexp to match them
@@ -73,7 +73,7 @@ var _ = Describe("backup integration tests", func() {
 		})
 		It("returns a database info struct for a complex database", func() {
 			var expectedDB backup.Database
-			if connectionPool.Version.Before("6") {
+			if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("6") {
 				testhelper.AssertQueryRuns(connectionPool, "CREATE DATABASE create_test_db ENCODING 'UTF8' TEMPLATE template0")
 				expectedDB = backup.Database{Oid: 1, Name: "create_test_db", Tablespace: "pg_default", Encoding: "UTF8", Collate: "", CType: ""}
 			} else {
@@ -153,7 +153,7 @@ var _ = Describe("backup integration tests", func() {
 	})
 	Describe("GetResourceGroups", func() {
 		It("returns a slice for a resource group with everything", func() {
-			if connectionPool.Version.Before("7") {
+			if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("7") {
 				testhelper.AssertQueryRuns(connectionPool, `CREATE RESOURCE GROUP "someGroup" WITH (CPU_RATE_LIMIT=10, MEMORY_LIMIT=20, MEMORY_SHARED_QUOTA=25, MEMORY_SPILL_RATIO=30, CONCURRENCY=15);`)
 				defer testhelper.AssertQueryRuns(connectionPool, `DROP RESOURCE GROUP "someGroup"`)
 
@@ -187,7 +187,7 @@ var _ = Describe("backup integration tests", func() {
 			Fail("Resource group 'someGroup' was not found.")
 		})
 		It("returns a slice for a resource group with memory_auditor=vmtracker", func() {
-			if connectionPool.Version.AtLeast("7") {
+			if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 				Skip("Test only applicable to GPDB6 and earlier")
 			}
 			testhelper.AssertQueryRuns(connectionPool, `CREATE RESOURCE GROUP "someGroup" WITH (CPU_RATE_LIMIT=10, MEMORY_LIMIT=20, MEMORY_SHARED_QUOTA=25, MEMORY_SPILL_RATIO=30, CONCURRENCY=0, MEMORY_AUDITOR=vmtracker);`)
@@ -207,7 +207,7 @@ var _ = Describe("backup integration tests", func() {
 			Fail("Resource group 'someGroup' was not found.")
 		})
 		It("returns a resource group with defaults", func() {
-			if connectionPool.Version.Before("7") {
+			if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("7") {
 				testhelper.AssertQueryRuns(connectionPool, `CREATE RESOURCE GROUP "someGroup" WITH (CPU_RATE_LIMIT=10, MEMORY_LIMIT=20);`)
 				defer testhelper.AssertQueryRuns(connectionPool, `DROP RESOURCE GROUP "someGroup"`)
 
@@ -287,7 +287,7 @@ CONNECTION LIMIT 4 PASSWORD 'swordfish' VALID UNTIL '2099-01-01 00:00:00-08'
 CREATEEXTTABLE (protocol='http')
 CREATEEXTTABLE (protocol='gpfdist', type='readable')
 CREATEEXTTABLE (protocol='gpfdist', type='writable')`
-			if connectionPool.Version.Before("6") {
+			if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("6") {
 				setupQuery += `
 CREATEEXTTABLE (protocol='gphdfs', type='readable')
 CREATEEXTTABLE (protocol='gphdfs', type='writable')`
@@ -337,7 +337,7 @@ CREATEEXTTABLE (protocol='gphdfs', type='writable')`
 
 			expectedRole.ResGroup = "default_group"
 
-			if connectionPool.Version.AtLeast("6") {
+			if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("6")) || connectionPool.Version.IsCBDB() {
 				expectedRole.Createrexthdfs = false
 				expectedRole.Createwexthdfs = false
 			}
@@ -594,7 +594,7 @@ CREATEEXTTABLE (protocol='gphdfs', type='writable')`
 			testhelper.AssertQueryRuns(connectionPool, "ALTER ROLE role1 SET client_min_messages TO 'info'")
 
 			defaultStorageOptionsString := "appendonly=true, compresslevel=6, orientation=row, compresstype=none"
-			if connectionPool.Version.AtLeast("7") {
+			if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 				defaultStorageOptionsString = "compresslevel=6, compresstype=none"
 			}
 			testhelper.AssertQueryRuns(connectionPool, fmt.Sprintf("ALTER ROLE role1 SET gp_default_storage_options TO '%s'", defaultStorageOptionsString))
@@ -632,7 +632,7 @@ CREATEEXTTABLE (protocol='gphdfs', type='writable')`
 	Describe("GetTablespaces", func() {
 		It("returns a tablespace", func() {
 			var expectedTablespace backup.Tablespace
-			if connectionPool.Version.Before("6") {
+			if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("6") {
 				testhelper.AssertQueryRuns(connectionPool, "CREATE TABLESPACE test_tablespace FILESPACE test_dir")
 				expectedTablespace = backup.Tablespace{Oid: 0, Tablespace: "test_tablespace", FileLocation: "test_dir"}
 			} else {

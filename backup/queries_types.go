@@ -132,7 +132,7 @@ func GetBaseTypes(connectionPool *dbconn.DBConn) []BaseType {
 
 	results := make([]BaseType, 0)
 	var err error
-	if connectionPool.Version.Is("5") {
+	if connectionPool.Version.IsGPDB() && connectionPool.Version.Is("5") {
 		err = connectionPool.Select(&results, version5query)
 	} else {
 		err = connectionPool.Select(&results, atLeast6Query)
@@ -236,7 +236,7 @@ func getCompositeTypeAttributes(connectionPool *dbconn.DBConn) map[uint32][]Attr
 	ORDER BY t.oid, a.attnum`
 
 	query := ""
-	if connectionPool.Version.Before("6") {
+	if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("6") {
 		query = before6Query
 	} else {
 		query = atLeast6Query
@@ -323,7 +323,7 @@ func GetDomainTypes(connectionPool *dbconn.DBConn) []Domain {
 	ORDER BY n.nspname, t.typname`, SchemaFilterClause("n"), ExtensionFilterClause("t"))
 
 	query := ""
-	if connectionPool.Version.Before("6") {
+	if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("6") {
 		query = before6query
 	} else {
 		query = atLeast6Query
@@ -355,7 +355,7 @@ func (t EnumType) FQN() string {
 
 func GetEnumTypes(connectionPool *dbconn.DBConn) []EnumType {
 	enumSortClause := "ORDER BY e.enumsortorder"
-	if connectionPool.Version.Is("5") {
+	if connectionPool.Version.IsGPDB() && connectionPool.Version.Is("5") {
 		enumSortClause = "ORDER BY e.oid"
 	}
 	query := fmt.Sprintf(`
@@ -534,7 +534,7 @@ func GetCollations(connectionPool *dbconn.DBConn) []Collation {
         WHERE %s`, SchemaFilterClause("n"))
 
 	query := ""
-	if connectionPool.Version.Before("7") {
+	if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("7") {
 		query = before7Query
 	} else {
 		query = atLeast7Query

@@ -70,7 +70,7 @@ PARTITION BY RANGE (year)
 			testhelper.AssertQueryRuns(connectionPool, "ALTER TABLE public.atttable ALTER COLUMN e SET STORAGE PLAIN")
 			oid := testutils.OidFromObjectName(connectionPool, "public", "atttable", backup.TYPE_RELATION)
 			privileges := sql.NullString{String: "", Valid: false}
-			if connectionPool.Version.AtLeast("6") {
+			if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("6")) || connectionPool.Version.IsCBDB() {
 				testhelper.AssertQueryRuns(connectionPool, "GRANT SELECT (c, d) ON TABLE public.atttable TO testrole")
 				privileges = sql.NullString{String: "testrole=r/testrole", Valid: true}
 			}
@@ -332,11 +332,11 @@ CREATE TABLE public.test_tsvector (
 		var partitionPartFalseExpectation = "false "
 		BeforeEach(func() {
 			// GPDB 7+ does not have pg_get_partition_def()
-			if connectionPool.Version.AtLeast("7") {
+			if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 				Skip("Test is not applicable to GPDB 7+")
 			}
 
-			if connectionPool.Version.AtLeast("6") {
+			if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("6")) || connectionPool.Version.IsCBDB() {
 				partitionPartFalseExpectation = "'false'"
 			}
 		})
@@ -481,7 +481,7 @@ PARTITION BY LIST (gender)
 	Describe("GetPartitionTemplates", func() {
 		BeforeEach(func() {
 			// GPDB 7+ does not have pg_get_partition_template_def()
-			if connectionPool.Version.AtLeast("7") {
+			if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 				Skip("Test is not applicable to GPDB 7+")
 			}
 		})
@@ -517,7 +517,7 @@ PARTITION BY LIST (gender)
 			 * The only difference between the below statements is spacing
 			 */
 			expectedResult := ""
-			if connectionPool.Version.Before("6") {
+			if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("6") {
 				expectedResult = `ALTER TABLE public.part_table 
 SET SUBPARTITION TEMPLATE  
           (
@@ -584,7 +584,7 @@ SET SUBPARTITION TEMPLATE
 			 * The only difference between the below statements is spacing
 			 */
 			expectedResult := ""
-			if connectionPool.Version.Before("6") {
+			if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("6") {
 				expectedResult = `ALTER TABLE public.part_table 
 SET SUBPARTITION TEMPLATE  
           (
@@ -649,7 +649,7 @@ SET SUBPARTITION TEMPLATE
 			 * The only difference between the below statements is spacing
 			 */
 			expectedResult := ""
-			if connectionPool.Version.Before("6") {
+			if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("6") {
 				expectedResult = `ALTER TABLE testschema.part_table 
 SET SUBPARTITION TEMPLATE  
           (
@@ -787,7 +787,7 @@ SET SUBPARTITION TEMPLATE
 
 			_, result := backup.GetTableStorage(connectionPool)
 
-			if connectionPool.Version.Before("7") {
+			if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("7") {
 				Expect(result[oid]).To(Equal("appendonly=true"))
 			} else {
 				// For GPDB 7+, storage options no longer contain appendonly and orientation,
@@ -964,7 +964,7 @@ SET SUBPARTITION TEMPLATE
 	Describe("GetPartitionAlteredSchema", func() {
 		BeforeEach(func() {
 			// For GPDB 7+, leaf partitions have their own DDL which will have the correct namespace
-			if connectionPool.Version.AtLeast("7") {
+			if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 				Skip("Test is not applicable to GPDB 7+")
 			}
 		})

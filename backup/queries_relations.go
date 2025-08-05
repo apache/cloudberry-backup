@@ -94,7 +94,7 @@ func ConvertRelationsOptionsToBackup(inRelations []options.Relation) []Relation 
  */
 func getUserTableRelations(connectionPool *dbconn.DBConn) []options.Relation {
 	childPartitionFilter := ""
-	if !MustGetFlagBool(options.LEAF_PARTITION_DATA) && connectionPool.Version.Before("7") {
+	if !MustGetFlagBool(options.LEAF_PARTITION_DATA) && connectionPool.Version.IsGPDB() && connectionPool.Version.Before("7") {
 		// Filter out non-external child partitions in GPDB6 and earlier.
 		// In GPDB7+ we do not want to exclude child partitions, they function as separate tables.
 		childPartitionFilter = `
@@ -107,7 +107,7 @@ func getUserTableRelations(connectionPool *dbconn.DBConn) []options.Relation {
 
 	// In GPDB 7+, root partitions are marked as relkind 'p'.
 	relkindFilter := `'r'`
-	if connectionPool.Version.AtLeast("7") {
+	if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 		relkindFilter = `'r', 'p'`
 	}
 
@@ -135,7 +135,7 @@ func getUserTableRelations(connectionPool *dbconn.DBConn) []options.Relation {
 func getUserTableRelationsWithIncludeFiltering(connectionPool *dbconn.DBConn, includeRelationFqns []options.Relation) []options.Relation {
 	// In GPDB 7+, root partitions are marked as relkind 'p'.
 	relkindFilter := `'r'`
-	if connectionPool.Version.AtLeast("7") {
+	if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 		relkindFilter = `'r', 'p'`
 	}
 
@@ -265,7 +265,7 @@ func GetAllSequences(connectionPool *dbconn.DBConn) []Sequence {
 		relationAndSchemaFilterClause(), ExtensionFilterClause("c"))
 
 	query := ""
-	if connectionPool.Version.Before("7") {
+	if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("7") {
 		query = before7Query
 	} else {
 		query = atLeast7Query
@@ -302,7 +302,7 @@ func GetAllSequences(connectionPool *dbconn.DBConn) []Sequence {
 
 func GetSequenceDefinition(connectionPool *dbconn.DBConn, seqName string) SequenceDefinition {
 	startValQuery := ""
-	if connectionPool.Version.AtLeast("6") {
+	if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("6")) || connectionPool.Version.IsCBDB() {
 		startValQuery = "start_value AS startval,"
 	}
 
@@ -331,7 +331,7 @@ func GetSequenceDefinition(connectionPool *dbconn.DBConn, seqName string) Sequen
 		JOIN pg_sequence s ON s.seqrelid = '%s'::regclass::oid;`, seqName, seqName)
 
 	query := ""
-	if connectionPool.Version.Before("7") {
+	if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("7") {
 		query = before7Query
 	} else {
 		query = atLeast7Query
@@ -429,7 +429,7 @@ func GetAllViews(connectionPool *dbconn.DBConn) []View {
 		AND %s`, relationAndSchemaFilterClause(), ExtensionFilterClause("c"))
 
 	query := ""
-	if connectionPool.Version.Before("6") {
+	if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("6") {
 		query = before6Query
 	} else {
 		query = atLeast6Query
@@ -486,9 +486,9 @@ func LockTables(connectionPool *dbconn.DBConn, tables []Relation) {
 	lastBatchSize := len(tables) % batchSize
 	tableBatches := GenerateTableBatches(tables, batchSize)
 	currentBatchSize := batchSize
-	if connectionPool.Version.AtLeast("7") {
+	if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 		lockMode = `IN ACCESS SHARE MODE COORDINATOR ONLY`
-	} else if connectionPool.Version.AtLeast("6.21.0") {
+	} else if connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("6.21.0") {
 		lockMode = `IN ACCESS SHARE MODE MASTER ONLY`
 	} else {
 		lockMode = `IN ACCESS SHARE MODE`

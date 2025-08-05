@@ -15,7 +15,7 @@ import (
 var _ = Describe("backup/queries_postdata tests", func() {
 	Describe("GetIndexes", func() {
 		It("GetIndexes properly handles NULL index definitions", func() {
-			if connectionPool.Version.Before("6") {
+			if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("6") {
 				implicitIndexNamesHeader := []string{"string"}
 				implicitIndexNamesFakeRows := sqlmock.NewRows(implicitIndexNamesHeader)
 				mock.ExpectQuery(`SELECT (.*)`).WillReturnRows(implicitIndexNamesFakeRows)
@@ -38,7 +38,7 @@ var _ = Describe("backup/queries_postdata tests", func() {
 	})
 	Describe("RenameExchangedPartitionIndexes", func() {
 		It("RenameExchangedPartitionIndexes properly renames exchanged indexes to match their owning tables", func() {
-			if !connectionPool.Version.Is("6") {
+			if !(connectionPool.Version.IsGPDB() && connectionPool.Version.Is("6")) {
 				Skip("Test only applies to GPDB version 6")
 			}
 			indexes := []backup.IndexDefinition{

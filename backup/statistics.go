@@ -59,9 +59,9 @@ func GenerateAttributeStatisticsQueries(table Table, attStat AttributeStatistic)
 	inheritStr := ""
 	attributeSlotsQueryStr := ""
 	var attributeQueries []string
-	if connectionPool.Version.AtLeast("6") {
+	if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("6")) || connectionPool.Version.IsCBDB() {
 		inheritStr = fmt.Sprintf("\n\t%t::boolean,", attStat.Inherit)
-		if connectionPool.Version.AtLeast("7") {
+		if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 			attributeSlotsQueryStr = generateAttributeSlotsQuery7(attStat)
 		} else {
 			attributeSlotsQueryStr = generateAttributeSlotsQuery6(attStat)

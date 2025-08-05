@@ -21,7 +21,7 @@ func PrintCreateOperatorStatement(metadataFile *utils.FileWithByteCount, objToc 
 	var leftArg string
 	var rightArg string
 	var createStatementFuncRepl string
-	if connectionPool.Version.AtLeast("7") {
+	if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 		createStatementFuncRepl = toc.OBJ_FUNCTION
 	} else {
 		createStatementFuncRepl = toc.OBJ_PROCEDURE

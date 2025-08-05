@@ -12,7 +12,7 @@ import (
 
 var _ = Describe("synchronized snapshot integration tests", func() {
 	BeforeEach(func() {
-		if connectionPool.Version.Before("6.21.0") {
+		if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("6.21.0") {
 			Skip("snapshot feature not supported")
 		}
 	})

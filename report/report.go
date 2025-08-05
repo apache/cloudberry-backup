@@ -177,7 +177,7 @@ func (report *Report) WriteBackupReportFile(reportFilename string, timestamp str
 func WriteRestoreReportFile(reportFilename string, backupTimestamp string, startTimestamp string, connectionPool *dbconn.DBConn, restoreVersion string, origSize int, destSize int, errMsg string) {
 	reportFile, err := iohelper.OpenFileForWriting(reportFilename)
 	if err != nil {
-		gplog.Warn("Unable to open restore report file %s, skipping report creation", reportFilename)
+		gplog.Warn("Unable to open restore report file %s: %s, skipping report creation", reportFilename, err)
 		return
 	}
 
@@ -304,6 +304,16 @@ func EnsureBackupVersionCompatibility(backupVersion string, restoreVersion strin
 }
 
 func EnsureDatabaseVersionCompatibility(backupGPDBVersion string, restoreGPDBVersion dbconn.GPDBVersion) {
+	// Use the standard library to parse the backup's version string
+	var backupVersionInfo dbconn.GPDBVersion
+	backupVersionInfo.ParseVersionInfo(backupGPDBVersion)
+
+	// Special case to allow restoring a GPDB backup to CBDB.
+	if backupVersionInfo.IsGPDB() && restoreGPDBVersion.IsCBDB() {
+		gplog.Info("Performing a restore from Greenplum to Cloudberry. Skipping database version compatibility check.")
+		return
+	}
+
 	pattern := regexp.MustCompile(`\d+\.\d+\.\d+`)
 	threeDigitVersion := pattern.FindStringSubmatch(backupGPDBVersion)[0]
 	backupGPDBSemVer, err := semver.Make(threeDigitVersion)

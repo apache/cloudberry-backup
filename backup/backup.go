@@ -334,13 +334,13 @@ func backupPostdata(metadataFile *utils.FileWithByteCount) {
 	backupIndexes(metadataFile)
 	backupRules(metadataFile)
 	backupTriggers(metadataFile)
-	if connectionPool.Version.AtLeast("6") {
+	if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("6")) || connectionPool.Version.IsCBDB() {
 		backupDefaultPrivileges(metadataFile)
 		if len(MustGetFlagStringArray(options.INCLUDE_SCHEMA)) == 0 {
 			backupEventTriggers(metadataFile)
 		}
 	}
-	if connectionPool.Version.AtLeast("7") {
+	if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 		backupRowLevelSecurityPolicies(metadataFile)
 		backupExtendedStatistic(metadataFile)
 	}
@@ -539,12 +539,12 @@ func cancelBlockedQueries(timestamp string) {
 	// Query for all blocked queries
 	pids := make([]int64, 0)
 	var findBlockedQuery string
-	if conn.Version.Before("6") {
+	if conn.Version.IsGPDB() && conn.Version.Before("6") {
 		findBlockedQuery = fmt.Sprintf("SELECT procpid from pg_stat_activity WHERE application_name='gpbackup_%s' AND waiting='t' AND waiting_reason='lock';", timestamp)
 	}
-	if conn.Version.Is("6") {
+	if conn.Version.IsGPDB() && conn.Version.Is("6") {
 		findBlockedQuery = fmt.Sprintf("SELECT pid from pg_stat_activity WHERE application_name='gpbackup_%s' AND waiting='t' AND waiting_reason='lock';", timestamp)
-	} else if conn.Version.AtLeast("7") {
+	} else if (conn.Version.IsGPDB() && conn.Version.AtLeast("7")) || conn.Version.IsCBDB() {
 		findBlockedQuery = fmt.Sprintf("SELECT pid from pg_stat_activity WHERE application_name='gpbackup_%s' AND wait_event_type='Lock';", timestamp)
 	}
 	err := conn.Select(&pids, findBlockedQuery)
@@ -567,7 +567,7 @@ func cancelBlockedQueries(timestamp string) {
 		select {
 		case <-tickerCheckCanceled.C:
 			blockedQueryCount := fmt.Sprintf("SELECT count(*) from pg_stat_activity WHERE application_name='gpbackup_%s' AND waiting='t' AND  waiting_reason='lock';", timestamp)
-			if conn.Version.AtLeast("7") {
+			if (conn.Version.IsGPDB() && conn.Version.AtLeast("7")) || conn.Version.IsCBDB() {
 				blockedQueryCount = fmt.Sprintf("SELECT count(*) from pg_stat_activity WHERE application_name='gpbackup_%s' AND wait_event_type='Lock';", timestamp)
 			}
 			count = dbconn.MustSelectString(conn, blockedQueryCount)
@@ -623,7 +623,7 @@ func getTableLocks(table Table) []TableLocks {
 	conn.MustConnect(1)
 	var query string
 	defer conn.Close()
-	if conn.Version.Before("6") {
+	if conn.Version.IsGPDB() && conn.Version.Before("6") {
 		query = fmt.Sprintf(`
 		SELECT c.oid as oid,
 		coalesce(a.datname, '') as database,

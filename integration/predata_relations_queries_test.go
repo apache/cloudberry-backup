@@ -54,7 +54,7 @@ PARTITION BY LIST (gender)
 
 				tableRank := backup.Relation{Schema: "public", Name: "rank"}
 
-				if connectionPool.Version.Before("7") {
+				if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("7") {
 					Expect(tables).To(HaveLen(1))
 				} else {
 					// For GPDB 7+, the leaf partitions have their own DDL so they need to be obtained as well
@@ -297,7 +297,7 @@ PARTITION BY LIST (gender)
 
 		BeforeEach(func() {
 			dataType = ""
-			if connectionPool.Version.AtLeast("7") {
+			if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 				dataType = "bigint"
 			}
 		})
@@ -309,10 +309,10 @@ PARTITION BY LIST (gender)
 			resultSequenceDef := backup.GetSequenceDefinition(connectionPool, "public.my_sequence")
 
 			expectedSequence := backup.SequenceDefinition{LastVal: 1, Type: dataType, Increment: 1, MaxVal: math.MaxInt64, MinVal: 1, CacheVal: 1}
-			if connectionPool.Version.AtLeast("6") {
+			if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("6")) || connectionPool.Version.IsCBDB() {
 				expectedSequence.StartVal = 1
 			}
-			if connectionPool.Version.AtLeast("7") {
+			if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 				// In GPDB 7+, default cache value is 20
 				expectedSequence.CacheVal = 20
 			}
@@ -331,7 +331,7 @@ PARTITION BY LIST (gender)
 			resultSequenceDef := backup.GetSequenceDefinition(connectionPool, "public.my_sequence")
 
 			expectedSequence := backup.SequenceDefinition{LastVal: 105, Type: dataType, Increment: 5, MaxVal: 1000, MinVal: 20, CacheVal: 1, IsCycled: false, IsCalled: true}
-			if connectionPool.Version.AtLeast("6") {
+			if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("6")) || connectionPool.Version.IsCBDB() {
 				expectedSequence.StartVal = 100
 			}
 
@@ -410,7 +410,7 @@ PARTITION BY LIST (gender)
 			testhelper.AssertQueryRuns(connectionPool, "COMMENT ON SEQUENCE public.seq_one IS 'this is a sequence comment'")
 			startValOne := int64(0)
 			startValTwo := int64(0)
-			if connectionPool.Version.AtLeast("6") {
+			if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("6")) || connectionPool.Version.IsCBDB() {
 				startValOne = 3
 				startValTwo = 7
 			}
@@ -423,7 +423,7 @@ PARTITION BY LIST (gender)
 			seqOneDef := backup.SequenceDefinition{LastVal: 3, Increment: 1, MaxVal: math.MaxInt64, MinVal: 1, CacheVal: 1, StartVal: startValOne}
 			seqTwoRelation := backup.Relation{Schema: "public", Name: "seq_two"}
 			seqTwoDef := backup.SequenceDefinition{LastVal: 7, Increment: 1, MaxVal: math.MaxInt64, MinVal: 1, CacheVal: 1, StartVal: startValTwo}
-			if connectionPool.Version.AtLeast("7") {
+			if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 				// In GPDB 7+, default cache value is 20
 				seqOneDef.CacheVal = 20
 				seqOneDef.Type = "bigint"
@@ -442,9 +442,9 @@ PARTITION BY LIST (gender)
 	Describe("GetAllViews", func() {
 		var viewDef sql.NullString
 		BeforeEach(func() {
-			if connectionPool.Version.Before("6") {
+			if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("6") {
 				viewDef = sql.NullString{String: "SELECT 1;", Valid: true}
-			} else if connectionPool.Version.Is("6") {
+			} else if connectionPool.Version.IsGPDB() && connectionPool.Version.Is("6") {
 				viewDef = sql.NullString{String: " SELECT 1;", Valid: true}
 			} else { // GPDB7+
 				viewDef = sql.NullString{String: " SELECT 1 AS \"?column?\";", Valid: true}
@@ -481,8 +481,8 @@ PARTITION BY LIST (gender)
 			// The view definition gets incorrectly converted and stored as
 			// `SELECT '{1}'::anyarray = NULL::anyarray`. This issue is fixed
 			// in later versions of GPDB.
-			if (connectionPool.Version.AtLeast("5.28.6") && connectionPool.Version.Before("6")) ||
-				connectionPool.Version.AtLeast("6.14.1") {
+			if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("5.28.6") && connectionPool.Version.Before("6")) ||
+				((connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("6.14.1")) || connectionPool.Version.IsCBDB()) {
 				Skip("test only applicable to GPDB 5.0.0 - 5.28.5, and GPDB 6.0.0 - 6.14.0")
 			}
 			testhelper.AssertQueryRuns(connectionPool, "CREATE VIEW public.opexpr_array_typecasting AS SELECT '{1}'::int[] = NULL::int[]")
@@ -504,7 +504,7 @@ PARTITION BY LIST (gender)
 			structmatcher.ExpectStructsToMatchExcluding(&view, &results[0], "ColumnDefs", "DistPolicy.Oid")
 		})
 		It("returns a slice for materialized views", func() {
-			if connectionPool.Version.Before("6.2") {
+			if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("6.2") {
 				Skip("test only applicable to GPDB 6.2 and above")
 			}
 			testhelper.AssertQueryRuns(connectionPool, "CREATE MATERIALIZED VIEW public.simplematerialview AS SELECT 1 AS a DISTRIBUTED BY (a)")
@@ -518,7 +518,7 @@ PARTITION BY LIST (gender)
 			structmatcher.ExpectStructsToMatchExcluding(&materialView, &results[0], "ColumnDefs", "DistPolicy.Oid")
 		})
 		It("returns a slice for materialized views with storage parameters", func() {
-			if connectionPool.Version.Before("6.2") {
+			if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("6.2") {
 				Skip("test only applicable to GPDB 6.2 and above")
 			}
 			testhelper.AssertQueryRuns(connectionPool, "CREATE MATERIALIZED VIEW public.simplematerialview WITH (fillfactor=50, autovacuum_enabled=false) AS SELECT 1 AS a DISTRIBUTED BY (a)")
@@ -532,7 +532,7 @@ PARTITION BY LIST (gender)
 			structmatcher.ExpectStructsToMatchExcluding(&materialView, &results[0], "ColumnDefs", "DistPolicy.Oid")
 		})
 		It("returns a slice for materialized views with tablespaces", func() {
-			if connectionPool.Version.Before("6.2") {
+			if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("6.2") {
 				Skip("test only applicable to GPDB 6.2 and above")
 			}
 			testhelper.AssertQueryRuns(connectionPool, "CREATE TABLESPACE test_tablespace LOCATION '/tmp/test_dir'")

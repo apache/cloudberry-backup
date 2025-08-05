@@ -20,7 +20,7 @@ var _ = Describe("backup integration tests", func() {
 		var plannerSupportValue string
 		var proparallelValue string
 		BeforeEach(func() {
-			if connectionPool.Version.AtLeast("7") {
+			if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 				prokindValue = "f"
 				plannerSupportValue = "-"
 				proparallelValue = "u"
@@ -66,7 +66,7 @@ MODIFIES SQL DATA
 				ResultType: sql.NullString{String: "SETOF record", Valid: true},
 				Volatility: "s", IsStrict: true, IsSecurityDefiner: true, PlannerSupport: plannerSupportValue, Config: `SET search_path TO 'pg_temp'`, Cost: 200,
 				NumRows: 200, DataAccess: "m", Language: "sql", ExecLocation: "a", Parallel: proparallelValue}
-			if connectionPool.Version.AtLeast("7") {
+			if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 				addFunction.DataAccess = ""
 				appendFunction.DataAccess = ""
 			}
@@ -97,7 +97,7 @@ LANGUAGE SQL`)
 				ResultType: sql.NullString{String: "integer", Valid: true},
 				Volatility: "v", IsStrict: false, IsSecurityDefiner: false, PlannerSupport: plannerSupportValue, Config: "", Cost: 100, NumRows: 0, DataAccess: "c",
 				Language: "sql", ExecLocation: "a", Parallel: proparallelValue}
-			if connectionPool.Version.AtLeast("7") {
+			if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 				addFunction.DataAccess = ""
 			}
 
@@ -106,7 +106,7 @@ LANGUAGE SQL`)
 		})
 		It("returns a window function", func() {
 			testutils.SkipIfBefore6(connectionPool)
-			if connectionPool.Version.AtLeast("7") {
+			if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 				// GPDB7 only allows set-returning functions to execute on coordinator
 				testhelper.AssertQueryRuns(connectionPool, `CREATE FUNCTION public.add(integer, integer) RETURNS SETOF integer
 AS 'SELECT $1 + $2'
@@ -121,7 +121,7 @@ LANGUAGE SQL WINDOW`)
 			results := backup.GetFunctions(connectionPool)
 
 			var windowFunction backup.Function
-			if connectionPool.Version.AtLeast("7") {
+			if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 				windowFunction = backup.Function{
 					Schema: "public", Name: "add", ReturnsSet: true, FunctionBody: "SELECT $1 + $2",
 					BinaryPath: "", Arguments: sql.NullString{String: "integer, integer", Valid: true},
@@ -146,7 +146,7 @@ LANGUAGE SQL WINDOW`)
 		It("returns a function to execute on coordinator and all segments", func() {
 			testutils.SkipIfBefore6(connectionPool)
 
-			if connectionPool.Version.Is("6") {
+			if connectionPool.Version.IsGPDB() && connectionPool.Version.Is("6") {
 				testhelper.AssertQueryRuns(connectionPool, `CREATE FUNCTION public.srf_on_coordinator(integer, integer) RETURNS integer
 AS 'SELECT $1 + $2'
 LANGUAGE SQL WINDOW
@@ -171,7 +171,7 @@ EXECUTE ON ALL SEGMENTS;`)
 
 			results := backup.GetFunctions(connectionPool)
 			var prokindValue string
-			if connectionPool.Version.AtLeast("7") {
+			if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 				prokindValue = "w"
 			} else {
 				prokindValue = ""
@@ -185,7 +185,7 @@ EXECUTE ON ALL SEGMENTS;`)
 				Volatility: "v", IsStrict: false, IsSecurityDefiner: false,
 				PlannerSupport: plannerSupportValue, Config: "", Cost: 100, NumRows: 0, DataAccess: "c",
 				Language: "sql", IsWindow: true, ExecLocation: "m", Parallel: proparallelValue}
-			if connectionPool.Version.AtLeast("7") {
+			if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 				srfOnCoordinatorFunction.ExecLocation = "c"
 
 				// GPDB7 only allows set-returning functions to execute on coordinator
@@ -203,7 +203,7 @@ EXECUTE ON ALL SEGMENTS;`)
 				Volatility: "v", IsStrict: false, IsSecurityDefiner: false,
 				PlannerSupport: plannerSupportValue, Config: "", Cost: 100, NumRows: 0, DataAccess: "c",
 				Language: "sql", IsWindow: true, ExecLocation: "s", Parallel: proparallelValue}
-			if connectionPool.Version.AtLeast("7") {
+			if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 				// GPDB7 only allows set-returning functions to execute on all segments
 				srfOnAllSegmentsFunction.ReturnsSet = true
 				srfOnAllSegmentsFunction.NumRows = 1000
@@ -216,11 +216,11 @@ EXECUTE ON ALL SEGMENTS;`)
 			structmatcher.ExpectStructsToMatchExcluding(&results[1], &srfOnCoordinatorFunction, "Oid")
 		})
 		It("returns a function to execute on initplan", func() {
-			if connectionPool.Version.Before("6.5") {
+			if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("6.5") {
 				Skip("Test only applicable to GPDB6.5 and above")
 			}
 
-			if connectionPool.Version.AtLeast("7") {
+			if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 				// GPDB7 only allows set-returning functions to execute on coordinator
 				testhelper.AssertQueryRuns(connectionPool, `CREATE FUNCTION public.srf_on_initplan(integer, integer) RETURNS SETOF integer
 AS 'SELECT $1 + $2'
@@ -237,7 +237,7 @@ EXECUTE ON INITPLAN;`)
 			results := backup.GetFunctions(connectionPool)
 
 			var srfOnInitplan backup.Function
-			if connectionPool.Version.AtLeast("7") {
+			if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 				// GPDB7 only allows set-returning functions to execute on coordinator
 				srfOnInitplan = backup.Function{
 					Schema: "public", Name: "srf_on_initplan", ReturnsSet: true, FunctionBody: "SELECT $1 + $2",
@@ -287,7 +287,7 @@ MODIFIES SQL DATA
 				Volatility: "s", IsStrict: true, IsLeakProof: true, IsSecurityDefiner: true,
 				PlannerSupport: plannerSupportValue, Config: `SET search_path TO 'pg_temp'`, Cost: 200,
 				NumRows: 200, DataAccess: "m", Language: "sql", ExecLocation: "a", Parallel: proparallelValue}
-			if connectionPool.Version.AtLeast("7") {
+			if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 				appendFunction.DataAccess = ""
 			}
 
@@ -331,7 +331,7 @@ MODIFIES SQL DATA
 				Volatility: "v", IsStrict: false, IsLeakProof: false, IsSecurityDefiner: false,
 				PlannerSupport: plannerSupportValue, Config: "SET work_mem TO '1MB'", Cost: 100,
 				NumRows: 0, DataAccess: "n", Language: "plpgsql", ExecLocation: "a", Parallel: proparallelValue}
-			if connectionPool.Version.AtLeast("7") {
+			if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 				appendFunction.DataAccess = ""
 			}
 			Expect(results).To(HaveLen(1))
@@ -369,7 +369,7 @@ MODIFIES SQL DATA
 				Volatility: "v", IsStrict: false, IsLeakProof: false, IsSecurityDefiner: false,
 				PlannerSupport: plannerSupportValue, Config: `SET search_path TO '$user', 'public', 'abc"def'`, Cost: 100,
 				NumRows: 0, DataAccess: "n", Language: "plpgsql", ExecLocation: "a", Parallel: proparallelValue}
-			if connectionPool.Version.AtLeast("7") {
+			if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 				appendFunction.DataAccess = ""
 			}
 
@@ -422,7 +422,7 @@ INSERT INTO public.tbl VALUES (b);
 				Volatility: "v", IsSecurityDefiner: false, PlannerSupport: plannerSupportValue,
 				Config: "", Cost: 100, NumRows: 0, DataAccess: "c",
 				Language: "sql", ExecLocation: "a", Parallel: proparallelValue}
-			if connectionPool.Version.AtLeast("7") {
+			if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 				firstProcedure.DataAccess = ""
 				secondProcedure.DataAccess = ""
 			}
@@ -477,7 +477,7 @@ SORTOP = ~>~ );`)
 				TransitionFunction: transitionOid, FinalFunction: 0, SortOperator: "~>~", SortOperatorSchema: "pg_catalog", TransitionDataType: "character",
 				InitialValue: "", InitValIsNull: true, MInitValIsNull: true, IsOrdered: false,
 			}
-			if connectionPool.Version.AtLeast("7") {
+			if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 				aggregateDef.Kind = "n"
 				aggregateDef.Finalmodify = "r"
 				aggregateDef.Mfinalmodify = "r"
@@ -507,11 +507,11 @@ CREATE AGGREGATE public.agg_prefunc(numeric, numeric) (
 				IdentArgs: sql.NullString{String: "numeric, numeric", Valid: true}, TransitionFunction: transitionOid, PreliminaryFunction: prelimOid,
 				FinalFunction: 0, SortOperator: "", TransitionDataType: "numeric", InitialValue: "0", MInitValIsNull: true, IsOrdered: false,
 			}
-			if connectionPool.Version.AtLeast("6") {
+			if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("6")) || connectionPool.Version.IsCBDB() {
 				aggregateDef.PreliminaryFunction = 0
 				aggregateDef.CombineFunction = prelimOid
 			}
-			if connectionPool.Version.AtLeast("7") {
+			if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 				aggregateDef.Kind = "n"
 				aggregateDef.Finalmodify = "r"
 				aggregateDef.Mfinalmodify = "r"
@@ -548,11 +548,11 @@ CREATE AGGREGATE testschema.agg_prefunc(numeric, numeric) (
 				IdentArgs: sql.NullString{String: "numeric, numeric", Valid: true}, TransitionFunction: transitionOid, PreliminaryFunction: prelimOid,
 				FinalFunction: 0, SortOperator: "", TransitionDataType: "numeric", InitialValue: "0", MInitValIsNull: true, IsOrdered: false,
 			}
-			if connectionPool.Version.AtLeast("6") {
+			if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("6")) || connectionPool.Version.IsCBDB() {
 				aggregateDef.PreliminaryFunction = 0
 				aggregateDef.CombineFunction = prelimOid
 			}
-			if connectionPool.Version.AtLeast("7") {
+			if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 				aggregateDef.Kind = "n"
 				aggregateDef.Finalmodify = "r"
 				aggregateDef.Mfinalmodify = "r"
@@ -589,7 +589,7 @@ CREATE AGGREGATE public.agg_hypo_ord (VARIADIC "any" ORDER BY VARIADIC "any")
 				IdentArgs: sql.NullString{String: `VARIADIC "any" ORDER BY VARIADIC "any"`, Valid: true}, TransitionFunction: transitionOid,
 				FinalFunction: finalOid, TransitionDataType: "internal", InitValIsNull: true, MInitValIsNull: true, FinalFuncExtra: true, Hypothetical: true,
 			}
-			if connectionPool.Version.AtLeast("7") {
+			if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 				aggregateDef.Hypothetical = false
 				aggregateDef.Kind = "h"
 				aggregateDef.Finalmodify = "w"
@@ -623,7 +623,7 @@ CREATE AGGREGATE public.agg_combinefunc(numeric, numeric) (
 				FinalFunction: 0, SortOperator: "", TransitionDataType: "numeric", TransitionDataSize: 1000,
 				InitialValue: "0", MInitValIsNull: true, IsOrdered: false,
 			}
-			if connectionPool.Version.AtLeast("7") {
+			if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 				aggregateDef.Kind = "n"
 				aggregateDef.Finalmodify = "r"
 				aggregateDef.Mfinalmodify = "r"
@@ -656,7 +656,7 @@ CREATE AGGREGATE public.myavg (numeric) (
 				FinalFunction: 0, SortOperator: "", TransitionDataType: "internal",
 				IsOrdered: false, InitValIsNull: true, MInitValIsNull: true,
 			}
-			if connectionPool.Version.AtLeast("7") {
+			if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 				aggregateDef.Kind = "n"
 				aggregateDef.Finalmodify = "r"
 				aggregateDef.Mfinalmodify = "r"
@@ -694,7 +694,7 @@ CREATE AGGREGATE public.moving_agg(numeric,numeric) (
 				MTransitionDataType: "numeric", MTransitionDataSize: 100, MFinalFunction: sfuncOid,
 				MFinalFuncExtra: true, MInitialValue: "0", MInitValIsNull: false,
 			}
-			if connectionPool.Version.AtLeast("7") {
+			if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 				aggregateDef.Kind = "n"
 				aggregateDef.Finalmodify = "r"
 				aggregateDef.Mfinalmodify = "r"
@@ -802,7 +802,7 @@ LANGUAGE SQL`)
 
 			results := backup.GetExtensions(connectionPool)
 
-			if connectionPool.Version.Before("7") {
+			if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("7") {
 				Expect(results).To(HaveLen(1))
 			} else {
 				// gp_toolkit is installed by default as an extension in GPDB7+
@@ -822,7 +822,7 @@ LANGUAGE SQL`)
 	Describe("GetProceduralLanguages", func() {
 		It("returns a slice of procedural languages", func() {
 			plpythonString := "plpython"
-			if connectionPool.Version.AtLeast("7") {
+			if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 				plpythonString = "plpython3"
 			}
 
@@ -836,7 +836,7 @@ LANGUAGE SQL`)
 			pythonInlineOid := testutils.OidFromObjectName(connectionPool, "pg_catalog", fmt.Sprintf("%s_inline_handler", plpythonString), backup.TYPE_FUNCTION)
 			expectedPlpythonInfo.Inline = pythonInlineOid
 
-			if connectionPool.Version.AtLeast("6") {
+			if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("6")) || connectionPool.Version.IsCBDB() {
 				expectedPlpythonInfo.Validator = testutils.OidFromObjectName(connectionPool, "pg_catalog", fmt.Sprintf("%s_validator", plpythonString), backup.TYPE_FUNCTION)
 			}
 

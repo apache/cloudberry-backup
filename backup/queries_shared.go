@@ -117,12 +117,12 @@ func GetConstraints(connectionPool *dbconn.DBConn, includeTables ...Relation) []
 	// tables must propogate to children. For GPDB versions 5 or lower, this
 	// field will default to false.
 	conIsLocal := ""
-	if connectionPool.Version.AtLeast("6") {
+	if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("6")) || connectionPool.Version.IsCBDB() {
 		conIsLocal = `con.conislocal,`
 	}
 	// This query is adapted from the queries underlying \d in psql.
 	tableQuery := ""
-	if connectionPool.Version.Before("6") {
+	if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("6") {
 		tableQuery = fmt.Sprintf(`
 		SELECT con.oid,
 			quote_ident(n.nspname) AS schema,
@@ -147,7 +147,7 @@ func GetConstraints(connectionPool *dbconn.DBConn, includeTables ...Relation) []
 			AND conrelid NOT IN (SELECT parchildrelid FROM pg_partition_rule)
 			AND (conrelid, conname) NOT IN (SELECT i.inhrelid, con.conname FROM pg_inherits i JOIN pg_constraint con ON i.inhrelid = con.conrelid JOIN pg_constraint p ON i.inhparent = p.conrelid WHERE con.conname = p.conname)
 		GROUP BY con.oid, conname, contype, c.relname, n.nspname, %s pt.parrelid`, conIsLocal, "%s", ExtensionFilterClause("c"), conIsLocal)
-	} else if connectionPool.Version.Is("6") {
+	} else if connectionPool.Version.IsGPDB() && connectionPool.Version.Is("6") {
 		tableQuery = fmt.Sprintf(`
 		SELECT con.oid,
 			quote_ident(n.nspname) AS schema,
@@ -234,7 +234,7 @@ func GetConstraints(connectionPool *dbconn.DBConn, includeTables ...Relation) []
 	err := connectionPool.Select(&results, query)
 	gplog.FatalOnError(err)
 
-	if connectionPool.Version.Before("6") {
+	if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("6") {
 		// Remove all constraints that have NULL definitions. This can happen
 		// if the query above is run and a concurrent constraint drop happens
 		// just before the pg_get_constraintdef function executes. Note that

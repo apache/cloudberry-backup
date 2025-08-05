@@ -273,7 +273,7 @@ func (o *Options) recurseTableDepend(conn *dbconn.DBConn, includeOids []string, 
 				dep.refobjid IN (%[1]s)
 				AND cls.relkind IN ('r', 'p', 'f')`
 
-	if conn.Version.Before("7") {
+	if conn.Version.IsGPDB() && conn.Version.Before("7") {
 		if getLeafPartitions {
 			// Get external partitions and leaves in the include list
 			// Also get leaves of root partitions that currently have no leaves in the include list,
@@ -384,7 +384,7 @@ func (o Options) GetUserTableRelationsWithIncludeFiltering(connectionPool *dbcon
 		// partition roots we need to retrieve their included and external partitions.
 		// This does not apply to GPDB 7 and later, because partition tables are created individually and so we don't
 		// care about the metadata of sibling tables of any included leaf partitions.
-		if connectionPool.Version.Before("7") {
+		if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("7") {
 			childOids, err := o.recurseTableDepend(connectionPool, includeOids, "children", o.isLeafPartitionData)
 			if err != nil {
 				return nil, err

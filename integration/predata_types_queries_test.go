@@ -112,7 +112,7 @@ var _ = Describe("backup integration tests", func() {
 			defer testhelper.AssertQueryRuns(connectionPool, "DROP TYPE public.base_type CASCADE")
 			testhelper.AssertQueryRuns(connectionPool, "CREATE FUNCTION public.base_fn_in(cstring) RETURNS public.base_type AS 'boolin' LANGUAGE internal")
 			testhelper.AssertQueryRuns(connectionPool, "CREATE FUNCTION public.base_fn_out(public.base_type) RETURNS cstring AS 'boolout' LANGUAGE internal")
-			if connectionPool.Version.Before("6") {
+			if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("6") {
 				testhelper.AssertQueryRuns(connectionPool, "CREATE TYPE public.base_type(INPUT=public.base_fn_in, OUTPUT=public.base_fn_out, INTERNALLENGTH=8, PASSEDBYVALUE, ALIGNMENT=double, STORAGE=plain, DEFAULT=0, ELEMENT=integer, DELIMITER=';')")
 			} else {
 				testhelper.AssertQueryRuns(connectionPool, "CREATE TYPE public.base_type(INPUT=public.base_fn_in, OUTPUT=public.base_fn_out, INTERNALLENGTH=8, PASSEDBYVALUE, ALIGNMENT=double, STORAGE=plain, DEFAULT=0, ELEMENT=integer, DELIMITER=';', CATEGORY='N', PREFERRED=true, COLLATABLE=true)")
@@ -122,7 +122,7 @@ var _ = Describe("backup integration tests", func() {
 			results := backup.GetBaseTypes(connectionPool)
 
 			Expect(results).To(HaveLen(1))
-			if connectionPool.Version.Before("6") {
+			if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("6") {
 				structmatcher.ExpectStructsToMatchExcluding(&baseTypeCustom, &results[0], "Oid")
 			} else {
 				baseTypeCustom.Category = "N"
@@ -162,7 +162,7 @@ var _ = Describe("backup integration tests", func() {
 
 			testhelper.AssertQueryRuns(connectionPool, "CREATE TYPE public.enum_type AS ENUM ('label1','label2','label3')")
 			defer testhelper.AssertQueryRuns(connectionPool, "DROP TYPE public.enum_type")
-			if connectionPool.Version.Before("6") {
+			if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("6") {
 				testhelper.AssertQueryRuns(connectionPool, "CREATE TYPE public.enum_type2 AS ENUM ('label3','label2','label1')")
 			} else {
 				testhelper.AssertQueryRuns(connectionPool, "CREATE TYPE public.enum_type2 AS ENUM ('label3', 'label1')")
@@ -315,7 +315,7 @@ var _ = Describe("backup integration tests", func() {
 			Expect(results).To(HaveLen(1))
 
 			collationDef := backup.Collation{Oid: 0, Schema: "public", Name: "some_coll", Collate: "POSIX", Ctype: "POSIX"}
-			if connectionPool.Version.AtLeast("7") {
+			if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 				collationDef.IsDeterministic = "true"
 				collationDef.Provider = "c"
 			}
@@ -337,7 +337,7 @@ var _ = Describe("backup integration tests", func() {
 			Expect(results).To(HaveLen(1))
 
 			collationDef := backup.Collation{Oid: 0, Schema: "testschema", Name: "some_coll", Collate: "POSIX", Ctype: "POSIX"}
-			if connectionPool.Version.AtLeast("7") {
+			if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 				collationDef.IsDeterministic = "true"
 				collationDef.Provider = "c"
 			}

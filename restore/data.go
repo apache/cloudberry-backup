@@ -50,7 +50,7 @@ func CopyTableIn(connectionPool *dbconn.DBConn, tableName string, tableAttribute
 
 	query := fmt.Sprintf("COPY %s%s FROM %s WITH CSV DELIMITER '%s' ON SEGMENT;", tableName, tableAttributes, copyCommand, tableDelim)
 
-	if connectionPool.Version.AtLeast("7") {
+	if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 		utils.LogProgress(`Executing "%s" on coordinator`, query)
 	} else {
 		utils.LogProgress(`Executing "%s" on master`, query)
@@ -113,7 +113,7 @@ func restoreSingleTableData(fpInfo *filepath.FilePathInfo, entry toc.Coordinator
 		if copyErr != nil {
 			gplog.Error(copyErr.Error())
 			if MustGetFlagBool(options.ON_ERROR_CONTINUE) {
-				if connectionPool.Version.AtLeast("6") && backupConfig.SingleDataFile {
+				if ((connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("6")) || connectionPool.Version.IsCBDB()) && backupConfig.SingleDataFile {
 					// inform segment helpers to skip this entry
 					utils.CreateSkipFileOnSegments(fmt.Sprintf("%d", entry.Oid), tableName, globalCluster, globalFPInfo)
 				}

@@ -224,7 +224,7 @@ bar";
 				"public.partition_table",
 				"public.partition_table_1_prt_boys",
 			}
-			if connectionPool.Version.Before("7") {
+			if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("7") {
 				// For GPDB 4, 5, and 6, the leaf partition metadata is a part of the large root partition DDL.
 				// For GPDB 7+, the leaf partition has its own separate DDL and attaches onto the root partition
 				// with ALTER TABLE ATTACH PARTITION. Therefore, only the included leaf partition and its root
@@ -283,7 +283,7 @@ bar";
 			Expect(err).To(Not(HaveOccurred()))
 
 			var expectedTableNames []string
-			if connectionPool.Version.Before("7") {
+			if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("7") {
 				expectedTableNames = []string{
 					"public.partition_table1",
 					"public.partition_table1_1_prt_boys",

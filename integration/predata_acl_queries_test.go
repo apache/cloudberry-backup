@@ -130,7 +130,7 @@ var _ = Describe("backup integration tests", func() {
 			})
 			It("returns a slice of default metadata for a procedural language", func() {
 				plpythonString := "plpythonu"
-				if connectionPool.Version.AtLeast("7") {
+				if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 					plpythonString = "plpython3u"
 				}
 				testhelper.AssertQueryRuns(connectionPool, fmt.Sprintf("CREATE LANGUAGE %s", plpythonString))
@@ -166,7 +166,7 @@ LANGUAGE SQL`)
 
 				slabel := ""
 				slabelProvider := ""
-				if connectionPool.Version.AtLeast("6.0.0") {
+				if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("6.0.0")) || connectionPool.Version.IsCBDB() {
 					slabel = "unclassified"
 					slabelProvider = "dummy"
 				}
@@ -237,7 +237,7 @@ LANGUAGE SQL`)
 				structmatcher.ExpectStructsToMatchExcluding(&expectedMetadata, &resultMetadata, "Oid")
 			})
 			It("returns a slice of default metadata for a materialized view", func() {
-				if connectionPool.Version.Before("6.2") {
+				if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("6.2") {
 					Skip("Test only applicable to GPDB 6.2 and above")
 				}
 				testhelper.AssertQueryRuns(connectionPool, `CREATE MATERIALIZED VIEW public.testmview AS SELECT * FROM pg_class`)
@@ -351,7 +351,7 @@ LANGUAGE SQL`)
 				structmatcher.ExpectStructsToMatchExcluding(&expectedMetadata, &resultMetadata, "Oid")
 			})
 			It("returns a slice of default metadata for a tablespace", func() {
-				if connectionPool.Version.Before("6") {
+				if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("6") {
 					testhelper.AssertQueryRuns(connectionPool, "CREATE TABLESPACE test_tablespace FILESPACE test_dir")
 				} else {
 					testhelper.AssertQueryRuns(connectionPool, "CREATE TABLESPACE test_tablespace LOCATION '/tmp/test_dir'")
@@ -601,7 +601,7 @@ LANGUAGE SQL`)
 				structmatcher.ExpectStructsToMatchExcluding(&expectedMetadata, &resultMetadata, "Oid")
 			})
 			It("returns a slice of default metadata for a materialized view in a specific schema", func() {
-				if connectionPool.Version.Before("6.2") {
+				if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("6.2") {
 					Skip("Test only applicable to GPDB 6.2 and above")
 				}
 				testhelper.AssertQueryRuns(connectionPool, `CREATE MATERIALIZED VIEW public.testmview AS SELECT * FROM pg_class`)
@@ -893,7 +893,7 @@ LANGUAGE SQL`)
 				numTriggers := len(resultMetadataMap)
 
 				testhelper.AssertQueryRuns(connectionPool, `CREATE TABLE public.testtable(i int)`)
-				if connectionPool.Version.Before("7") {
+				if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("7") {
 					testhelper.AssertQueryRuns(connectionPool, `CREATE TRIGGER sync_testtable AFTER INSERT OR DELETE OR UPDATE ON public.testtable FOR EACH STATEMENT EXECUTE PROCEDURE "RI_FKey_check_ins"()`)
 				} else {
 					testhelper.AssertQueryRuns(connectionPool, `CREATE TRIGGER sync_testtable AFTER INSERT OR DELETE OR UPDATE ON public.testtable FOR EACH ROW EXECUTE FUNCTION "RI_FKey_check_ins"()`)
@@ -985,7 +985,7 @@ LANGUAGE SQL`)
 				uniqueID := testutils.UniqueIDFromObjectName(connectionPool, "", "plperl", backup.TYPE_EXTENSION)
 				resultMetadataMap := backup.GetCommentsForObjectType(connectionPool, backup.TYPE_EXTENSION)
 
-				if connectionPool.Version.Before("7") {
+				if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("7") {
 					Expect(resultMetadataMap).To(HaveLen(1))
 				} else {
 					// gp_toolkit is installed by default as an extension in GPDB7+
