@@ -2288,6 +2288,14 @@ LANGUAGE plpgsql NO SQL;`)
 					if useOldBackupVersion {
 						Skip("Resize-cluster was only added in version 1.26")
 					}
+
+					// TODO: Re-enable this test for Cloudberry once the following issue is fixed:
+					// https://github.com/apache/cloudberry/issues/1298
+					if restoreConn.Version.IsCBDB() {
+						Skip(`This test is skipped for Cloudberry due to an issue with COPY FROM ON SEGMENT for
+							replicated tables (https://github.com/apache/cloudberry/issues/1298).`)
+					}
+
 					extractDirectory := extractSavedTarFile(backupDir, tarBaseName)
 					defer testhelper.AssertQueryRuns(restoreConn, `DROP SCHEMA IF EXISTS schemaone CASCADE;`)
 
