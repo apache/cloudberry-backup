@@ -99,8 +99,9 @@ CREATE AGGREGATE agg_test(integer) (
 
 
 CREATE OPERATOR #### (
-    PROCEDURE = numeric_fac,
-    LEFTARG = bigint
+    PROCEDURE = int8pl,
+    LEFTARG = bigint,
+    RIGHTARG = bigint
 );
 
 
