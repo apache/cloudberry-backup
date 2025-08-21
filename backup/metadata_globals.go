@@ -2,6 +2,7 @@ package backup
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -414,24 +415,132 @@ func PrintRoleMembershipStatements(metadataFile *utils.FileWithByteCount, objToc
 func PrintCreateTablespaceStatements(metadataFile *utils.FileWithByteCount, objToc *toc.TOC, tablespaces []Tablespace, tablespaceMetadata MetadataMap) {
 	for _, tablespace := range tablespaces {
 		start := metadataFile.ByteCount
+
+		// Step 1: Use the utility function to parse options into a map.
+		optionsMap := utils.ParseOptions(tablespace.Options)
+
+		// Step 2: Determine the location string, handling remote tablespaces.
 		locationStr := ""
-		if tablespace.SegmentLocations == nil {
-			locationStr = fmt.Sprintf("FILESPACE %s", tablespace.FileLocation)
-		} else if len(tablespace.SegmentLocations) == 0 {
-			locationStr = fmt.Sprintf("LOCATION %s", tablespace.FileLocation)
+		if remotePath, ok := optionsMap["path"]; ok {
+			locationStr = fmt.Sprintf("LOCATION %s", remotePath)
+			delete(optionsMap, "path")
 		} else {
-			locationStr = fmt.Sprintf("LOCATION %s\n\tWITH (%s)", tablespace.FileLocation, strings.Join(tablespace.SegmentLocations, ", "))
+			// Fallback to standard tablespace location logic.
+			if tablespace.SegmentLocations == nil {
+				locationStr = fmt.Sprintf("FILESPACE %s", tablespace.FileLocation)
+			} else if len(tablespace.SegmentLocations) == 0 {
+				locationStr = fmt.Sprintf("LOCATION %s", tablespace.FileLocation)
+			} else {
+				locationStr = fmt.Sprintf("LOCATION %s\n\tWITH (%s)", tablespace.FileLocation, strings.Join(tablespace.SegmentLocations, ", "))
+			}
 		}
-		metadataFile.MustPrintf("\n\nCREATE TABLESPACE %s %s;", tablespace.Tablespace, locationStr)
+
+		// Step 3: Separate special options for CREATE: 'server' and 'storage'.
+		server, hasServer := optionsMap["server"]
+		if hasServer {
+			delete(optionsMap, "server")
+		}
+
+		withOptions := []string{}
+		if storageVal, ok := optionsMap["storage"]; ok {
+			withOptions = append(withOptions, fmt.Sprintf("storage = %s", storageVal))
+			delete(optionsMap, "storage")
+		}
+
+		// Step 4: Rebuild the remaining options string for the ALTER statement.
+		alterOptionsKeys := make([]string, 0, len(optionsMap))
+		for k := range optionsMap {
+			alterOptionsKeys = append(alterOptionsKeys, k)
+		}
+		sort.Strings(alterOptionsKeys)
+
+		alterOptions := make([]string, len(alterOptionsKeys))
+		for i, k := range alterOptionsKeys {
+			alterOptions[i] = fmt.Sprintf("%s = %s", k, optionsMap[k])
+		}
+		alterOptionsStr := strings.Join(alterOptions, ", ")
+
+		// Step 5: Construct and print the CREATE TABLESPACE statement.
+		metadataFile.MustPrintf("\n\nCREATE TABLESPACE %s %s", tablespace.Tablespace, locationStr)
+		// Add WITH clause only for options like 'storage', assuming it doesn't conflict with segment location WITH.
+		if len(withOptions) > 0 {
+			metadataFile.MustPrintf(" WITH (%s)", strings.Join(withOptions, ", "))
+		}
+
+		if hasServer {
+			metadataFile.MustPrintf(" SERVER %s", server)
+			if tablespace.Spcfilehandlerbin != "" && tablespace.Spcfilehandlersrc != "" {
+				metadataFile.MustPrintf(" HANDLER '%s, %s'", tablespace.Spcfilehandlerbin, tablespace.Spcfilehandlersrc)
+			}
+		}
+		metadataFile.MustPrintf(";")
 
 		section, entry := tablespace.GetMetadataEntry()
 		objToc.AddMetadataEntry(section, entry, start, metadataFile.ByteCount, []uint32{0, 0})
 
-		if tablespace.Options != "" {
+		// Step 6: If there are any remaining "alterable" options, print the ALTER TABLESPACE statement.
+		if alterOptionsStr != "" {
 			start = metadataFile.ByteCount
-			metadataFile.MustPrintf("\n\nALTER TABLESPACE %s SET (%s);\n", tablespace.Tablespace, tablespace.Options)
+			metadataFile.MustPrintf("\n\nALTER TABLESPACE %s SET (%s);\n", tablespace.Tablespace, alterOptionsStr)
 			objToc.AddMetadataEntry(section, entry, start, metadataFile.ByteCount, []uint32{0, 0})
 		}
 		PrintObjectMetadata(metadataFile, objToc, tablespaceMetadata[tablespace.GetUniqueID()], tablespace, "", []uint32{0, 0})
+	}
+}
+
+func buildStorageOptionsString(optionsMap map[string]string) string {
+	// Sort the keys for deterministic, consistent backup output.
+	keys := make([]string, 0, len(optionsMap))
+	for k := range optionsMap {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	optionParts := make([]string, len(keys))
+	for i, k := range keys {
+		// Assuming all option values should be single-quoted in the DDL.
+		optionParts[i] = fmt.Sprintf("%s '%s'", k, optionsMap[k])
+	}
+	return strings.Join(optionParts, ", ")
+}
+
+func PrintCreateStorageServerStatements(metadataFile *utils.FileWithByteCount, toc *toc.TOC, servers []StorageServer, serverMetadata MetadataMap) {
+	for _, server := range servers {
+		start := metadataFile.ByteCount
+
+		optionsMap := utils.ParseOptions(server.ServerOptions)
+		if len(optionsMap) > 0 {
+			optionsStr := buildStorageOptionsString(optionsMap)
+			metadataFile.MustPrintf("\n\nCREATE STORAGE SERVER %s OPTIONS(%s);", server.Server, optionsStr)
+		} else {
+			// It's possible for a storage server to have no options, though unlikely.
+			metadataFile.MustPrintf("\n\nCREATE STORAGE SERVER %s;", server.Server)
+		}
+
+		section, entry := server.GetMetadataEntry()
+		toc.AddMetadataEntry(section, entry, start, metadataFile.ByteCount, []uint32{0, 0})
+
+		// TODO: Re-enable metadata printing for STORAGE SERVER once Cloudberry supports
+		// `ALTER STORAGE SERVER ... OWNER TO ...` and `COMMENT ON STORAGE SERVER ...`.
+		// These DDLs currently cause a syntax error.
+		//PrintObjectMetadata(metadataFile, toc, serverMetadata[server.GetUniqueID()], server, "", []uint32{0, 0})
+	}
+}
+
+func PrintCreateStorageUserMappingStatements(metadataFile *utils.FileWithByteCount, toc *toc.TOC, users []StorageUserMapping) {
+	for _, user := range users {
+		start := metadataFile.ByteCount
+
+		optionsMap := utils.ParseOptions(user.Options)
+		if len(optionsMap) > 0 {
+			optionsStr := buildStorageOptionsString(optionsMap)
+			metadataFile.MustPrintf("\n\nCREATE STORAGE USER MAPPING FOR %s STORAGE SERVER %s OPTIONS (%s);", user.User, user.Server, optionsStr)
+		} else {
+			// A user mapping without options may also be possible.
+			metadataFile.MustPrintf("\n\nCREATE STORAGE USER MAPPING FOR %s STORAGE SERVER %s;", user.User, user.Server)
+		}
+
+		section, entry := user.GetMetadataEntry()
+		toc.AddMetadataEntry(section, entry, start, metadataFile.ByteCount, []uint32{0, 0})
 	}
 }

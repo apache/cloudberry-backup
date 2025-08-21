@@ -304,3 +304,23 @@ func GetFileHash(filename string) ([32]byte, error) {
 	}
 	return filehash, nil
 }
+
+/*
+ * Parses a string of the form "key1=val1, key2=val2, ..." into a map.
+ * This is useful for parsing options columns from PostgreSQL/GreenplumDB.
+ */
+func ParseOptions(optionsStr string) map[string]string {
+	optionsMap := make(map[string]string)
+	if optionsStr == "" {
+		return optionsMap
+	}
+
+	pairs := strings.Split(optionsStr, ", ")
+	for _, pair := range pairs {
+		parts := strings.SplitN(pair, "=", 2)
+		if len(parts) == 2 {
+			optionsMap[parts[0]] = parts[1]
+		}
+	}
+	return optionsMap
+}

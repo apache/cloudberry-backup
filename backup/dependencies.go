@@ -57,6 +57,10 @@ var (
 	PG_TYPE_OID                 uint32 = 1247
 	PG_USER_MAPPING_OID         uint32 = 1418
 
+	// CBDB only
+	GP_STORAGE_USER_MAPPING_OID uint32 = 6131
+	GP_STORAGE_SERVER_OID       uint32 = 6015
+
 	FIRST_NORMAL_OBJECT_ID uint32 = 16384
 )
 

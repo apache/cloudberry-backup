@@ -209,7 +209,8 @@ func createDatabase(metadataFilename string) {
 
 func restoreGlobal(metadataFilename string) {
 	objectTypes := []string{toc.OBJ_SESSION_GUC, toc.OBJ_DATABASE_GUC, toc.OBJ_DATABASE_METADATA,
-		toc.OBJ_RESOURCE_QUEUE, toc.OBJ_RESOURCE_GROUP, toc.OBJ_ROLE, toc.OBJ_ROLE_GUC, toc.OBJ_ROLE_GRANT, toc.OBJ_TABLESPACE}
+		toc.OBJ_RESOURCE_QUEUE, toc.OBJ_RESOURCE_GROUP, toc.OBJ_ROLE, toc.OBJ_ROLE_GUC, toc.OBJ_ROLE_GRANT, toc.OBJ_TABLESPACE,
+		toc.OBJ_STORAGE_USER_MAPPING, toc.OBJ_STORAGE_SERVER}
 	if MustGetFlagBool(options.CREATE_DB) {
 		objectTypes = append(objectTypes, toc.OBJ_DATABASE)
 	}

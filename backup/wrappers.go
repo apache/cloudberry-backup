@@ -762,3 +762,19 @@ func backupIncrementalMetadata() {
 	aoTableEntries := GetAOIncrementalMetadata(connectionPool)
 	globalTOC.IncrementalMetadata.AO = aoTableEntries
 }
+
+func backupStorageServers(metadataFile *utils.FileWithByteCount) {
+	gplog.Verbose("Writing CREATE SERVER statements to metadata file")
+	servers := GetStorageServers(connectionPool)
+	objectCounts[toc.OBJ_STORAGE_SERVER] = len(servers)
+	serverMetadata := GetMetadataForObjectType(connectionPool, TYPE_STORAGE_SERVER)
+	PrintCreateStorageServerStatements(metadataFile, globalTOC, servers, serverMetadata)
+}
+
+func backupStorageUserMappings(metadataFile *utils.FileWithByteCount) {
+	gplog.Verbose("Writing CREATE STORAGE USER MAPPING statements to metadata file")
+	users := GetStorageUserMapping(connectionPool)
+	objectCounts[toc.OBJ_STORAGE_USER_MAPPING] = len(users)
+
+	PrintCreateStorageUserMappingStatements(metadataFile, globalTOC, users)
+}

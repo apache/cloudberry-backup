@@ -231,6 +231,11 @@ func backupGlobals(metadataFile *utils.FileWithByteCount) {
 	backupDatabaseGUCs(metadataFile)
 	backupRoleGUCs(metadataFile)
 
+	if connectionPool.Version.IsCBDB() {
+		backupStorageServers(metadataFile)
+		backupStorageUserMappings(metadataFile)
+	}
+
 	logCompletionMessage("Global database metadata backup")
 }
 
