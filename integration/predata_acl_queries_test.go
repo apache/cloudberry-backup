@@ -134,7 +134,14 @@ var _ = Describe("backup integration tests", func() {
 					plpythonString = "plpython3u"
 				}
 				testhelper.AssertQueryRuns(connectionPool, fmt.Sprintf("CREATE LANGUAGE %s", plpythonString))
-				defer testhelper.AssertQueryRuns(connectionPool, fmt.Sprintf("DROP LANGUAGE %s", plpythonString))
+				// In Cloudberry (based on PG 14), CREATE LANGUAGE is a wrapper around CREATE EXTENSION.
+				// To clean up, we must DROP THE EXTENSION, not the language itself.
+				// For older GPDB versions, we still need to DROP THE LANGUAGE.
+				if connectionPool.Version.IsCBDB() {
+					defer testhelper.AssertQueryRuns(connectionPool, fmt.Sprintf("DROP EXTENSION %s", plpythonString))
+				} else {
+					defer testhelper.AssertQueryRuns(connectionPool, fmt.Sprintf("DROP LANGUAGE %s", plpythonString))
+				}
 				testhelper.AssertQueryRuns(connectionPool, fmt.Sprintf("COMMENT ON LANGUAGE %s IS 'This is a language comment.'", plpythonString))
 				testutils.CreateSecurityLabelIfGPDB6(connectionPool, toc.OBJ_LANGUAGE, plpythonString)
 
