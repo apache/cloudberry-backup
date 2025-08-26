@@ -156,7 +156,9 @@ var _ = Describe("End to End plugin tests", func() {
 			if (backupConn.Version.IsGPDB() && backupConn.Version.AtLeast("5")) || backupConn.Version.IsCBDB() {
 				testutils.ExecuteSQLFile(backupConn, "resources/gpdb5_objects.sql")
 			}
-			if (backupConn.Version.IsGPDB() && backupConn.Version.AtLeast("6")) || backupConn.Version.IsCBDB() {
+			// Exclude Cloudberry from gpdb6_objects.sql because it contains enum distribution keys
+			// which are not supported in Cloudberry database
+			if backupConn.Version.IsGPDB() && backupConn.Version.AtLeast("6") {
 				testutils.ExecuteSQLFile(backupConn, "resources/gpdb6_objects.sql")
 				defer testhelper.AssertQueryRuns(backupConn,
 					"DROP FOREIGN DATA WRAPPER fdw CASCADE;")
@@ -207,7 +209,9 @@ var _ = Describe("End to End plugin tests", func() {
 			if (backupConn.Version.IsGPDB() && backupConn.Version.AtLeast("5")) || backupConn.Version.IsCBDB() {
 				testutils.ExecuteSQLFile(backupConn, "resources/gpdb5_objects.sql")
 			}
-			if (backupConn.Version.IsGPDB() && backupConn.Version.AtLeast("6")) || backupConn.Version.IsCBDB() {
+			// Exclude Cloudberry from gpdb6_objects.sql because it contains enum distribution keys
+			// which are not supported in Cloudberry database
+			if backupConn.Version.IsGPDB() && backupConn.Version.AtLeast("6") {
 				testutils.ExecuteSQLFile(backupConn, "resources/gpdb6_objects.sql")
 				defer testhelper.AssertQueryRuns(backupConn,
 					"DROP FOREIGN DATA WRAPPER fdw CASCADE;")
