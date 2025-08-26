@@ -3,6 +3,7 @@ package integration
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 
 	"github.com/cloudberrydb/gp-common-go-libs/structmatcher"
 	"github.com/cloudberrydb/gp-common-go-libs/testhelper"
@@ -94,13 +95,39 @@ PARTITION BY RANGE (year)
 			oid := testutils.OidFromObjectName(connectionPool, "public", "co_atttable", backup.TYPE_RELATION)
 			tableAtts := backup.GetColumnDefinitions(connectionPool)[oid]
 
+			// Expected column definitions
 			columnA := backup.ColumnDefinition{Oid: 0, Num: 1, Name: "a", NotNull: false, HasDefault: false, Type: "double precision", Encoding: "compresstype=none,blocksize=32768,compresslevel=0", StatTarget: -1, StorageType: "", DefaultVal: "", Comment: ""}
 			columnB := backup.ColumnDefinition{Oid: 0, Num: 2, Name: "b", NotNull: false, HasDefault: false, Type: "text", Encoding: "blocksize=65536,compresstype=none,compresslevel=0", StatTarget: -1, StorageType: "", DefaultVal: "", Comment: ""}
+			expectedColumns := []backup.ColumnDefinition{columnA, columnB}
 
 			Expect(tableAtts).To(HaveLen(2))
 
-			structmatcher.ExpectStructsToMatchExcluding(&columnA, &tableAtts[0], "Oid")
-			structmatcher.ExpectStructsToMatchExcluding(&columnB, &tableAtts[1], "Oid")
+			/*
+			 * We cannot use structmatcher directly on the entire struct because CloudberryDB
+			 * may return column encoding options in a different order than Greenplum DB.
+			 *
+			 * For example, for a column with default encoding, Greenplum 7 might return:
+			 *   "compresstype=none,blocksize=32768,compresslevel=0"
+			 * While CloudberryDB might return:
+			 *   "compresstype=none,compresslevel=0,blocksize=32768"
+			 *
+			 * To handle this, we perform a custom comparison:
+			 * 1. Use structmatcher for all fields *except* the Encoding field.
+			 * 2. Split the Encoding strings into slices and use gomega.ConsistOf to
+			 *    perform an order-insensitive comparison on the encoding options.
+			 */
+			for i, expected := range expectedColumns {
+				actual := tableAtts[i]
+				expectedEncodingOpts := strings.Split(expected.Encoding, ",")
+				actualEncodingOpts := strings.Split(actual.Encoding, ",")
+
+				// Temporarily clear encoding to use structmatcher for other fields
+				expected.Encoding = ""
+				actual.Encoding = ""
+
+				structmatcher.ExpectStructsToMatchExcluding(&expected, &actual, "Oid")
+				Expect(actualEncodingOpts).To(ConsistOf(expectedEncodingOpts))
+			}
 		})
 		It("returns an empty attribute array for a table with no columns", func() {
 			testhelper.AssertQueryRuns(connectionPool, "CREATE TABLE public.nocol_atttable()")
