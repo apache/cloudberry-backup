@@ -59,15 +59,38 @@ var _ = Describe("backup integration tests", func() {
 
 		})
 		It("returns a slice of operators from a specific schema", func() {
-			testhelper.AssertQueryRuns(connectionPool, "CREATE OPERATOR public.## (LEFTARG = bigint, PROCEDURE = numeric_fac)")
-			defer testhelper.AssertQueryRuns(connectionPool, "DROP OPERATOR public.## (bigint, NONE)")
+			// Cloudberry does not support postfix operators, which this test originally required.
+			// To ensure this test for schema filtering runs on all platforms, we refactor it
+			// to use a binary operator, which is supported by both Greenplum and Cloudberry.
+			testhelper.AssertQueryRuns(connectionPool, "CREATE FUNCTION public.binary_op_func(bigint, bigint) RETURNS bigint AS 'SELECT $1 + $2' LANGUAGE SQL IMMUTABLE;")
+			defer testhelper.AssertQueryRuns(connectionPool, "DROP FUNCTION public.binary_op_func(bigint, bigint);")
+
 			testhelper.AssertQueryRuns(connectionPool, "CREATE SCHEMA testschema")
 			defer testhelper.AssertQueryRuns(connectionPool, "DROP SCHEMA testschema")
-			testhelper.AssertQueryRuns(connectionPool, "CREATE OPERATOR testschema.## (LEFTARG = bigint, PROCEDURE = numeric_fac)")
-			defer testhelper.AssertQueryRuns(connectionPool, "DROP OPERATOR testschema.## (bigint, NONE)")
+
+			// Create one operator in 'public' (to be filtered out) and one in 'testschema' (to be included).
+			testhelper.AssertQueryRuns(connectionPool, "CREATE OPERATOR public.## (LEFTARG = bigint, RIGHTARG = bigint, PROCEDURE = public.binary_op_func)")
+			defer testhelper.AssertQueryRuns(connectionPool, "DROP OPERATOR public.## (bigint, bigint)")
+			testhelper.AssertQueryRuns(connectionPool, "CREATE OPERATOR testschema.## (LEFTARG = bigint, RIGHTARG = bigint, PROCEDURE = public.binary_op_func)")
+			defer testhelper.AssertQueryRuns(connectionPool, "DROP OPERATOR testschema.## (bigint, bigint)")
+
 			_ = backupCmdFlags.Set(options.INCLUDE_SCHEMA, "testschema")
 
-			expectedOperator := backup.Operator{Oid: 0, Schema: "testschema", Name: "##", Procedure: "numeric_fac", LeftArgType: "bigint", RightArgType: "-", CommutatorOp: "0", NegatorOp: "0", RestrictFunction: "-", JoinFunction: "-", CanHash: false, CanMerge: false}
+			// The underlying SQL query normalizes the output, so we expect the same result across all supported versions.
+			expectedOperator := backup.Operator{
+				Oid:              0,
+				Schema:           "testschema",
+				Name:             "##",
+				Procedure:        "public.binary_op_func",
+				LeftArgType:      "bigint",
+				RightArgType:     "bigint",
+				CommutatorOp:     "0",
+				NegatorOp:        "0",
+				RestrictFunction: "-",
+				JoinFunction:     "-",
+				CanHash:          false,
+				CanMerge:         false,
+			}
 
 			results := backup.GetOperators(connectionPool)
 
