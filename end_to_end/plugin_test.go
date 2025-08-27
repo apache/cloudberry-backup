@@ -137,10 +137,17 @@ var _ = Describe("End to End plugin tests", func() {
 			defer testhelper.AssertQueryRuns(backupConn,
 				"DROP ROLE testrole")
 
-			// In GPDB 7+, we use plpython3u because of default python 3 support.
-			plpythonDropStatement := "DROP PROCEDURAL LANGUAGE IF EXISTS plpythonu;"
-			if (backupConn.Version.IsGPDB() && backupConn.Version.AtLeast("7")) || backupConn.Version.IsCBDB() {
+			var plpythonDropStatement string
+			if backupConn.Version.IsCBDB() {
+				// In Cloudberry (based on PG 14), CREATE LANGUAGE is a wrapper around CREATE EXTENSION.
+				// To clean up, we must DROP THE EXTENSION, not the language itself.
+				plpythonDropStatement = "DROP EXTENSION IF EXISTS plpython3u;"
+			} else if backupConn.Version.IsGPDB() && backupConn.Version.AtLeast("7") {
+				// In GPDB 7+, we use plpython3u because of default python 3 support.
 				plpythonDropStatement = "DROP PROCEDURAL LANGUAGE IF EXISTS plpython3u;"
+			} else {
+				// For older GPDB versions, we still need to DROP THE LANGUAGE.
+				plpythonDropStatement = "DROP PROCEDURAL LANGUAGE IF EXISTS plpythonu;"
 			}
 			testhelper.AssertQueryRuns(backupConn, plpythonDropStatement)
 			defer testhelper.AssertQueryRuns(backupConn, plpythonDropStatement)
