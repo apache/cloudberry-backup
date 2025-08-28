@@ -48,6 +48,7 @@ type BaseType struct {
 	StorageOptions  string
 	Collatable      bool
 	Collation       string
+	Subscript       string
 }
 
 func (t BaseType) GetMetadataEntry() (string, toc.MetadataEntry) {
@@ -130,9 +131,46 @@ func GetBaseTypes(connectionPool *dbconn.DBConn) []BaseType {
 		AND ut.oid IS NULL
 		AND %s`, SchemaFilterClause("n"), ExtensionFilterClause("t"))
 
+	cbdbQuery := fmt.Sprintf(`
+	SELECT t.oid,
+		quote_ident(n.nspname) AS schema,
+		quote_ident(t.typname) AS name,
+		t.typinput AS input,
+		t.typoutput AS output,
+		CASE WHEN t.typreceive = '-'::regproc THEN '' ELSE t.typreceive::regproc::text END AS receive,
+		CASE WHEN t.typsend = '-'::regproc THEN '' ELSE t.typsend::regproc::text END AS send,
+		CASE WHEN t.typmodin = '-'::regproc THEN '' ELSE t.typmodin::regproc::text END AS modin,
+		CASE WHEN t.typmodout = '-'::regproc THEN '' ELSE t.typmodout::regproc::text END AS modout,
+		t.typlen AS internallength,
+		t.typbyval AS ispassedbyvalue,
+		CASE WHEN t.typalign = '-' THEN '' ELSE t.typalign END AS alignment,
+		t.typstorage AS storage,
+		coalesce(t.typdefault, '') AS defaultval,
+		CASE WHEN t.typelem != 0::regproc THEN pg_catalog.format_type(t.typelem, NULL) ELSE '' END AS element,
+		t.typcategory AS category,
+		t.typispreferred AS preferred,
+		t.typdelim AS delimiter,
+		(t.typcollation <> 0) AS collatable,
+		coalesce(array_to_string(typoptions, ', '), '') AS storageoptions,
+		CASE WHEN t.typsubscript = '-'::regproc THEN '' ELSE t.typsubscript::regproc::text END AS subscript
+	FROM pg_type t
+		JOIN pg_namespace n ON t.typnamespace = n.oid
+		LEFT JOIN pg_type_encoding e ON t.oid = e.typid
+		/*
+		 * Identify if this is an automatically generated array type and exclude it if so.
+		 * In GPDB 5 and 6 we use the typearray field to identify these array types.
+		 */
+		LEFT JOIN pg_type ut ON t.oid = ut.typarray
+	WHERE %s
+		AND t.typtype = 'b'
+		AND ut.oid IS NULL
+		AND %s`, SchemaFilterClause("n"), ExtensionFilterClause("t"))
+
 	results := make([]BaseType, 0)
 	var err error
-	if connectionPool.Version.IsGPDB() && connectionPool.Version.Is("5") {
+	if connectionPool.Version.IsCBDB() {
+		err = connectionPool.Select(&results, cbdbQuery)
+	} else if connectionPool.Version.IsGPDB() && connectionPool.Version.Is("5") {
 		err = connectionPool.Select(&results, version5query)
 	} else {
 		err = connectionPool.Select(&results, atLeast6Query)

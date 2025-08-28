@@ -154,10 +154,19 @@ var _ = Describe("backup integration tests", func() {
 			}
 
 			testhelper.AssertQueryRuns(connectionPool, "CREATE TYPE public.base_array_type")
-			defer testhelper.AssertQueryRuns(connectionPool, "DROP TYPE public.base_array_type CASCADE")
 			testhelper.AssertQueryRuns(connectionPool, "CREATE FUNCTION public.base_array_fn_in(cstring) RETURNS public.base_array_type AS 'boolin' LANGUAGE internal")
 			testhelper.AssertQueryRuns(connectionPool, "CREATE FUNCTION public.base_array_fn_out(public.base_array_type) RETURNS cstring AS 'boolout' LANGUAGE internal")
-			testhelper.AssertQueryRuns(connectionPool, "CREATE TYPE public.base_array_type(INPUT=public.base_array_fn_in, OUTPUT=public.base_array_fn_out, ELEMENT=text)")
+			if connectionPool.Version.IsCBDB() {
+				// For Cloudberry (based on PG14), creating a type with an ELEMENT requires a SUBSCRIPT function.
+				testhelper.AssertQueryRuns(connectionPool, "CREATE FUNCTION public.base_array_subscript_handler(internal) RETURNS internal AS 'array_subscript_handler' LANGUAGE internal")
+				defer testhelper.AssertQueryRuns(connectionPool, "DROP FUNCTION public.base_array_subscript_handler(internal)")
+				testhelper.AssertQueryRuns(connectionPool, "CREATE TYPE public.base_array_type(INPUT=public.base_array_fn_in, OUTPUT=public.base_array_fn_out, ELEMENT=text, SUBSCRIPT=public.base_array_subscript_handler)")
+				arrayType.Subscript = "public.base_array_subscript_handler"
+			} else {
+				// For GPDB (based on PG12 or earlier), this is not required.
+				testhelper.AssertQueryRuns(connectionPool, "CREATE TYPE public.base_array_type(INPUT=public.base_array_fn_in, OUTPUT=public.base_array_fn_out, ELEMENT=text)")
+			}
+			defer testhelper.AssertQueryRuns(connectionPool, "DROP TYPE public.base_array_type CASCADE")
 
 			results := backup.GetBaseTypes(connectionPool)
 
