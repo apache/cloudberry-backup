@@ -115,7 +115,21 @@ var _ = Describe("backup integration tests", func() {
 			if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("6") {
 				testhelper.AssertQueryRuns(connectionPool, "CREATE TYPE public.base_type(INPUT=public.base_fn_in, OUTPUT=public.base_fn_out, INTERNALLENGTH=8, PASSEDBYVALUE, ALIGNMENT=double, STORAGE=plain, DEFAULT=0, ELEMENT=integer, DELIMITER=';')")
 			} else {
-				testhelper.AssertQueryRuns(connectionPool, "CREATE TYPE public.base_type(INPUT=public.base_fn_in, OUTPUT=public.base_fn_out, INTERNALLENGTH=8, PASSEDBYVALUE, ALIGNMENT=double, STORAGE=plain, DEFAULT=0, ELEMENT=integer, DELIMITER=';', CATEGORY='N', PREFERRED=true, COLLATABLE=true)")
+				/*
+				 * In PostgreSQL 14 (Cloudberry is based on), the validation for CREATE TYPE has become stricter.
+				 * The 'ELEMENT' parameter can only be specified if a 'subscripting function' is also
+				 * provided for the type.
+				 *
+				 * PostgreSQL 12 (GPDB 7 is based on) was more lenient and allowed specifying 'ELEMENT'
+				 * as a metadata-only attribute without enforcing the presence of a subscripting
+				 * function, even though the type would not actually support subscripting.
+				 *
+				 * Since this test's primary purpose is to verify the backup of other custom
+				 * type properties (like alignment, storage, etc.) and not to create a
+				 * fully-functional array-like type, we remove the 'ELEMENT=integer' clause
+				 * test case to comply with the stricter checks.
+				 */
+				testhelper.AssertQueryRuns(connectionPool, "CREATE TYPE public.base_type(INPUT=public.base_fn_in, OUTPUT=public.base_fn_out, INTERNALLENGTH=8, PASSEDBYVALUE, ALIGNMENT=double, STORAGE=plain, DEFAULT=0, DELIMITER=';', CATEGORY='N', PREFERRED=true, COLLATABLE=true)")
 			}
 			testhelper.AssertQueryRuns(connectionPool, "ALTER TYPE public.base_type SET DEFAULT ENCODING (compresstype=zlib)")
 
@@ -128,6 +142,7 @@ var _ = Describe("backup integration tests", func() {
 				baseTypeCustom.Category = "N"
 				baseTypeCustom.Preferred = true
 				baseTypeCustom.Collatable = true
+				baseTypeCustom.Element = ""
 				structmatcher.ExpectStructsToMatchExcluding(&baseTypeCustom, &results[0], "Oid")
 			}
 		})
