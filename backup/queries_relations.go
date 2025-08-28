@@ -486,7 +486,13 @@ func LockTables(connectionPool *dbconn.DBConn, tables []Relation) {
 	lastBatchSize := len(tables) % batchSize
 	tableBatches := GenerateTableBatches(tables, batchSize)
 	currentBatchSize := batchSize
-	if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
+	// TODO: This is a temporary workaround. Cloudberry should support the
+	// COORDINATOR ONLY syntax to align with GPDB 7+ for performance optimization
+	// during the table locking phase. Revert this to the combined GPDB 7+ condition
+	// once Cloudberry adds this feature.
+	if connectionPool.Version.IsCBDB() {
+		lockMode = `IN ACCESS SHARE MODE`
+	} else if connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7") {
 		lockMode = `IN ACCESS SHARE MODE COORDINATOR ONLY`
 	} else if connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("6.21.0") {
 		lockMode = `IN ACCESS SHARE MODE MASTER ONLY`
