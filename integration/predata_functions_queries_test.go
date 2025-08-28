@@ -427,6 +427,16 @@ INSERT INTO public.tbl VALUES (b);
 				secondProcedure.DataAccess = ""
 			}
 
+			// In Cloudberry (PostgreSQL 14+), pg_get_function_arguments returns the parameter
+			// mode (e.g., 'IN') for procedures, which differs from GPDB 7. We adjust the
+			// expected values accordingly.
+			if connectionPool.Version.IsCBDB() {
+				firstProcedure.Arguments.String = "IN a integer, IN b integer"
+				firstProcedure.IdentArgs.String = "IN a integer, IN b integer"
+				secondProcedure.Arguments.String = "IN a integer, IN b integer"
+				secondProcedure.IdentArgs.String = "IN a integer, IN b integer"
+			}
+
 			Expect(results).To(HaveLen(2))
 			structmatcher.ExpectStructsToMatchExcluding(&results[0], &firstProcedure, "Oid")
 			structmatcher.ExpectStructsToMatchExcluding(&results[1], &secondProcedure, "Oid")
