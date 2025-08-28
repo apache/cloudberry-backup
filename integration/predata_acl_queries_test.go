@@ -376,10 +376,15 @@ LANGUAGE SQL`)
 				structmatcher.ExpectStructsToMatchExcluding(&expectedMetadata, &resultMetadata, "Oid")
 			})
 			It("returns a slice of default metadata for an operator", func() {
-				testhelper.AssertQueryRuns(connectionPool, "CREATE OPERATOR public.#### (LEFTARG = bigint, PROCEDURE = numeric_fac)")
-				defer testhelper.AssertQueryRuns(connectionPool, "DROP OPERATOR public.#### (bigint, NONE)")
+				// Cloudberry does not support user-defined unary operators (based on PostgreSQL 14).
+				// To ensure this test runs on all platforms, we use a binary operator,
+				// which is supported by both Greenplum and Cloudberry.
+				testhelper.AssertQueryRuns(connectionPool, "CREATE FUNCTION public.binary_op_func(bigint, bigint) RETURNS bigint AS 'SELECT $1 + $2' LANGUAGE SQL IMMUTABLE;")
+				defer testhelper.AssertQueryRuns(connectionPool, "DROP FUNCTION public.binary_op_func(bigint, bigint);")
 
-				testhelper.AssertQueryRuns(connectionPool, "COMMENT ON OPERATOR public.#### (bigint, NONE) IS 'This is an operator comment.'")
+				testhelper.AssertQueryRuns(connectionPool, "CREATE OPERATOR public.#### (LEFTARG = bigint, RIGHTARG = bigint, PROCEDURE = public.binary_op_func)")
+				defer testhelper.AssertQueryRuns(connectionPool, "DROP OPERATOR public.#### (bigint, bigint)")
+				testhelper.AssertQueryRuns(connectionPool, "COMMENT ON OPERATOR public.#### (bigint, bigint) IS 'This is an operator comment.'")
 
 				resultMetadataMap := backup.GetMetadataForObjectType(connectionPool, backup.TYPE_OPERATOR)
 
