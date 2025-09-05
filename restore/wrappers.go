@@ -3,7 +3,6 @@ package restore
 import (
 	"fmt"
 	path "path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/cloudberrydb/gp-common-go-libs/dbconn"
@@ -106,8 +105,9 @@ SET default_with_oids = off;
 		// the tables, unless we're restoring to a cluster of
 		// a different size since in that case the data will be
 		// redistributed during the restore process.
-		backupConfigMajorVer, _ := strconv.Atoi(strings.Split(backupConfig.DatabaseVersion, ".")[0])
-		if backupConfigMajorVer < 6 && !resizeRestore {
+		var backupVersionInfo dbconn.GPDBVersion
+		backupVersionInfo.ParseVersionInfo(backupConfig.DatabaseVersion)
+		if backupVersionInfo.IsGPDB() && backupVersionInfo.Before("6") && !resizeRestore {
 			setupQuery += "SET gp_use_legacy_hashops = on;\n"
 			gplog.Warn("This backup set was taken on a version of Greenplum prior to 6.x. This restore will use the legacy hash operators when loading data.")
 			gplog.Warn("To use the new Greenplum 6.x default hash operators, these tables will need to be redistributed.")
@@ -131,6 +131,8 @@ SET default_with_oids = off;
 	// GPDB7 removed support for QuickLZ.  To support creating tables
 	// from backups done with QuickLZ, a GUC was added to allow silent
 	// fallback to zstd
+
+	// Cloudberry does not support QuickLZ.
 	if connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7") {
 		setupQuery += "SET gp_quicklz_fallback = on;\n"
 	}
