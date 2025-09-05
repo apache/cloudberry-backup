@@ -318,7 +318,8 @@ func generateSequenceDefinitionStatement(sequence Sequence) string {
 	minVal := int64(math.MinInt64)
 
 	// Identity columns cannot be defined with `AS smallint/integer`
-	if connectionPool.Version.AtLeast("7") && sequence.OwningColumnAttIdentity == "" {
+	if ((connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB()) &&
+		sequence.OwningColumnAttIdentity == "" {
 		if definition.Type != "bigint" {
 			statement += fmt.Sprintf("\n\tAS %s", definition.Type)
 		}

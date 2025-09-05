@@ -273,7 +273,8 @@ func retrieveAndBackupTypes(metadataFile *utils.FileWithByteCount, sortables *[]
 func retrieveConstraints(sortables *[]Sortable, metadataMap MetadataMap, tables ...Relation) ([]Constraint, []Constraint, MetadataMap) {
 	gplog.Verbose("Retrieving constraints")
 	constraints := GetConstraints(connectionPool, tables...)
-	if len(constraints) > 0 && connectionPool.Version.AtLeast("7") {
+	if len(constraints) > 0 && ((connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) ||
+		connectionPool.Version.IsCBDB()) {
 		RenameExchangedPartitionConstraints(connectionPool, &constraints)
 	}
 
