@@ -171,7 +171,21 @@ func GetOperatorClasses(connectionPool *dbconn.DBConn) []OperatorClass {
 		(SELECT amname FROM pg_catalog.pg_am WHERE oid = opcmethod) AS indexmethod,
 		opcintype::pg_catalog.regtype AS type,
 		opcdefault AS default,
-		opckeytype::pg_catalog.regtype AS storagetype
+		/*
+		 * GPDB7 (PG12) and CBDB (PG14) have different behaviors when casting
+		 * opckeytype to a regtype when the STORAGE type is the same as the
+		 * FOR TYPE and the opckeytype is not 0.
+		 *
+		 * In GPDB7, the expression opckeytype::regtype evaluates to "-"
+		 * in this case.
+		 *
+		 * In CBDB, the same expression evaluates to the type name (e.g., "integer").
+		 *
+		 * This CASE statement explicitly checks if the types are the same to
+		 * normalize this behavior, ensuring the output is always "-" when the
+		 * storage type is the same as the input type.
+		 */
+		CASE WHEN opcintype = opckeytype THEN '-' ELSE opckeytype::pg_catalog.regtype END AS storagetype
 	FROM pg_catalog.pg_opclass c
 		LEFT JOIN pg_catalog.pg_opfamily f ON f.oid = opcfamily
 		JOIN pg_catalog.pg_namespace cls_ns ON cls_ns.oid = opcnamespace
