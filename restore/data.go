@@ -140,6 +140,13 @@ func restoreSingleTableData(fpInfo *filepath.FilePathInfo, entry toc.Coordinator
 		numRowsRestored /= int64(destSize)
 	}
 
+	// TODO: When restoring a replicated table to a cluster with a different number of segments (resize),
+	// this check may fail for Cloudberry. This is because gprestore assumes that the COPY
+	// command for a replicated table returns the total number of rows copied across all segments
+	// (N * rows_per_segment) and divides the result by N to get the actual row count.
+	// However, due to Cloudberry issue https://github.com/apache/cloudberry/issues/1298,
+	// its COPY ON SEGMENT command returns only the base row count (rows_per_segment).
+	// The subsequent division in gprestore leads to a miscalculated row count, causing this check to fail.
 	err := CheckRowsRestored(numRowsRestored, numRowsBackedUp, tableName)
 	if err != nil {
 		gplog.Error(err.Error())
