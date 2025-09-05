@@ -837,7 +837,16 @@ LANGUAGE SQL`)
 			}
 
 			testhelper.AssertQueryRuns(connectionPool, fmt.Sprintf("CREATE LANGUAGE %su", plpythonString))
-			defer testhelper.AssertQueryRuns(connectionPool, fmt.Sprintf("DROP LANGUAGE %su", plpythonString))
+
+			// In Cloudberry (PG14+), a direct `CREATE LANGUAGE` command for a language
+			// like plpython3u implicitly links it to its corresponding extension, making
+			// it a core extension member. Therefore, it must be cleaned up by dropping
+			// the extension, not the language.
+			if connectionPool.Version.IsCBDB() {
+				defer testhelper.AssertQueryRuns(connectionPool, fmt.Sprintf("DROP EXTENSION IF EXISTS %su CASCADE", plpythonString))
+			} else {
+				defer testhelper.AssertQueryRuns(connectionPool, fmt.Sprintf("DROP LANGUAGE %su", plpythonString))
+			}
 
 			pythonHandlerOid := testutils.OidFromObjectName(connectionPool, "pg_catalog", fmt.Sprintf("%s_call_handler", plpythonString), backup.TYPE_FUNCTION)
 
@@ -852,8 +861,15 @@ LANGUAGE SQL`)
 
 			resultProcLangs := backup.GetProceduralLanguages(connectionPool)
 
-			Expect(resultProcLangs).To(HaveLen(1))
-			structmatcher.ExpectStructsToMatchExcluding(&expectedPlpythonInfo, &resultProcLangs[0], "Oid", "Owner")
+			// The GetProceduralLanguages function correctly filters out languages that are
+			// core members of an extension. Since the `CREATE LANGUAGE` command on
+			// Cloudberry creates such a language, we expect the result to have a length of 0.
+			if connectionPool.Version.IsCBDB() {
+				Expect(resultProcLangs).To(HaveLen(0))
+			} else {
+				Expect(resultProcLangs).To(HaveLen(1))
+				structmatcher.ExpectStructsToMatchExcluding(&expectedPlpythonInfo, &resultProcLangs[0], "Oid", "Owner")
+			}
 		})
 	})
 	Describe("GetConversions", func() {
