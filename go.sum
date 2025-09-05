@@ -10,8 +10,8 @@ github.com/blang/vfs v1.0.0/go.mod h1:jjuNUc/IKcRNNWC9NUCvz4fR9PZLPIKxEygtPs/4tS
 github.com/chzyer/logex v1.1.10/go.mod h1:+Ywpsq7O8HXn0nuIou7OrIPyXbp3wmkHB+jjWRnGsAI=
 github.com/chzyer/readline v0.0.0-20180603132655-2972be24d48e/go.mod h1:nSuG5e5PlCu98SY8svDHJxuZscDgtXS6KTTbou5AhLI=
 github.com/chzyer/test v0.0.0-20180213035817-a1ea475d72b1/go.mod h1:Q3SI9o4m/ZMnBNeIyt5eFwwo7qiLfzFZmjNmxjkiQlU=
-github.com/cloudberrydb/gp-common-go-libs v1.0.12-0.20250723025810-7e1b684694b9 h1:zzhl7xRkxIPiwCwym74nMVFKuo6xXSzvTzEQWOBPEVY=
-github.com/cloudberrydb/gp-common-go-libs v1.0.12-0.20250723025810-7e1b684694b9/go.mod h1:W9k5v2xUJLhDHJmYI/UktGdI0zNI71vPHZhAIot40Mw=
+github.com/cloudberrydb/gp-common-go-libs v1.0.12-0.20250725120259-928bc567da46 h1:ufa7QvspWSLINrkZHJooGlmc/4ErLpuPKt9TmIZAO68=
+github.com/cloudberrydb/gp-common-go-libs v1.0.12-0.20250725120259-928bc567da46/go.mod h1:W9k5v2xUJLhDHJmYI/UktGdI0zNI71vPHZhAIot40Mw=
 github.com/cockroachdb/apd v1.1.0 h1:3LFP3629v+1aKXU5Q37mxmRxX/pIu1nijXydLShEq5I=
 github.com/cockroachdb/apd v1.1.0/go.mod h1:8Sl8LxpKi29FqWXR16WEFZRNSz3SoPzUzeMeY4+DwBQ=
 github.com/coreos/go-systemd v0.0.0-20190321100706-95778dfbb74e/go.mod h1:F5haX7vjVVG0kc13fIWeqUViNPyEJxv/OmvnBo0Yme4=
