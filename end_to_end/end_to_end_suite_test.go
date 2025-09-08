@@ -2038,6 +2038,10 @@ LANGUAGE plpgsql NO SQL;`)
 			testhelper.AssertQueryRuns(backupConn, "DROP TYPE fruits CASCADE;")
 		})
 		It("Restores table data distributed by an enum", func() {
+			// TODO: Re-enable this test for Cloudberry once the issue with using ENUM as a distribution key is resolved.
+			if backupConn.Version.IsCBDB() {
+				Skip("Skipping test for Cloudberry due to issue with ENUM as distribution key.")
+			}
 			testhelper.AssertQueryRuns(backupConn, `CREATE TABLE table_with_enum_distkey (key colors) DISTRIBUTED BY (key)`)
 			testhelper.AssertQueryRuns(backupConn, `INSERT INTO table_with_enum_distkey VALUES ('red'), ('blue'), ('green'), ('yellow'),
 			('red'), ('blue'), ('green'), ('yellow'), ('red'), ('blue'), ('green'), ('yellow'), ('red'), ('blue'), ('green'), ('yellow');`)
@@ -2054,6 +2058,10 @@ LANGUAGE plpgsql NO SQL;`)
 				"table_with_enum_distkey": 16})
 		})
 		It("Restores table data distributed by multi-key enum", func() {
+			// TODO: Re-enable this test for Cloudberry once the issue with using ENUM as a distribution key is resolved.
+			if backupConn.Version.IsCBDB() {
+				Skip("Skipping test for Cloudberry due to issue with ENUM as distribution key.")
+			}
 			testhelper.AssertQueryRuns(backupConn, `CREATE TABLE table_with_multi_enum_distkey (key1 colors, key2 fruits) DISTRIBUTED BY (key1, key2);`)
 			testhelper.AssertQueryRuns(backupConn, `INSERT INTO table_with_multi_enum_distkey (key1, key2) VALUES ('red', 'apple'), ('blue', 'orange'), ('green', 'cherry'), ('yellow', 'banana'), ('red', 'cherry'), ('blue', 'orange'), ('green', 'apple'), ('yellow', 'cherry'), ('red', 'banana'), ('blue', 'apple'), ('green', 'cherry'), ('yellow', 'orange'), ('red', 'apple'), ('blue', 'cherry'), ('green', 'banana'), ('yellow', 'apple');`)
 
@@ -2069,6 +2077,10 @@ LANGUAGE plpgsql NO SQL;`)
 				"table_with_multi_enum_distkey": 16})
 		})
 		It("Restores table data distributed by altered enum type", func() {
+			// TODO: Re-enable this test for Cloudberry once the issue with using ENUM as a distribution key is resolved.
+			if backupConn.Version.IsCBDB() {
+				Skip("Skipping test for Cloudberry due to issue with ENUM as distribution key.")
+			}
 			testhelper.AssertQueryRuns(backupConn, `CREATE TABLE table_with_altered_enum_distkey (key colors) DISTRIBUTED BY (key)`)
 			testhelper.AssertQueryRuns(backupConn, `INSERT INTO table_with_altered_enum_distkey VALUES ('red'), ('blue'), ('green'), ('yellow'),
 			('red'), ('blue'), ('green'), ('yellow'), ('red'), ('blue'), ('green'), ('yellow'), ('red'), ('blue'), ('green'), ('yellow');`)
@@ -2112,6 +2124,11 @@ LANGUAGE plpgsql NO SQL;`)
 		It("Restores table data partitioned using GPDB7 partition syntax", func() {
 			// This test is borrowed from pg_dump
 			testutils.SkipIfBefore7(backupConn)
+			// TODO: Re-enable this test for Cloudberry once the issue with using ENUM as a distribution key is resolved.
+			if backupConn.Version.IsCBDB() {
+				Skip("Skipping test for Cloudberry due to issue with ENUM as distribution key.")
+			}
+
 			testhelper.AssertQueryRuns(backupConn, `create type digit as enum ('0', '1', '2', '3', '4', '5', '6', '7', '8', '9');`)
 			// non-troublesome hashed partitioning
 			testhelper.AssertQueryRuns(backupConn, `create table tplain (en digit, data int unique);
