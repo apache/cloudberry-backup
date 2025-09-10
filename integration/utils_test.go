@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/cloudberrydb/gp-common-go-libs/dbconn"
-	"github.com/cloudberrydb/gp-common-go-libs/testhelper"
+	"github.com/apache/cloudberry-go-libs/dbconn"
+	"github.com/apache/cloudberry-go-libs/testhelper"
 	fp "github.com/greenplum-db/gpbackup/filepath"
 	"github.com/greenplum-db/gpbackup/testutils"
 	"github.com/greenplum-db/gpbackup/utils"

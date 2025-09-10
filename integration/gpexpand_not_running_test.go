@@ -5,9 +5,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/cloudberrydb/gp-common-go-libs/dbconn"
-	"github.com/cloudberrydb/gp-common-go-libs/iohelper"
-	"github.com/cloudberrydb/gp-common-go-libs/testhelper"
+	"github.com/apache/cloudberry-go-libs/dbconn"
+	"github.com/apache/cloudberry-go-libs/iohelper"
+	"github.com/apache/cloudberry-go-libs/testhelper"
 	"github.com/greenplum-db/gpbackup/backup"
 	"github.com/greenplum-db/gpbackup/restore"
 	"github.com/greenplum-db/gpbackup/testutils"

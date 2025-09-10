@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/cloudberrydb/gp-common-go-libs/cluster"
+	"github.com/apache/cloudberry-go-libs/cluster"
 	"github.com/greenplum-db/gpbackup/backup"
 	"github.com/greenplum-db/gpbackup/history"
 	"github.com/greenplum-db/gpbackup/options"

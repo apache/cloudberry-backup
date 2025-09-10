@@ -3,8 +3,8 @@ package end_to_end_test
 import (
 	"os"
 
-	"github.com/cloudberrydb/gp-common-go-libs/iohelper"
-	"github.com/cloudberrydb/gp-common-go-libs/testhelper"
+	"github.com/apache/cloudberry-go-libs/iohelper"
+	"github.com/apache/cloudberry-go-libs/testhelper"
 	"github.com/greenplum-db/gpbackup/utils"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"

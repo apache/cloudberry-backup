@@ -7,8 +7,8 @@ package backup
 import (
 	"fmt"
 
-	"github.com/cloudberrydb/gp-common-go-libs/dbconn"
-	"github.com/cloudberrydb/gp-common-go-libs/gplog"
+	"github.com/apache/cloudberry-go-libs/dbconn"
+	"github.com/apache/cloudberry-go-libs/gplog"
 )
 
 const (

@@ -7,7 +7,7 @@ package backup
  */
 
 import (
-	"github.com/cloudberrydb/gp-common-go-libs/gplog"
+	"github.com/apache/cloudberry-go-libs/gplog"
 	"github.com/greenplum-db/gpbackup/toc"
 	"github.com/greenplum-db/gpbackup/utils"
 	"github.com/pkg/errors"

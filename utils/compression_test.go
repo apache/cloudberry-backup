@@ -3,10 +3,10 @@ package utils_test
 import (
 	"os/user"
 
-	"github.com/cloudberrydb/gp-common-go-libs/cluster"
-	"github.com/cloudberrydb/gp-common-go-libs/operating"
-	"github.com/cloudberrydb/gp-common-go-libs/structmatcher"
-	"github.com/cloudberrydb/gp-common-go-libs/testhelper"
+	"github.com/apache/cloudberry-go-libs/cluster"
+	"github.com/apache/cloudberry-go-libs/operating"
+	"github.com/apache/cloudberry-go-libs/structmatcher"
+	"github.com/apache/cloudberry-go-libs/testhelper"
 	"github.com/greenplum-db/gpbackup/utils"
 
 	. "github.com/onsi/ginkgo/v2"

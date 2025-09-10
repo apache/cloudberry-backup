@@ -11,7 +11,7 @@ import (
 	"io/ioutil"
 	"os"
 
-	"github.com/cloudberrydb/gp-common-go-libs/gplog"
+	"github.com/apache/cloudberry-go-libs/gplog"
 )
 
 /*

@@ -5,9 +5,9 @@ import (
 	"regexp"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/apache/cloudberry-go-libs/testhelper"
 	"github.com/blang/vfs"
 	"github.com/blang/vfs/memfs"
-	"github.com/cloudberrydb/gp-common-go-libs/testhelper"
 	"github.com/greenplum-db/gpbackup/utils"
 	"github.com/pkg/errors"
 

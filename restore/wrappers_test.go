@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/cloudberrydb/gp-common-go-libs/cluster"
-	"github.com/cloudberrydb/gp-common-go-libs/testhelper"
+	"github.com/apache/cloudberry-go-libs/cluster"
+	"github.com/apache/cloudberry-go-libs/testhelper"
 	"github.com/greenplum-db/gpbackup/history"
 	"github.com/greenplum-db/gpbackup/options"
 	"github.com/greenplum-db/gpbackup/restore"

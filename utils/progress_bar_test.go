@@ -6,9 +6,9 @@ import (
 	"os/user"
 	"time"
 
-	"github.com/cloudberrydb/gp-common-go-libs/gplog"
-	"github.com/cloudberrydb/gp-common-go-libs/operating"
-	"github.com/cloudberrydb/gp-common-go-libs/testhelper"
+	"github.com/apache/cloudberry-go-libs/gplog"
+	"github.com/apache/cloudberry-go-libs/operating"
+	"github.com/apache/cloudberry-go-libs/testhelper"
 	"github.com/greenplum-db/gpbackup/utils"
 	"gopkg.in/cheggaaa/pb.v1"
 

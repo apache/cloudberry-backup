@@ -3,7 +3,7 @@ package integration
 import (
 	"fmt"
 
-	"github.com/cloudberrydb/gp-common-go-libs/cluster"
+	"github.com/apache/cloudberry-go-libs/cluster"
 	"github.com/greenplum-db/gpbackup/filepath"
 	"github.com/greenplum-db/gpbackup/utils"
 

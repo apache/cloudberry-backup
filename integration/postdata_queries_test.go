@@ -4,8 +4,8 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/cloudberrydb/gp-common-go-libs/structmatcher"
-	"github.com/cloudberrydb/gp-common-go-libs/testhelper"
+	"github.com/apache/cloudberry-go-libs/structmatcher"
+	"github.com/apache/cloudberry-go-libs/testhelper"
 	"github.com/greenplum-db/gpbackup/backup"
 	"github.com/greenplum-db/gpbackup/options"
 	"github.com/greenplum-db/gpbackup/testutils"

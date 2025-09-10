@@ -8,7 +8,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/cloudberrydb/gp-common-go-libs/gplog"
+	"github.com/apache/cloudberry-go-libs/gplog"
 	"github.com/pkg/errors"
 	"github.com/spf13/pflag"
 )

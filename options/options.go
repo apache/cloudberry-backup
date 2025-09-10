@@ -5,9 +5,9 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/cloudberrydb/gp-common-go-libs/dbconn"
-	"github.com/cloudberrydb/gp-common-go-libs/gplog"
-	"github.com/cloudberrydb/gp-common-go-libs/iohelper"
+	"github.com/apache/cloudberry-go-libs/dbconn"
+	"github.com/apache/cloudberry-go-libs/gplog"
+	"github.com/apache/cloudberry-go-libs/iohelper"
 	"github.com/greenplum-db/gpbackup/utils"
 	"github.com/pkg/errors"
 	"github.com/spf13/pflag"
