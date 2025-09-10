@@ -1,7 +1,7 @@
 package restore
 
 import (
-	"github.com/cloudberrydb/gp-common-go-libs/dbconn"
+	"github.com/apache/cloudberry-go-libs/dbconn"
 	"github.com/greenplum-db/gpbackup/toc"
 
 	. "github.com/onsi/ginkgo/v2"

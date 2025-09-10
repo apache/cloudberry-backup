@@ -5,9 +5,9 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/apache/cloudberry-go-libs/dbconn"
+	"github.com/apache/cloudberry-go-libs/gplog"
 	"github.com/blang/vfs"
-	"github.com/cloudberrydb/gp-common-go-libs/dbconn"
-	"github.com/cloudberrydb/gp-common-go-libs/gplog"
 	"github.com/pkg/errors"
 )
 

@@ -5,8 +5,8 @@ import (
 	"os"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/cloudberrydb/gp-common-go-libs/dbconn"
-	"github.com/cloudberrydb/gp-common-go-libs/testhelper"
+	"github.com/apache/cloudberry-go-libs/dbconn"
+	"github.com/apache/cloudberry-go-libs/testhelper"
 	"github.com/greenplum-db/gpbackup/options"
 	"github.com/spf13/pflag"
 

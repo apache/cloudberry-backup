@@ -9,11 +9,11 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/apache/cloudberry-go-libs/cluster"
+	"github.com/apache/cloudberry-go-libs/iohelper"
+	"github.com/apache/cloudberry-go-libs/operating"
+	"github.com/apache/cloudberry-go-libs/testhelper"
 	"github.com/blang/semver"
-	"github.com/cloudberrydb/gp-common-go-libs/cluster"
-	"github.com/cloudberrydb/gp-common-go-libs/iohelper"
-	"github.com/cloudberrydb/gp-common-go-libs/operating"
-	"github.com/cloudberrydb/gp-common-go-libs/testhelper"
 	"github.com/greenplum-db/gpbackup/utils"
 	"github.com/pkg/errors"
 

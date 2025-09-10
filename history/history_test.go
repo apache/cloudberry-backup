@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cloudberrydb/gp-common-go-libs/operating"
-	"github.com/cloudberrydb/gp-common-go-libs/structmatcher"
-	"github.com/cloudberrydb/gp-common-go-libs/testhelper"
+	"github.com/apache/cloudberry-go-libs/operating"
+	"github.com/apache/cloudberry-go-libs/structmatcher"
+	"github.com/apache/cloudberry-go-libs/testhelper"
 	"github.com/greenplum-db/gpbackup/history"
 
 	. "github.com/onsi/ginkgo/v2"

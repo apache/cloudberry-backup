@@ -16,9 +16,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cloudberrydb/gp-common-go-libs/dbconn"
-	"github.com/cloudberrydb/gp-common-go-libs/gplog"
-	"github.com/cloudberrydb/gp-common-go-libs/operating"
+	"github.com/apache/cloudberry-go-libs/dbconn"
+	"github.com/apache/cloudberry-go-libs/gplog"
+	"github.com/apache/cloudberry-go-libs/operating"
 	"github.com/greenplum-db/gpbackup/filepath"
 	"github.com/pkg/errors"
 	"golang.org/x/sys/unix"

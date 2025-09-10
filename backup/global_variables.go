@@ -3,8 +3,8 @@ package backup
 import (
 	"sync"
 
-	"github.com/cloudberrydb/gp-common-go-libs/cluster"
-	"github.com/cloudberrydb/gp-common-go-libs/dbconn"
+	"github.com/apache/cloudberry-go-libs/cluster"
+	"github.com/apache/cloudberry-go-libs/dbconn"
 	"github.com/greenplum-db/gpbackup/filepath"
 	"github.com/greenplum-db/gpbackup/options"
 	"github.com/greenplum-db/gpbackup/report"

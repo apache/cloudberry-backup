@@ -3,7 +3,7 @@ package options_test
 import (
 	"flag"
 
-	"github.com/cloudberrydb/gp-common-go-libs/testhelper"
+	"github.com/apache/cloudberry-go-libs/testhelper"
 	"github.com/greenplum-db/gpbackup/options"
 	"github.com/spf13/pflag"
 

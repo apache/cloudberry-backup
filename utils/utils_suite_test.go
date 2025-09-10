@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/cloudberrydb/gp-common-go-libs/dbconn"
+	"github.com/apache/cloudberry-go-libs/dbconn"
 	"github.com/greenplum-db/gpbackup/testutils"
 
 	. "github.com/onsi/ginkgo/v2"

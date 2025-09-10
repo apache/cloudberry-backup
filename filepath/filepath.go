@@ -14,10 +14,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/cloudberrydb/gp-common-go-libs/cluster"
-	"github.com/cloudberrydb/gp-common-go-libs/dbconn"
-	"github.com/cloudberrydb/gp-common-go-libs/gplog"
-	"github.com/cloudberrydb/gp-common-go-libs/operating"
+	"github.com/apache/cloudberry-go-libs/cluster"
+	"github.com/apache/cloudberry-go-libs/dbconn"
+	"github.com/apache/cloudberry-go-libs/gplog"
+	"github.com/apache/cloudberry-go-libs/operating"
 )
 
 type FilePathInfo struct {
