@@ -102,7 +102,7 @@ func DoSetup() {
 
 	gplog.Info("gpbackup version = %s", backupConfig.BackupVersion)
 	gplog.Info("gprestore version = %s", GetVersion())
-	gplog.Info("Greenplum Database Version = %s", connectionPool.Version.VersionString)
+	gplog.Info("Apache Cloudberry Version = %s", connectionPool.Version.VersionString)
 
 	BackupConfigurationValidation()
 	metadataFilename := globalFPInfo.GetMetadataFilePath()

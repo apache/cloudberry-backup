@@ -1,5 +1,5 @@
 --
--- Greenplum Database database dump
+-- Apache Cloudberry database dump
 --
 
 SET statement_timeout = 0;
@@ -68,6 +68,6 @@ COPY returns (id, date, amt) FROM stdin;
 
 
 --
--- Greenplum Database database dump complete
+-- Apache Cloudberry database dump complete
 --
 

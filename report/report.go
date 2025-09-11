@@ -159,7 +159,7 @@ func (report *Report) WriteBackupReportFile(reportFilename string, timestamp str
 	reportInfo = append(reportInfo,
 		LineInfo{Key: "segment count:", Value: fmt.Sprintf("%d", report.SegmentCount)})
 
-	_, err = fmt.Fprint(reportFile, "Greenplum Database Backup Report\n\n")
+	_, err = fmt.Fprint(reportFile, "Apache Cloudberry Backup Report\n\n")
 	if err != nil {
 		gplog.Error("Unable to write backup report file %s", reportFilename)
 		return
@@ -184,7 +184,7 @@ func WriteRestoreReportFile(reportFilename string, backupTimestamp string, start
 	gprestoreCommandLine := strings.Join(os.Args, " ")
 	start, end, duration := GetDurationInfo(startTimestamp, operating.System.Now())
 
-	utils.MustPrintf(reportFile, "Greenplum Database Restore Report\n\n")
+	utils.MustPrintf(reportFile, "Apache Cloudberry Restore Report\n\n")
 
 	reportInfo := make([]LineInfo, 0)
 	reportInfo = append(reportInfo,

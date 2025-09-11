@@ -94,7 +94,7 @@ data file format: Single Data File Per Segment`,
 
 		It("writes a report for a successful backup", func() {
 			backupReport.WriteBackupReportFile("filename", timestamp, endtime, objectCounts, "")
-			Expect(buffer).To(Say(`Greenplum Database Backup Report
+			Expect(buffer).To(Say(`Apache Cloudberry Backup Report
 
 timestamp key:         20170101010101
 gpdb version:          5\.0\.0 build test
@@ -124,7 +124,7 @@ types       1000`))
 		})
 		It("writes a report for a failed backup", func() {
 			backupReport.WriteBackupReportFile("filename", timestamp, endtime, objectCounts, "Cannot access /tmp/backups: Permission denied")
-			Expect(buffer).To(Say(`Greenplum Database Backup Report
+			Expect(buffer).To(Say(`Apache Cloudberry Backup Report
 
 timestamp key:         20170101010101
 gpdb version:          5\.0\.0 build test
@@ -156,7 +156,7 @@ types       1000`))
 		It("writes a report without database size information", func() {
 			backupReport.DatabaseSize = ""
 			backupReport.WriteBackupReportFile("filename", timestamp, endtime, objectCounts, "")
-			Expect(buffer).To(Say(`Greenplum Database Backup Report
+			Expect(buffer).To(Say(`Apache Cloudberry Backup Report
 
 timestamp key:         20170101010101
 gpdb version:          5\.0\.0 build test
@@ -245,7 +245,7 @@ incremental backup set:
 		It("writes a report for a failed restore", func() {
 			gplog.SetErrorCode(2)
 			report.WriteRestoreReportFile("filename", timestamp, restoreStartTime, connectionPool, restoreVersion, 3, 4, "Cannot access /tmp/backups: Permission denied")
-			Expect(buffer).To(Say(`Greenplum Database Restore Report
+			Expect(buffer).To(Say(`Apache Cloudberry Restore Report
 
 timestamp key:           20170101010101
 gpdb version:            5\.0\.0 build test
@@ -266,7 +266,7 @@ restore error:           Cannot access /tmp/backups: Permission denied`))
 		It("writes a report for a successful restore", func() {
 			gplog.SetErrorCode(0)
 			report.WriteRestoreReportFile("filename", timestamp, restoreStartTime, connectionPool, restoreVersion, 3, 3, "")
-			Expect(buffer).To(Say(`Greenplum Database Restore Report
+			Expect(buffer).To(Say(`Apache Cloudberry Restore Report
 
 timestamp key:           20170101010101
 gpdb version:            5\.0\.0 build test
@@ -286,7 +286,7 @@ restore status:          Success`))
 		It("writes a report for a successful restore with errors", func() {
 			gplog.SetErrorCode(1)
 			report.WriteRestoreReportFile("filename", timestamp, restoreStartTime, connectionPool, restoreVersion, 3, 3, "")
-			Expect(buffer).To(Say(`Greenplum Database Restore Report
+			Expect(buffer).To(Say(`Apache Cloudberry Restore Report
 
 timestamp key:           20170101010101
 gpdb version:            5\.0\.0 build test
@@ -310,7 +310,7 @@ restore status:          Success but non-fatal errors occurred. See log file .+ 
 			}
 			report.WriteRestoreReportFile("filename", timestamp, restoreStartTime, connectionPool, restoreVersion, 3, 3, "")
 			Expect(stdout).To(Say("skipping report creation"))
-			Expect(buffer).ToNot(Say("Greenplum Database Restore Report"))
+			Expect(buffer).ToNot(Say("Apache Cloudberry Restore Report"))
 			Expect(gplog.GetErrorCode()).To(Equal(0))
 
 		})
@@ -437,7 +437,7 @@ restore status:          Success but non-fatal errors occurred. See log file .+ 
 	})
 
 	Describe("Email-related functions", func() {
-		reportFileContents := []byte(`Greenplum Database Backup Report
+		reportFileContents := []byte(`Apache Cloudberry Backup Report
 
 Timestamp Key: 20170101010101`)
 		contactsFileContents, _ := yaml.Marshal(report.ContactFile{
@@ -545,7 +545,7 @@ Content-Disposition: inline
 <html>
 <body>
 <pre style=\"font: monospace\">
-Greenplum Database Backup Report
+Apache Cloudberry Backup Report
 
 Timestamp Key: 20170101010101
 </pre>
@@ -567,7 +567,7 @@ Content-Disposition: inline
 <html>
 <body>
 <pre style=\"font: monospace\">
-Greenplum Database Backup Report
+Apache Cloudberry Backup Report
 
 Timestamp Key: 20170101010101
 </pre>

@@ -50,7 +50,7 @@ func DoSetup() {
 	timestamp := history.CurrentTimestamp()
 	createBackupLockFile(timestamp)
 	initializeConnectionPool(timestamp)
-	gplog.Info("Greenplum Database Version = %s", connectionPool.Version.VersionString)
+	gplog.Info("Apache Cloudberry Version = %s", connectionPool.Version.VersionString)
 
 	gplog.Info("Starting backup of database %s", MustGetFlagString(options.DBNAME))
 	opts, err := options.NewOptions(cmdFlags)
