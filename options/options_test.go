@@ -7,7 +7,7 @@ import (
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/apache/cloudberry-go-libs/dbconn"
 	"github.com/apache/cloudberry-go-libs/testhelper"
-	"github.com/greenplum-db/gpbackup/options"
+	"github.com/apache/cloudberry-gpbackup/options"
 	"github.com/spf13/pflag"
 
 	. "github.com/onsi/ginkgo/v2"

@@ -10,7 +10,7 @@ if [[ -f /opt/gcc_env.sh ]]; then
 fi
 
 # Build gpbackup
-pushd ${GOPATH}/src/github.com/greenplum-db/gpbackup
+pushd ${GOPATH}/src/github.com/apache/cloudberry-gpbackup
   make depend build unit
   version=$(git describe --tags | perl -pe 's/(.*)-([0-9]*)-(g[0-9a-f]*)/\1+dev.\2.\3/')
 popd
@@ -23,7 +23,7 @@ if [[ "gpbackup version ${version}" != "$(${GOPATH}/bin/gpbackup --version)" ]];
 fi
 
 # Build s3 plugin
-pushd ${GOPATH}/src/github.com/greenplum-db/gpbackup-s3-plugin
+pushd ${GOPATH}/src/github.com/apache/cloudberry-gpbackup-s3-plugin
   make depend build unit
   s3_plugin_version=$(git describe --tags | perl -pe 's/(.*)-([0-9]*)-(g[0-9a-f]*)/\1+dev.\2.\3/')
 popd

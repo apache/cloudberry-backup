@@ -38,7 +38,7 @@ CONFIG
 # ----------------------------------------------
 # Run S3 Plugin scale tests
 # ----------------------------------------------
-pushd \${GOPATH}/src/github.com/greenplum-db/gpbackup/plugins
+pushd \${GOPATH}/src/github.com/apache/cloudberry-gpbackup/plugins
 print_time_exec "./plugin_test_scale.sh \${GPHOME}/bin/gpbackup_s3_plugin ~/s3_config.yaml"
 popd
 

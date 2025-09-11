@@ -51,7 +51,7 @@ options:
   gpbackup_ddboost_plugin: 66706c6c6e677a6965796f68343365303133336f6c73366b316868326764
 CONFIG
 
-pushd \${GOPATH}/src/github.com/greenplum-db/gpbackup/plugins
+pushd \${GOPATH}/src/github.com/apache/cloudberry-gpbackup/plugins
 ./plugin_test_scale.sh \${GPHOME}/bin/gpbackup_ddboost_plugin \${HOME}/ddboost_config.yaml
 ./plugin_test_scale.sh \${GPHOME}/bin/gpbackup_ddboost_plugin \${HOME}/ddboost_config_replication.yaml
 popd

@@ -9,8 +9,8 @@ import (
 	"github.com/apache/cloudberry-go-libs/gplog"
 	"github.com/apache/cloudberry-go-libs/operating"
 	"github.com/apache/cloudberry-go-libs/testhelper"
-	"github.com/greenplum-db/gpbackup/filepath"
-	"github.com/greenplum-db/gpbackup/utils"
+	"github.com/apache/cloudberry-gpbackup/filepath"
+	"github.com/apache/cloudberry-gpbackup/utils"
 	"github.com/pkg/errors"
 
 	. "github.com/onsi/ginkgo/v2"

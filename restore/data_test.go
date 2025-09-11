@@ -8,11 +8,11 @@ import (
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/apache/cloudberry-go-libs/cluster"
-	"github.com/greenplum-db/gpbackup/backup"
-	"github.com/greenplum-db/gpbackup/history"
-	"github.com/greenplum-db/gpbackup/options"
-	"github.com/greenplum-db/gpbackup/restore"
-	"github.com/greenplum-db/gpbackup/utils"
+	"github.com/apache/cloudberry-gpbackup/backup"
+	"github.com/apache/cloudberry-gpbackup/history"
+	"github.com/apache/cloudberry-gpbackup/options"
+	"github.com/apache/cloudberry-gpbackup/restore"
+	"github.com/apache/cloudberry-gpbackup/utils"
 	"github.com/jackc/pgconn"
 
 	. "github.com/onsi/ginkgo/v2"

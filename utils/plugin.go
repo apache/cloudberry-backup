@@ -13,8 +13,8 @@ import (
 	"github.com/apache/cloudberry-go-libs/gplog"
 	"github.com/apache/cloudberry-go-libs/iohelper"
 	"github.com/apache/cloudberry-go-libs/operating"
+	"github.com/apache/cloudberry-gpbackup/filepath"
 	"github.com/blang/semver"
-	"github.com/greenplum-db/gpbackup/filepath"
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v2"
 )

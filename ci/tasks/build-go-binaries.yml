@@ -5,9 +5,9 @@ image_resource:
 
 inputs:
 - name: gpbackup
-  path: go/src/github.com/greenplum-db/gpbackup
+  path: go/src/github.com/apache/cloudberry-gpbackup
 - name: gpbackup_s3_plugin
-  path: go/src/github.com/greenplum-db/gpbackup-s3-plugin
+  path: go/src/github.com/apache/cloudberry-gpbackup-s3-plugin
 - name: gpbackup_manager_src
   path: go/src/github.com/pivotal/gp-backup-manager
 
@@ -19,4 +19,4 @@ params:
     OS: RHEL8
 
 run:
-  path: go/src/github.com/greenplum-db/gpbackup/ci/scripts/build-go-binaries.bash
+  path: go/src/github.com/apache/cloudberry-gpbackup/ci/scripts/build-go-binaries.bash

@@ -12,7 +12,7 @@ import (
 
 	"github.com/apache/cloudberry-go-libs/dbconn"
 	"github.com/apache/cloudberry-go-libs/gplog"
-	"github.com/greenplum-db/gpbackup/toc"
+	"github.com/apache/cloudberry-gpbackup/toc"
 )
 
 /*

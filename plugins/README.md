@@ -350,10 +350,10 @@ test_plugin --version
 
 ## Plugin flow within gpbackup and gprestore
 ### Backup Plugin Flow
-![Backup Plugin Flow](https://github.com/greenplum-db/gpbackup/wiki/backup_plugin_flow.png)
+![Backup Plugin Flow](https://github.com/apache/cloudberry-gpbackup/wiki/backup_plugin_flow.png)
 
 ### Restore Plugin Flow
-![Restore Plugin Flow](https://github.com/greenplum-db/gpbackup/wiki/restore_plugin_flow.png)
+![Restore Plugin Flow](https://github.com/apache/cloudberry-gpbackup/wiki/restore_plugin_flow.png)
 
 ## Custom yaml file
 Parameters specific to a plugin can be specified through the plugin configuration yaml file. The _executablepath_ key is required and used by gpbackup and gprestore. Additional arguments should be specified under the _options_ keyword. A path to this file is passed as the first argument to every API command. Options and valid arguments should be documented by the plugin.
@@ -371,7 +371,7 @@ options:
 
 ## Verification using the gpbackup plugin API test bench
 
-We provide tests to ensure your plugin will work with gpbackup and gprestore. If the tests succesfully run your plugin, you can be confident that your plugin will work with the utilities. The tests are located [here](https://github.com/greenplum-db/gpbackup/blob/coordinator/plugins/plugin_test.sh).
+We provide tests to ensure your plugin will work with gpbackup and gprestore. If the tests succesfully run your plugin, you can be confident that your plugin will work with the utilities. The tests are located [here](https://github.com/apache/cloudberry-gpbackup/blob/coordinator/plugins/plugin_test.sh).
 
 Run the test bench script using:
 

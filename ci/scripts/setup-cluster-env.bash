@@ -11,7 +11,7 @@ ssh -t ${default_ami_user}@cdw " \
     sudo mkdir -p /home/gpadmin/go/src/github.com/greenplum-db && \
     sudo chown gpadmin:gpadmin -R /home/gpadmin"
 
-scp -r -q gpbackup cdw:/home/gpadmin/go/src/github.com/greenplum-db/gpbackup
+scp -r -q gpbackup cdw:/home/gpadmin/go/src/github.com/apache/cloudberry-gpbackup
 
 if test -f dummy_seclabel/dummy_seclabel*.so; then
   scp dummy_seclabel/dummy_seclabel*.so cdw:${GPHOME}/lib/postgresql/dummy_seclabel.so

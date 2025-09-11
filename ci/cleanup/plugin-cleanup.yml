@@ -36,7 +36,7 @@ resources:
   type: git
   icon: github-circle
   source:
-    uri: https://github.com/greenplum-db/gpbackup
+    uri: https://github.com/apache/cloudberry-gpbackup
     branch: ((gpbackup-git-branch))
 
 ##############################################

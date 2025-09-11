@@ -8,8 +8,8 @@ import (
 
 	"github.com/apache/cloudberry-go-libs/dbconn"
 	"github.com/apache/cloudberry-go-libs/testhelper"
+	"github.com/apache/cloudberry-gpbackup/history"
 	"github.com/blang/semver"
-	"github.com/greenplum-db/gpbackup/history"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
