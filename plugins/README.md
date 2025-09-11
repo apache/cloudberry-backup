@@ -32,7 +32,7 @@ options:
 ```
 
 ## Available plugins
-[gpbackup_s3_plugin](https://github.com/apache/cloudberry-gpbackup-s3-plugin): Allows users to back up their Greenplum Database to Amazon S3.
+[gpbackup_s3_plugin](https://github.com/apache/cloudberry-gpbackup-s3-plugin): Allows users to back up their Apache Cloudberry to Amazon S3.
 
 ## Developing plugins
 

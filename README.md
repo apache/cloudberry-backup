@@ -1,6 +1,6 @@
 # Greenplum Backup
 
-`gpbackup` and `gprestore` are Go utilities for performing Greenplum Database backups.  They are still currently in active development.
+`gpbackup` and `gprestore` are Go utilities for performing Apache Cloudberry backups.  They are still currently in active development.
 
 ## Pre-Requisites
 
@@ -50,7 +50,7 @@ popd
 
 ### Test execution
 
-**NOTE**: The integration and end_to_end tests require a running Greenplum Database instance.
+**NOTE**: The integration and end_to_end tests require a running Apache Cloudberry instance.
 
 To run all tests except end-to-end (linters, unit, and integration), use
 ```bash

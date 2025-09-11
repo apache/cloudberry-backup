@@ -1,5 +1,5 @@
 --
--- Greenplum Database database dump
+-- Apache Cloudberry database dump
 --
 
 SET statement_timeout = 0;
@@ -132,6 +132,6 @@ CREATE TABLE public."FOObar" (i int);
 insert into public."FOObar" values (1);
 
 --
--- Greenplum Database database dump complete
+-- Apache Cloudberry database dump complete
 --
 
