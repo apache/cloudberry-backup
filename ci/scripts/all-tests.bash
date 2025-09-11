@@ -24,7 +24,7 @@ cat <<SCRIPT > /tmp/run_tests.bash
 
   set -ex
   source env.sh
-  cd \${GOPATH}/src/github.com/greenplum-db/gpbackup
+  cd \${GOPATH}/src/github.com/apache/cloudberry-gpbackup
   export OLD_BACKUP_VERSION="${GPBACKUP_VERSION}"
 
   # Set the GPDB version to use for the unit tests

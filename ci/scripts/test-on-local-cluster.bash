@@ -42,7 +42,7 @@ mkdir -p \${GOPATH}/bin \${GOPATH}/src/github.com/greenplum-db
 cp -R $(pwd)/gpbackup \${GOPATH}/src/github.com/greenplum-db/
 
 # Install dependencies before sourcing greenplum path. Using the GPDB curl is causing issues.
-pushd \${GOPATH}/src/github.com/greenplum-db/gpbackup
+pushd \${GOPATH}/src/github.com/apache/cloudberry-gpbackup
   make depend
 popd
 
@@ -79,7 +79,7 @@ fi
 export TEST_GPDB_VERSION=\$(echo \$out | sed -n 's/.*Greenplum Database \([0-9].[0-9]\+.[0-9]\+\).*/\1/p')
 
 # Test gpbackup
-pushd \${GOPATH}/src/github.com/greenplum-db/gpbackup
+pushd \${GOPATH}/src/github.com/apache/cloudberry-gpbackup
   make unit integration end_to_end
 popd
 SCRIPT

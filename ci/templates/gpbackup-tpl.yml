@@ -280,7 +280,7 @@ resources:
   type: git
   icon: github-circle
   source:
-    uri: https://github.com/greenplum-db/gpbackup
+    uri: https://github.com/apache/cloudberry-gpbackup
     branch: ((gpbackup-git-branch))
 {% if "gpbackup-release" == pipeline_name %}
     tag_filter: 1.*
@@ -291,7 +291,7 @@ resources:
   icon: github-circle
   source:
     branch: main
-    uri: https://github.com/greenplum-db/gpbackup-s3-plugin
+    uri: https://github.com/apache/cloudberry-gpbackup-s3-plugin
 {% if "gpbackup-release" == pipeline_name %}
     tag_filter: 1.*
 {% endif %}

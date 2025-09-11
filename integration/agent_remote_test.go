@@ -4,8 +4,8 @@ import (
 	"fmt"
 
 	"github.com/apache/cloudberry-go-libs/cluster"
-	"github.com/greenplum-db/gpbackup/filepath"
-	"github.com/greenplum-db/gpbackup/utils"
+	"github.com/apache/cloudberry-gpbackup/filepath"
+	"github.com/apache/cloudberry-gpbackup/utils"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"

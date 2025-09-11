@@ -68,7 +68,7 @@ options:
   restore_multipart_chunksize: 5MB
 MINIO_CONFIG
 
-  pushd ~/go/src/github.com/greenplum-db/gpbackup/plugins
+  pushd ~/go/src/github.com/apache/cloudberry-gpbackup/plugins
     ./plugin_test.sh \${GPHOME}/bin/gpbackup_s3_plugin \${HOME}/minio_config.yaml
   popd
 SCRIPT
@@ -95,7 +95,7 @@ options:
   restore_multipart_chunksize: 100MB
 S3_CONFIG
 
-  pushd ~/go/src/github.com/greenplum-db/gpbackup/plugins
+  pushd ~/go/src/github.com/apache/cloudberry-gpbackup/plugins
     ./plugin_test.sh \${GPHOME}/bin/gpbackup_s3_plugin \${HOME}/s3_config.yaml
   popd
 SCRIPT

@@ -260,7 +260,7 @@ resources:
   type: git
   icon: github-circle
   source:
-    uri: https://github.com/greenplum-db/gpbackup
+    uri: https://github.com/apache/cloudberry-gpbackup
     branch: ((gpbackup-git-branch))
 
 - name: gpbackup_s3_plugin
@@ -268,7 +268,7 @@ resources:
   icon: github-circle
   source:
     branch: main
-    uri: https://github.com/greenplum-db/gpbackup-s3-plugin
+    uri: https://github.com/apache/cloudberry-gpbackup-s3-plugin
 
 - name: gpbackup_ddboost_plugin
   type: git

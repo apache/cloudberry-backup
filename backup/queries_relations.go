@@ -13,9 +13,9 @@ import (
 
 	"github.com/apache/cloudberry-go-libs/dbconn"
 	"github.com/apache/cloudberry-go-libs/gplog"
-	"github.com/greenplum-db/gpbackup/options"
-	"github.com/greenplum-db/gpbackup/toc"
-	"github.com/greenplum-db/gpbackup/utils"
+	"github.com/apache/cloudberry-gpbackup/options"
+	"github.com/apache/cloudberry-gpbackup/toc"
+	"github.com/apache/cloudberry-gpbackup/utils"
 	"github.com/pkg/errors"
 )
 

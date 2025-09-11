@@ -5,10 +5,10 @@ import (
 
 	"github.com/apache/cloudberry-go-libs/dbconn"
 	"github.com/apache/cloudberry-go-libs/gplog"
-	"github.com/greenplum-db/gpbackup/filepath"
-	"github.com/greenplum-db/gpbackup/history"
-	"github.com/greenplum-db/gpbackup/options"
-	"github.com/greenplum-db/gpbackup/utils"
+	"github.com/apache/cloudberry-gpbackup/filepath"
+	"github.com/apache/cloudberry-gpbackup/history"
+	"github.com/apache/cloudberry-gpbackup/options"
+	"github.com/apache/cloudberry-gpbackup/utils"
 	"github.com/pkg/errors"
 	"github.com/spf13/pflag"
 )

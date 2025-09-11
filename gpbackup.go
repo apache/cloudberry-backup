@@ -1,3 +1,4 @@
+//go:build gpbackup
 // +build gpbackup
 
 package main
@@ -5,8 +6,8 @@ package main
 import (
 	"os"
 
-	. "github.com/greenplum-db/gpbackup/backup"
-	"github.com/greenplum-db/gpbackup/options"
+	. "github.com/apache/cloudberry-gpbackup/backup"
+	"github.com/apache/cloudberry-gpbackup/options"
 	"github.com/spf13/cobra"
 )
 

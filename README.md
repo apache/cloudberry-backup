@@ -10,10 +10,10 @@ The project also has a dependency on `sqlite3`. This is installed by default on 
 ## Downloading
 
 ```bash
-go get github.com/greenplum-db/gpbackup/...
+go get github.com/apache/cloudberry-gpbackup/...
 ```
 
-This will place the code in `$GOPATH/github.com/greenplum-db/gpbackup`.
+This will place the code in `$GOPATH/github.com/apache/cloudberry-gpbackup`.
 
 ## Building and installing binaries
 
@@ -118,11 +118,11 @@ make clean
 
 # More Information
 
-The Greenplum Backup [wiki](https://github.com/greenplum-db/gpbackup/wiki) for this project has several articles providing a more in-depth explanation of certain aspects of gpbackup and gprestore.
+The Greenplum Backup [wiki](https://github.com/apache/cloudberry-gpbackup/wiki) for this project has several articles providing a more in-depth explanation of certain aspects of gpbackup and gprestore.
 
 # How to Contribute
 
-See [CONTRIBUTING.md file](https://github.com/greenplum-db/gpbackup/blob/master/CONTRIBUTING.md).
+See [CONTRIBUTING.md file](https://github.com/apache/cloudberry-gpbackup/blob/master/CONTRIBUTING.md).
 
 # Code Formatting
 

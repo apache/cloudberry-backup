@@ -1,3 +1,4 @@
+//go:build gprestore
 // +build gprestore
 
 package main
@@ -5,8 +6,8 @@ package main
 import (
 	"os"
 
-	"github.com/greenplum-db/gpbackup/options"
-	. "github.com/greenplum-db/gpbackup/restore"
+	"github.com/apache/cloudberry-gpbackup/options"
+	. "github.com/apache/cloudberry-gpbackup/restore"
 	"github.com/spf13/cobra"
 )
 

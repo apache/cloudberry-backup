@@ -7,7 +7,7 @@ import (
 	"github.com/apache/cloudberry-go-libs/operating"
 	"github.com/apache/cloudberry-go-libs/structmatcher"
 	"github.com/apache/cloudberry-go-libs/testhelper"
-	"github.com/greenplum-db/gpbackup/utils"
+	"github.com/apache/cloudberry-gpbackup/utils"
 
 	. "github.com/onsi/ginkgo/v2"
 )

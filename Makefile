@@ -11,9 +11,9 @@ HELPER=gpbackup_helper
 BIN_DIR=$(shell echo $${GOPATH:-~/go} | awk -F':' '{ print $$1 "/bin"}')
 GINKGO_FLAGS := -r --keep-going --randomize-suites --randomize-all --no-color
 GIT_VERSION := $(shell git describe --tags | perl -pe 's/(.*)-([0-9]*)-(g[0-9a-f]*)/\1+dev.\2.\3/')
-BACKUP_VERSION_STR=github.com/greenplum-db/gpbackup/backup.version=$(GIT_VERSION)
-RESTORE_VERSION_STR=github.com/greenplum-db/gpbackup/restore.version=$(GIT_VERSION)
-HELPER_VERSION_STR=github.com/greenplum-db/gpbackup/helper.version=$(GIT_VERSION)
+BACKUP_VERSION_STR=github.com/apache/cloudberry-gpbackup/backup.version=$(GIT_VERSION)
+RESTORE_VERSION_STR=github.com/apache/cloudberry-gpbackup/restore.version=$(GIT_VERSION)
+HELPER_VERSION_STR=github.com/apache/cloudberry-gpbackup/helper.version=$(GIT_VERSION)
 
 # note that /testutils is not a production directory, but has unit tests to validate testing tools
 SUBDIRS_HAS_UNIT=backup/ filepath/ history/ helper/ options/ report/ restore/ toc/ utils/ testutils/

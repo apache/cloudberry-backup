@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/greenplum-db/gpbackup/toc"
-	"github.com/greenplum-db/gpbackup/utils"
+	"github.com/apache/cloudberry-gpbackup/toc"
+	"github.com/apache/cloudberry-gpbackup/utils"
 	"github.com/klauspost/compress/zstd"
 	"github.com/pkg/errors"
 	"golang.org/x/sys/unix"

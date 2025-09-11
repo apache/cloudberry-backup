@@ -3,8 +3,8 @@ package integration
 import (
 	"github.com/apache/cloudberry-go-libs/gplog"
 	"github.com/apache/cloudberry-go-libs/testhelper"
-	"github.com/greenplum-db/gpbackup/backup"
-	"github.com/greenplum-db/gpbackup/options"
+	"github.com/apache/cloudberry-gpbackup/backup"
+	"github.com/apache/cloudberry-gpbackup/options"
 	"github.com/spf13/cobra"
 
 	. "github.com/onsi/ginkgo/v2"

@@ -47,7 +47,7 @@ cat <<SCRIPT > /tmp/run_tests.bash
     gpssh -f /home/gpadmin/segment_host_list "source /usr/local/greenplum-db-devel/greenplum_path.sh; gpbackup_helper --version"
 
     # TODO: It might be nice to make this a tarfile, like with the backwards compatibility job, but this works fine as-is
-    pushd \${GOPATH}/src/github.com/greenplum-db/gpbackup
+    pushd \${GOPATH}/src/github.com/apache/cloudberry-gpbackup
       git checkout \${OLD_BACKUP_VERSION}
       make build
 

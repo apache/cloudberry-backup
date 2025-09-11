@@ -14,9 +14,9 @@ import (
 	"github.com/apache/cloudberry-go-libs/gplog"
 	"github.com/apache/cloudberry-go-libs/iohelper"
 	"github.com/apache/cloudberry-go-libs/operating"
+	"github.com/apache/cloudberry-gpbackup/history"
+	"github.com/apache/cloudberry-gpbackup/utils"
 	"github.com/blang/semver"
-	"github.com/greenplum-db/gpbackup/history"
-	"github.com/greenplum-db/gpbackup/utils"
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v2"
 )

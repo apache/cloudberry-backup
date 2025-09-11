@@ -4,9 +4,9 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/greenplum-db/gpbackup/backup"
-	"github.com/greenplum-db/gpbackup/testutils"
-	"github.com/greenplum-db/gpbackup/toc"
+	"github.com/apache/cloudberry-gpbackup/backup"
+	"github.com/apache/cloudberry-gpbackup/testutils"
+	"github.com/apache/cloudberry-gpbackup/toc"
 
 	. "github.com/onsi/ginkgo/v2"
 )

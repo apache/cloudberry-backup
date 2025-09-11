@@ -82,14 +82,14 @@ options:
   pgport: 5432
 CONFIG
 
-pushd \${GOPATH}/src/github.com/greenplum-db/gpbackup/plugins
+pushd \${GOPATH}/src/github.com/apache/cloudberry-gpbackup/plugins
 
 ./plugin_test.sh \${GPHOME}/bin/gpbackup_ddboost_plugin \${HOME}/ddboost_config_replication.yaml \${HOME}/ddboost_config_replication_restore.yaml
 
 ./plugin_test.sh \${GPHOME}/bin/gpbackup_ddboost_plugin \${HOME}/ddboost_config.yaml \${HOME}/ddboost_config_replication_restore.yaml
 
 # exercise boostfs, which is mounted at /data/gpdata/dd_dir
-pushd \${GOPATH}/src/github.com/greenplum-db/gpbackup
+pushd \${GOPATH}/src/github.com/apache/cloudberry-gpbackup
 
 make end_to_end CUSTOM_BACKUP_DIR=/data/gpdata/dd_dir/end_to_end_GPDB${GPDB_VERSION}/${TIME_NANO}
 SCRIPT

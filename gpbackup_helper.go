@@ -1,9 +1,10 @@
+//go:build gpbackup_helper
 // +build gpbackup_helper
 
 package main
 
 import (
-	. "github.com/greenplum-db/gpbackup/helper"
+	. "github.com/apache/cloudberry-gpbackup/helper"
 )
 
 func main() {

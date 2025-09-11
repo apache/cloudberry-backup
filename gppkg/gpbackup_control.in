@@ -5,4 +5,4 @@ Architecture: ${ARCH}
 Version: ${GPBACKUP_TOOLS_VERSION}
 Provides: gpbackup_tools
 Description: gpbackup and gprestore are Go utilities for performing Greenplum Database backups.
-Homepage: https://github.com/greenplum-db/gpbackup
+Homepage: https://github.com/apache/cloudberry-gpbackup
