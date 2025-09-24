@@ -11,8 +11,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/apache/cloudberry-gpbackup/toc"
-	"github.com/apache/cloudberry-gpbackup/utils"
+	"github.com/apache/cloudberry-backup/toc"
+	"github.com/apache/cloudberry-backup/utils"
 )
 
 func PrintCreateOperatorStatement(metadataFile *utils.FileWithByteCount, objToc *toc.TOC, operator Operator, operatorMetadata ObjectMetadata) {

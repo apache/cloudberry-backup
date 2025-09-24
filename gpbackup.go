@@ -6,8 +6,8 @@ package main
 import (
 	"os"
 
-	. "github.com/apache/cloudberry-gpbackup/backup"
-	"github.com/apache/cloudberry-gpbackup/options"
+	. "github.com/apache/cloudberry-backup/backup"
+	"github.com/apache/cloudberry-backup/options"
 	"github.com/spf13/cobra"
 )
 

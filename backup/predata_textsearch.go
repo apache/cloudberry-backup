@@ -10,8 +10,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/apache/cloudberry-gpbackup/toc"
-	"github.com/apache/cloudberry-gpbackup/utils"
+	"github.com/apache/cloudberry-backup/toc"
+	"github.com/apache/cloudberry-backup/utils"
 )
 
 func PrintCreateTextSearchParserStatement(metadataFile *utils.FileWithByteCount, objToc *toc.TOC, parser TextSearchParser, parserMetadata ObjectMetadata) {

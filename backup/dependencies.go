@@ -7,8 +7,8 @@ import (
 
 	"github.com/apache/cloudberry-go-libs/dbconn"
 	"github.com/apache/cloudberry-go-libs/gplog"
-	"github.com/apache/cloudberry-gpbackup/toc"
-	"github.com/apache/cloudberry-gpbackup/utils"
+	"github.com/apache/cloudberry-backup/toc"
+	"github.com/apache/cloudberry-backup/utils"
 	"github.com/pkg/errors"
 )
 

@@ -24,11 +24,11 @@ import (
 	"github.com/apache/cloudberry-go-libs/operating"
 	"github.com/apache/cloudberry-go-libs/structmatcher"
 	"github.com/apache/cloudberry-go-libs/testhelper"
-	"github.com/apache/cloudberry-gpbackup/backup"
-	"github.com/apache/cloudberry-gpbackup/filepath"
-	"github.com/apache/cloudberry-gpbackup/testutils"
-	"github.com/apache/cloudberry-gpbackup/toc"
-	"github.com/apache/cloudberry-gpbackup/utils"
+	"github.com/apache/cloudberry-backup/backup"
+	"github.com/apache/cloudberry-backup/filepath"
+	"github.com/apache/cloudberry-backup/testutils"
+	"github.com/apache/cloudberry-backup/toc"
+	"github.com/apache/cloudberry-backup/utils"
 	"github.com/blang/semver"
 	"github.com/pkg/errors"
 	"github.com/spf13/pflag"
@@ -127,13 +127,13 @@ func buildOldBinaries(version string) (string, string) {
 	mustRunCommand(command)
 	command = exec.Command("dep", "ensure")
 	mustRunCommand(command)
-	gpbackupOldPath, err := Build("github.com/apache/cloudberry-gpbackup",
+	gpbackupOldPath, err := Build("github.com/apache/cloudberry-backup",
 		"-tags", "gpbackup", "-ldflags",
-		fmt.Sprintf("-X github.com/apache/cloudberry-gpbackup/backup.version=%s", version))
+		fmt.Sprintf("-X github.com/apache/cloudberry-backup/backup.version=%s", version))
 	Expect(err).ShouldNot(HaveOccurred())
-	gpbackupHelperOldPath, err := Build("github.com/apache/cloudberry-gpbackup",
+	gpbackupHelperOldPath, err := Build("github.com/apache/cloudberry-backup",
 		"-tags", "gpbackup_helper", "-ldflags",
-		fmt.Sprintf("-X github.com/apache/cloudberry-gpbackup/helper.version=%s", version))
+		fmt.Sprintf("-X github.com/apache/cloudberry-backup/helper.version=%s", version))
 	Expect(err).ShouldNot(HaveOccurred())
 	command = exec.Command("git", "checkout", "-", "-f")
 	mustRunCommand(command)

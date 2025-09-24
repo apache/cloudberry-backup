@@ -15,7 +15,7 @@ jobs:
     - uses: actions/checkout@v2
       with:
         fetch-depth: 0
-        path: go/src/github.com/apache/cloudberry-gpbackup
+        path: go/src/github.com/apache/cloudberry-backup
 
     - name: Set up Go
       uses: actions/setup-go@v2
@@ -29,15 +29,15 @@ jobs:
 
     - name: Dependencies
       run: |
-        cd ${GOPATH}/src/github.com/apache/cloudberry-gpbackup
+        cd ${GOPATH}/src/github.com/apache/cloudberry-backup
         make depend
 
     - name: Build
       run: |
-        cd ${GOPATH}/src/github.com/apache/cloudberry-gpbackup
+        cd ${GOPATH}/src/github.com/apache/cloudberry-backup
         make build
 
     - name: Unit Test
       run: |
-        cd ${GOPATH}/src/github.com/apache/cloudberry-gpbackup
+        cd ${GOPATH}/src/github.com/apache/cloudberry-backup
         make unit_all_gpdb_versions

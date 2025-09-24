@@ -5,11 +5,11 @@ import (
 
 	"github.com/apache/cloudberry-go-libs/cluster"
 	"github.com/apache/cloudberry-go-libs/dbconn"
-	"github.com/apache/cloudberry-gpbackup/filepath"
-	"github.com/apache/cloudberry-gpbackup/options"
-	"github.com/apache/cloudberry-gpbackup/report"
-	"github.com/apache/cloudberry-gpbackup/toc"
-	"github.com/apache/cloudberry-gpbackup/utils"
+	"github.com/apache/cloudberry-backup/filepath"
+	"github.com/apache/cloudberry-backup/options"
+	"github.com/apache/cloudberry-backup/report"
+	"github.com/apache/cloudberry-backup/toc"
+	"github.com/apache/cloudberry-backup/utils"
 	"github.com/nightlyone/lockfile"
 	"github.com/spf13/pflag"
 )

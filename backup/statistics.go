@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/apache/cloudberry-gpbackup/toc"
-	"github.com/apache/cloudberry-gpbackup/utils"
+	"github.com/apache/cloudberry-backup/toc"
+	"github.com/apache/cloudberry-backup/utils"
 	"github.com/lib/pq"
 )
 

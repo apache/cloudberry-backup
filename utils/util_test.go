@@ -2,7 +2,7 @@ package utils_test
 
 import (
 	"github.com/apache/cloudberry-go-libs/testhelper"
-	"github.com/apache/cloudberry-gpbackup/utils"
+	"github.com/apache/cloudberry-backup/utils"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"

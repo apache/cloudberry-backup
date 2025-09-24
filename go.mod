@@ -1,4 +1,4 @@
-module github.com/apache/cloudberry-gpbackup
+module github.com/apache/cloudberry-backup
 
 go 1.21
 
