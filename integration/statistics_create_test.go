@@ -3,8 +3,8 @@ package integration
 import (
 	"github.com/apache/cloudberry-go-libs/structmatcher"
 	"github.com/apache/cloudberry-go-libs/testhelper"
-	"github.com/apache/cloudberry-gpbackup/backup"
-	"github.com/apache/cloudberry-gpbackup/testutils"
+	"github.com/apache/cloudberry-backup/backup"
+	"github.com/apache/cloudberry-backup/testutils"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"

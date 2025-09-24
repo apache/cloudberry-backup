@@ -5,4 +5,4 @@ Architecture: ${ARCH}
 Version: ${GPBACKUP_TOOLS_VERSION}
 Provides: gpbackup_tools
 Description: backup and restore are Go utilities for performing Apache Cloudberry backups.
-Homepage: https://github.com/apache/cloudberry-gpbackup
+Homepage: https://github.com/apache/cloudberry-backup

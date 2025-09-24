@@ -10,10 +10,10 @@ import (
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/apache/cloudberry-go-libs/dbconn"
-	"github.com/apache/cloudberry-gpbackup/backup"
-	"github.com/apache/cloudberry-gpbackup/testutils"
-	"github.com/apache/cloudberry-gpbackup/toc"
-	"github.com/apache/cloudberry-gpbackup/utils"
+	"github.com/apache/cloudberry-backup/backup"
+	"github.com/apache/cloudberry-backup/testutils"
+	"github.com/apache/cloudberry-backup/toc"
+	"github.com/apache/cloudberry-backup/utils"
 	"github.com/spf13/pflag"
 
 	. "github.com/onsi/ginkgo/v2"

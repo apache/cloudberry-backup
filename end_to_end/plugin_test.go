@@ -10,9 +10,9 @@ import (
 	"github.com/apache/cloudberry-go-libs/dbconn"
 	"github.com/apache/cloudberry-go-libs/iohelper"
 	"github.com/apache/cloudberry-go-libs/testhelper"
-	"github.com/apache/cloudberry-gpbackup/filepath"
-	"github.com/apache/cloudberry-gpbackup/testutils"
-	"github.com/apache/cloudberry-gpbackup/utils"
+	"github.com/apache/cloudberry-backup/filepath"
+	"github.com/apache/cloudberry-backup/testutils"
+	"github.com/apache/cloudberry-backup/utils"
 	. "github.com/onsi/ginkgo/v2"
 )
 

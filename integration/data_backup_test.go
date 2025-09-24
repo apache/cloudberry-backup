@@ -7,10 +7,10 @@ import (
 
 	"github.com/apache/cloudberry-go-libs/gplog"
 	"github.com/apache/cloudberry-go-libs/testhelper"
-	"github.com/apache/cloudberry-gpbackup/backup"
-	"github.com/apache/cloudberry-gpbackup/filepath"
-	"github.com/apache/cloudberry-gpbackup/testutils"
-	"github.com/apache/cloudberry-gpbackup/utils"
+	"github.com/apache/cloudberry-backup/backup"
+	"github.com/apache/cloudberry-backup/filepath"
+	"github.com/apache/cloudberry-backup/testutils"
+	"github.com/apache/cloudberry-backup/utils"
 	"github.com/blang/semver"
 
 	. "github.com/onsi/ginkgo/v2"

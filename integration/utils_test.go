@@ -9,9 +9,9 @@ import (
 
 	"github.com/apache/cloudberry-go-libs/dbconn"
 	"github.com/apache/cloudberry-go-libs/testhelper"
-	fp "github.com/apache/cloudberry-gpbackup/filepath"
-	"github.com/apache/cloudberry-gpbackup/testutils"
-	"github.com/apache/cloudberry-gpbackup/utils"
+	fp "github.com/apache/cloudberry-backup/filepath"
+	"github.com/apache/cloudberry-backup/testutils"
+	"github.com/apache/cloudberry-backup/utils"
 
 	"golang.org/x/sys/unix"
 

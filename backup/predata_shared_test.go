@@ -3,9 +3,9 @@ package backup_test
 import (
 	"database/sql"
 
-	"github.com/apache/cloudberry-gpbackup/backup"
-	"github.com/apache/cloudberry-gpbackup/testutils"
-	"github.com/apache/cloudberry-gpbackup/toc"
+	"github.com/apache/cloudberry-backup/backup"
+	"github.com/apache/cloudberry-backup/testutils"
+	"github.com/apache/cloudberry-backup/toc"
 
 	. "github.com/onsi/ginkgo/v2"
 )

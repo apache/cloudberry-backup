@@ -13,7 +13,7 @@ import (
 	"github.com/apache/cloudberry-go-libs/iohelper"
 	"github.com/apache/cloudberry-go-libs/operating"
 	"github.com/apache/cloudberry-go-libs/testhelper"
-	"github.com/apache/cloudberry-gpbackup/utils"
+	"github.com/apache/cloudberry-backup/utils"
 	"github.com/blang/semver"
 	"github.com/pkg/errors"
 

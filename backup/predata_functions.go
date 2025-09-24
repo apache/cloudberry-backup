@@ -10,8 +10,8 @@ import (
 	"fmt"
 
 	"github.com/apache/cloudberry-go-libs/gplog"
-	"github.com/apache/cloudberry-gpbackup/toc"
-	"github.com/apache/cloudberry-gpbackup/utils"
+	"github.com/apache/cloudberry-backup/toc"
+	"github.com/apache/cloudberry-backup/utils"
 )
 
 func PrintCreateFunctionStatement(metadataFile *utils.FileWithByteCount, objToc *toc.TOC, funcDef Function, funcMetadata ObjectMetadata) {

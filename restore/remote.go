@@ -9,7 +9,7 @@ import (
 	"github.com/apache/cloudberry-go-libs/cluster"
 	"github.com/apache/cloudberry-go-libs/gplog"
 	"github.com/apache/cloudberry-go-libs/iohelper"
-	"github.com/apache/cloudberry-gpbackup/options"
+	"github.com/apache/cloudberry-backup/options"
 	"github.com/pkg/errors"
 )
 

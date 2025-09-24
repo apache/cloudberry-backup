@@ -4,7 +4,7 @@
 package main
 
 import (
-	. "github.com/apache/cloudberry-gpbackup/helper"
+	. "github.com/apache/cloudberry-backup/helper"
 )
 
 func main() {
