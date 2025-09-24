@@ -1,8 +1,8 @@
 Name:       gpbackup_tools_%{operating_system}
 Version:    %{rpm_version}
 Release:    1
-Summary:    Backup and restore utilities for Greenplum
-License:    VMware General Terms
+Summary:    Backup and restore utilities for Cloudberry
+License:    Apache License 2.0
 Source0:    bin_gpbackup.tar.gz
 BuildArch:  x86_64
 Prefix:     /usr/local
@@ -11,19 +11,19 @@ Prefix:     /usr/local
 AutoReqProv: no
 
 %description
-Backup and restore utilities for Greenplum
+Backup and restore utilities for Cloudberry
 
 %prep
 %setup -c -q -T -D -a 0
 
 %install
 mkdir -p $RPM_BUILD_ROOT%{prefix}/bin $RPM_BUILD_ROOT%{prefix}/lib
-cp open_source_licenses_VMware_Greenplum_Backup_and_Restore.txt $RPM_BUILD_ROOT%{prefix}/
+
 cp bin/gpbackup bin/gprestore bin/gpbackup_helper bin/gpbackup_manager bin/gpbackup_ddboost_plugin bin/gpbackup_s3_plugin $RPM_BUILD_ROOT%{prefix}/bin
 cp lib/libDDBoost.so $RPM_BUILD_ROOT%{prefix}/lib
 
 %files
-%{prefix}/open_source_licenses_VMware_Greenplum_Backup_and_Restore.txt
+
 %{prefix}/bin/gpbackup
 %{prefix}/bin/gprestore
 %{prefix}/bin/gpbackup_helper

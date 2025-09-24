@@ -1,4 +1,4 @@
-Pkgname: greenplum_backup_restore
+Pkgname: cloudberry_backup_restore
 Format: V2
 Architecture: ${ARCH}
 OS: ${OS}
