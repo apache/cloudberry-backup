@@ -2,17 +2,18 @@ name: build_and_unit_test
 
 on:
   push:
-    branches: [ master ]
+    branches: [ main ]
   pull_request:
-    branches: [ master ]
+    branches: [ main ]
     types: [ opened, synchronize, reopened, edited, ready_for_review ]
+  workflow_dispatch:
 
 jobs:
 
   build_and_unit_test:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
       with:
         fetch-depth: 0
         path: go/src/github.com/apache/cloudberry-backup

@@ -1,125 +1,61 @@
-# Security Release Process
+<!--
+  Licensed to the Apache Software Foundation (ASF) under one
+  or more contributor license agreements.  See the NOTICE file
+  distributed with this work for additional information
+  regarding copyright ownership.  The ASF licenses this file
+  to you under the Apache License, Version 2.0 (the
+  "License"); you may not use this file except in compliance
+  with the License.  You may obtain a copy of the License at
 
-Greenplum Database has adopted this security disclosure and response policy to
-ensure we responsibly handle critical issues.
+   http://www.apache.org/licenses/LICENSE-2.0
 
-## Reporting a Vulnerability - Private Disclosure Process
+  Unless required by applicable law or agreed to in writing,
+  software distributed under the License is distributed on an
+  "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+  KIND, either express or implied.  See the License for the
+  specific language governing permissions and limitations
+  under the License.
+-->
 
-Security is of the highest importance and all security vulnerabilities or
-suspected security vulnerabilities should be reported to Greenplum Database
-privately, to minimize attacks against current users of Greenplum Database
-before they are fixed. Vulnerabilities will be investigated and patched on the
-next patch (or minor) release as soon as possible. This information could be
-kept entirely internal to the project.
+# Security Policy
 
-If you know of a publicly disclosed security vulnerability for Greenplum
-Database, please **IMMEDIATELY** contact the Greenplum Database project team
-(security@greenplum.org).
+The Apache Security Team handles all security issues across Apache projects and
+coordinates the response to vulnerabilities. For details on the vulnerability
+handling process, supported versions, and what is considered a security issue,
+visit: https://www.apache.org/security/.
 
-**IMPORTANT: Do not file public issues on GitHub for security vulnerabilities!**
+## Do not
 
-To report a vulnerability or a security-related issue, please contact the email
-address with the details of the vulnerability. The email will be fielded by the
-Greenplum Database project team. Emails will be addressed promptly, including a
-detailed plan to investigate the issue and any potential workarounds to perform
-in the meantime. Do not report non-security-impacting bugs through this
-channel. Use [GitHub issues](https://github.com/greenplum-db/gpdb/issues)
-instead.
+For better collaboration, we hope you:
 
-## Proposed Email Content
+- DO NOT report non-security-impacting bugs through this channel. If you have
+  any questions on using, development, please use [GitHub
+  Issues](https://github.com/apache/cloudberry/issues),
+  [Discussions](https://github.com/apache/cloudberry/discussions), [Dev mailing
+  list](https://cloudberry.apache.org/community/mailing-lists) or
+  [Slack](https://inviter.co/apache-cloudberry) instead.
+- DO NOT report security issues on public GitHub Issues, Jira tickets, mailing
+  lists, or other public forums.
 
-Provide a descriptive subject line and in the body of the email include the
-following information:
+## Reporting Security Issues
 
-* Basic identity information, such as your name and your affiliation or company.
-* Detailed steps to reproduce the vulnerability  (POC scripts, screenshots, and
-  logs are all helpful to us).
-* Description of the effects of the vulnerability on Greenplum Database and the
-  related hardware and software configurations, so that the Greenplum Database
-  project team can reproduce it.
-* How the vulnerability affects Greenplum Database usage and an estimation of
-  the attack surface, if there is one.
-* List other projects or dependencies that were used in conjunction with
-  Greenplum Database to produce the vulnerability.
+Send your report to: [security@apache.org](mailto:security@apache.org).
 
-## When to report a vulnerability
+Please send one plain-text email per vulnerability with the following and
+additional information as necessary (as much as you can provide):
 
-* When you think Greenplum Database has a potential security vulnerability.
-* When you suspect a potential vulnerability but you are unsure that it impacts
-  Greenplum Database.
-* When you know of or suspect a potential vulnerability on another project that
-  is used by Greenplum Database.
+- Description of the vulnerability
+- Steps to reproduce
+- Affected versions
+- Potential impact
+- Any known mitigations
+- (Optional) Suggested fix
 
-## Patch, Release, and Disclosure
+## Public Discussion
 
-The Greenplum Database project team will respond to vulnerability reports as
-follows:
+For general security questions or discussions, please use the development
+mailing list: [dev@cloudberry.apache.org](mailto:dev@cloudberry.apache.org)
 
-1. The Greenplum project team will investigate the vulnerability and determine
-its effects and criticality.
-2. If the issue is not deemed to be a vulnerability, the Greenplum project team
-will follow up with a detailed reason for rejection.
-3. The Greenplum project team will initiate a conversation with the reporter
-promptly.
-4. If a vulnerability is acknowledged and the timeline for a fix is determined,
-the Greenplum project team will work on a plan to communicate with the
-appropriate community, including identifying mitigating steps that affected
-users can take to protect themselves until the fix is rolled out.
-5. The Greenplum project team will also create a
-[CVSS](https://www.first.org/cvss/specification-document) using the [CVSS
-Calculator](https://www.first.org/cvss/calculator/3.0). The Greenplum project
-team makes the final call on the calculated CVSS; it is better to move quickly
-than making the CVSS perfect. Issues may also be reported to
-[Mitre](https://cve.mitre.org/) using this [scoring
-calculator](https://nvd.nist.gov/vuln-metrics/cvss/v3-calculator). The CVE will
-initially be set to private.
-6. The Greenplum project team will work on fixing the vulnerability and perform
-internal testing before preparing to roll out the fix.
-7. A public disclosure date is negotiated by the Greenplum Database project
-team, and the bug submitter. We prefer to fully disclose the bug as soon as
-possible once a user mitigation or patch is available. It is reasonable to
-delay disclosure when the bug or the fix is not yet fully understood, or the
-solution is not well-tested. The timeframe for disclosure is from immediate
-(especially if it’s already publicly known) to a few weeks. The Greenplum
-Database project team holds the final say when setting a public disclosure
-date.
-8. Once the fix is confirmed, the Greenplum project team will patch the
-vulnerability in the next patch or minor release, and backport a patch release
-into earlier supported releases as necessary. Upon release of the patched
-version of Greenplum Database, we will follow the **Public Disclosure
-Process**.
+## Preferred Languages
 
-## Public Disclosure Process
-
-The Greenplum project team publishes a [public
-advisory](https://github.com/greenplum-db/gpdb/security/advisories?state=published)
-to the Greenplum Database community via GitHub. In most cases, additional
-communication via Slack, Twitter, mailing lists, blog and other channels will
-assist in educating Greenplum Database users and rolling out the patched
-release to affected users.
-
-The Greenplum project team will also publish any mitigating steps users can
-take until the fix can be applied to their Greenplum Database instances.
-
-## Mailing lists
-
-* Use security@greenplum.org to report security concerns to the Greenplum
-  Database project team, who uses the list to privately discuss security issues
-  and fixes prior to disclosure.
-
-## Confidentiality, integrity and availability
-
-We consider vulnerabilities leading to the compromise of data confidentiality,
-elevation of privilege, or integrity to be our highest priority concerns.
-Availability, in particular in areas relating to DoS and resource exhaustion,
-is also a serious security concern. The Greenplum Database project team takes
-all vulnerabilities, potential vulnerabilities, and suspected vulnerabilities
-seriously and will investigate them in an urgent and expeditious manner.
-
-Note that we do not currently consider the default settings for Greenplum
-Database to be secure-by-default. It is necessary for operators to explicitly
-configure settings, role based access control, and other resource related
-features in Greenplum Database to provide a hardened Greenplum Database
-environment. We will not act on any security disclosure that relates to a lack
-of safe defaults. Over time, we will work towards improved safe-by-default
-configuration, taking into account backwards compatibility.
+We prefer all communications to be in English.

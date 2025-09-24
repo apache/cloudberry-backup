@@ -1,62 +1,42 @@
+<!--
+  Licensed to the Apache Software Foundation (ASF) under one
+  or more contributor license agreements.  See the NOTICE file
+  distributed with this work for additional information
+  regarding copyright ownership.  The ASF licenses this file
+  to you under the Apache License, Version 2.0 (the
+  "License"); you may not use this file except in compliance
+  with the License.  You may obtain a copy of the License at
+
+   http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing,
+  software distributed under the License is distributed on an
+  "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+  KIND, either express or implied.  See the License for the
+  specific language governing permissions and limitations
+  under the License.
+-->
+
 # Contributing
 
-We warmly welcome and greatly appreciate contributions from the
-community. By participating you agree to the [code of
-conduct](https://github.com/apache/cloudberry-gpbackup/blob/main/CODE-OF-CONDUCT.md).
-Overall, we follow GPDB's comprehensive contribution policy. Please
-refer to it [here](https://github.com/greenplum-db/gpdb#contributing)
-for details.
+Everyone who participates in Cloudberry, either as a user or a contributor, is obliged to follow the [Code of Conduct](./CODE-OF-CONDUCT.md).
 
 ## Getting Started
 
-* Sign our [Contributor License Agreement](https://cla.vmware.com/cla/1/preview)
-* Fork the gpbackup repository on GitHub
-* Run `go get github.com/apache/cloudberry-gpbackup/...` and add your fork as a remote
+To get started, follow these steps:
+* Fork the `cloudberry-backup` repository on GitHub
+* Run `go get github.com/apache/cloudberry-backup/...` and add your fork as a remote
 * Run `make depend` to install required dependencies
 * Follow the README to set up your environment and run the tests
 
 ## Creating a change
 
-* Create your own feature branch (e.g. `git checkout -b
-  gpbackup_branch`) and make changes on this branch.
-* Try and follow similar coding styles as found throughout the code
-  base.
+* Create your own feature branch (e.g. `git checkout -b new_branch`) and make changes on this branch.
+* Try and follow similar coding styles as found throughout the codebase.
 * Make commits as logical units for ease of reviewing.
 * Rebase with main often to stay in sync with upstream.
-* Add new tests to cover your code. We use
-  [Ginkgo](http://onsi.github.io/ginkgo/) and
-  [Gomega](https://onsi.github.io/gomega/) for testing.
-* Ensure a well written commit message as explained
-  [here](https://chris.beams.io/posts/git-commit/).
-* Run `make format`, `make test`, and `make end_to_end` in your
-  feature branch and ensure they are successful.
-* Push your local branch to the fork (e.g. `git push <your_fork>
-  gpbackup_branch`)
-
-## Submitting a Pull Request
-
-* Create a [pull request from your
-  fork](https://docs.github.com/en/github/collaborating-with-issues-and-pull-requests/creating-a-pull-request-from-a-fork).
-* Address PR feedback with fixup and/or squash commits:
-```
-git add .
-git commit --fixup <commit SHA>
-  -- or --
-git commit --squash <commit SHA>
-```
-* Once approved, before merging into main squash your fixups with:
-```
-git rebase -i --autosquash origin/main
-git push --force-with-lease $USER <my-feature-branch>
-```
-
-Your contribution will be analyzed for product fit and engineering
-quality prior to merging. Your pull request is much more likely to be
-accepted if it is small and focused with a clear message that conveys
-the intent of your change.
-
-## Community
-
-Connect with Greenplum on:
-* [Slack](https://greenplum.slack.com/)
-* [Dev Google Group mailing list](https://groups.google.com/a/greenplum.org/forum/#!forum/gpdb-dev/join)
+* Add new tests to cover your code. We use [Ginkgo](http://onsi.github.io/ginkgo/) and [Gomega](https://onsi.github.io/gomega/) for testing.
+* Ensure a well written commit message as explained [here](https://chris.beams.io/posts/git-commit/).
+* Run `make format`, `make test`, and `make end_to_end` in your feature branch and ensure they are successful.
+* Push your local branch to the fork (e.g. `git push <your_fork> backup_branch`)
+* Create a Pull Request from your fork
