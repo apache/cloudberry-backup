@@ -32,7 +32,7 @@ options:
 ```
 
 ## Available plugins
-[gpbackup_s3_plugin](https://github.com/apache/cloudberry-gpbackup-s3-plugin): Allows users to back up their Apache Cloudberry to Amazon S3.
+**gpbackup_s3_plugin**: S3 storage plugin located in the [`s3plugin/`](s3plugin/) directory, allows users to back up their Apache Cloudberry and Greenplum to Amazon S3. See [s3plugin/README.md](s3plugin/README.md) for detailed configuration and usage instructions..
 
 ## Developing plugins
 
