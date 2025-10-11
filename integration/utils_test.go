@@ -7,11 +7,11 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/apache/cloudberry-go-libs/dbconn"
-	"github.com/apache/cloudberry-go-libs/testhelper"
 	fp "github.com/apache/cloudberry-backup/filepath"
 	"github.com/apache/cloudberry-backup/testutils"
 	"github.com/apache/cloudberry-backup/utils"
+	"github.com/apache/cloudberry-go-libs/dbconn"
+	"github.com/apache/cloudberry-go-libs/testhelper"
 
 	"golang.org/x/sys/unix"
 

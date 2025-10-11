@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"path"
 
-	"github.com/apache/cloudberry-go-libs/gplog"
-	"github.com/apache/cloudberry-go-libs/operating"
 	"github.com/apache/cloudberry-backup/history"
 	"github.com/apache/cloudberry-backup/options"
 	"github.com/apache/cloudberry-backup/toc"
 	"github.com/apache/cloudberry-backup/utils"
+	"github.com/apache/cloudberry-go-libs/gplog"
+	"github.com/apache/cloudberry-go-libs/operating"
 	"github.com/pkg/errors"
 )
 

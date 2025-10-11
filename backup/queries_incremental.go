@@ -3,9 +3,9 @@ package backup
 import (
 	"fmt"
 
+	"github.com/apache/cloudberry-backup/toc"
 	"github.com/apache/cloudberry-go-libs/dbconn"
 	"github.com/apache/cloudberry-go-libs/gplog"
-	"github.com/apache/cloudberry-backup/toc"
 )
 
 func GetAOIncrementalMetadata(connectionPool *dbconn.DBConn) map[string]toc.AOEntry {

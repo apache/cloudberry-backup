@@ -9,9 +9,9 @@ package backup
 import (
 	"strings"
 
-	"github.com/apache/cloudberry-go-libs/gplog"
 	"github.com/apache/cloudberry-backup/toc"
 	"github.com/apache/cloudberry-backup/utils"
+	"github.com/apache/cloudberry-go-libs/gplog"
 	"github.com/pkg/errors"
 )
 

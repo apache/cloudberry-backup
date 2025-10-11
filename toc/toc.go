@@ -7,8 +7,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/apache/cloudberry-go-libs/gplog"
 	"github.com/apache/cloudberry-backup/utils"
+	"github.com/apache/cloudberry-go-libs/gplog"
 	"gopkg.in/yaml.v2"
 )
 

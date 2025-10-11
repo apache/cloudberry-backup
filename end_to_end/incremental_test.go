@@ -6,9 +6,9 @@ import (
 	"os/exec"
 	"strconv"
 
+	"github.com/apache/cloudberry-backup/history"
 	"github.com/apache/cloudberry-go-libs/dbconn"
 	"github.com/apache/cloudberry-go-libs/testhelper"
-	"github.com/apache/cloudberry-backup/history"
 	"github.com/blang/semver"
 
 	. "github.com/onsi/ginkgo/v2"

@@ -9,9 +9,9 @@ package backup
 import (
 	"fmt"
 
-	"github.com/apache/cloudberry-go-libs/gplog"
 	"github.com/apache/cloudberry-backup/toc"
 	"github.com/apache/cloudberry-backup/utils"
+	"github.com/apache/cloudberry-go-libs/gplog"
 )
 
 func PrintCreateFunctionStatement(metadataFile *utils.FileWithByteCount, objToc *toc.TOC, funcDef Function, funcMetadata ObjectMetadata) {

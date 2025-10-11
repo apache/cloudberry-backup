@@ -5,11 +5,11 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/apache/cloudberry-go-libs/dbconn"
-	"github.com/apache/cloudberry-go-libs/testhelper"
 	"github.com/apache/cloudberry-backup/options"
 	"github.com/apache/cloudberry-backup/restore"
 	"github.com/apache/cloudberry-backup/toc"
+	"github.com/apache/cloudberry-go-libs/dbconn"
+	"github.com/apache/cloudberry-go-libs/testhelper"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
