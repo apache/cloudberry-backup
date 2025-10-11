@@ -1,0 +1,74 @@
+name: Code Quality Check
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+    types: [ opened, synchronize, reopened, edited, ready_for_review ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  GO_VERSION: '1.21'
+  GOPATH: ${{ github.workspace }}/.go
+  GOBIN: ${{ github.workspace }}/.go/bin
+
+jobs:
+  code_quality:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: ${{ env.GO_VERSION }}
+        cache: true
+
+    - name: Setup GOPATH/PATH
+      run: |
+        echo "GOPATH=${GOPATH}" >> "$GITHUB_ENV"
+        echo "${GOBIN}" >> "$GITHUB_PATH"
+
+    - name: Install dependencies
+      run: make depend
+
+    - name: Formatting check (read-only)
+      run: |
+        set -eo pipefail
+        command -v goimports >/dev/null || go install golang.org/x/tools/cmd/goimports@latest
+        files=$(git ls-files '*.go')
+        if [ -z "$files" ]; then
+          echo "No Go files found. Skipping formatting check."
+          exit 0
+        fi
+        CHANGED=$(goimports -l $files)
+        if [ -n "$CHANGED" ]; then
+          echo "$CHANGED"
+          echo "### Formatting issues" >> "$GITHUB_STEP_SUMMARY"
+          echo "$CHANGED" | sed 's/^/- /' >> "$GITHUB_STEP_SUMMARY"
+          echo "Please run \`make format\` on your local machine" >> "$GITHUB_STEP_SUMMARY"
+          exit 1
+        fi
+
+    - name: GolangCI-Lint (no PR annotations)
+      run: |
+        set -eo pipefail
+        command -v golangci-lint >/dev/null || go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.56.2
+        OUTPUT=$(golangci-lint run --tests=false --out-format=colored-line-number || true)
+        if [ -n "$OUTPUT" ]; then
+          echo "$OUTPUT"
+          echo "### GolangCI-Lint issues" >> "$GITHUB_STEP_SUMMARY"
+          echo "$OUTPUT" | sed 's/^/- /' >> "$GITHUB_STEP_SUMMARY"
+          exit 1
+        fi
