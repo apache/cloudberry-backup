@@ -5,9 +5,9 @@ import (
 	"database/sql/driver"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/apache/cloudberry-go-libs/structmatcher"
 	"github.com/apache/cloudberry-backup/backup"
 	"github.com/apache/cloudberry-backup/testutils"
+	"github.com/apache/cloudberry-go-libs/structmatcher"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"

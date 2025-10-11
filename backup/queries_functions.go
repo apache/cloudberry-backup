@@ -11,10 +11,10 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/apache/cloudberry-go-libs/dbconn"
-	"github.com/apache/cloudberry-go-libs/gplog"
 	"github.com/apache/cloudberry-backup/toc"
 	"github.com/apache/cloudberry-backup/utils"
+	"github.com/apache/cloudberry-go-libs/dbconn"
+	"github.com/apache/cloudberry-go-libs/gplog"
 )
 
 type Function struct {

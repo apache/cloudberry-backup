@@ -12,10 +12,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/apache/cloudberry-go-libs/dbconn"
-	"github.com/apache/cloudberry-go-libs/gplog"
 	"github.com/apache/cloudberry-backup/options"
 	"github.com/apache/cloudberry-backup/utils"
+	"github.com/apache/cloudberry-go-libs/dbconn"
+	"github.com/apache/cloudberry-go-libs/gplog"
 	"github.com/jackc/pgconn"
 	"gopkg.in/cheggaaa/pb.v1"
 )

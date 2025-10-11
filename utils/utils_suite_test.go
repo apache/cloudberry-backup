@@ -4,8 +4,8 @@ import (
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/apache/cloudberry-go-libs/dbconn"
 	"github.com/apache/cloudberry-backup/testutils"
+	"github.com/apache/cloudberry-go-libs/dbconn"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
