@@ -30,7 +30,7 @@ repo is a fork of gpbackup, dedicated to supporting Cloudberry.
 
 ## Pre-Requisites
 
-The project requires the Go Programming language version 1.11 or higher.
+The project requires the Go Programming language version 1.21 or higher.
 Follow the directions [here](https://golang.org/doc/) for installation, usage
 and configuration instructions. Make sure to set the [Go PATH environment
 variable](https://go.dev/doc/install) before starting the following steps.
