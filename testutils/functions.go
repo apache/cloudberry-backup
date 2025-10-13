@@ -36,9 +36,24 @@ func SetupTestEnvironment() (*dbconn.DBConn, sqlmock.Sqlmock, *Buffer, *Buffer, 
 	connectionPool, mock, testStdout, testStderr, testLogfile := testhelper.SetupTestEnvironment()
 
 	// Default if not set is GPDB version `5.1.0`
-	envTestGpdbVersion := os.Getenv("TEST_GPDB_VERSION")
-	if envTestGpdbVersion != "" {
-		testhelper.SetDBVersion(connectionPool, envTestGpdbVersion)
+	envTestDbVersion := os.Getenv("TEST_DB_VERSION")
+	if envTestDbVersion != "" {
+		testhelper.SetDBVersion(connectionPool, envTestDbVersion)
+	}
+
+	// The testhelper package from the cloudberry-go-libs library does not
+	// currently have a function to set the DB type. To avoid modifying the
+	// library, we set the type directly here.
+	envTestDbType := os.Getenv("TEST_DB_TYPE")
+	if envTestDbType != "" {
+		switch envTestDbType {
+		case "GPDB":
+			connectionPool.Version.Type = dbconn.GPDB
+		case "CBDB":
+			connectionPool.Version.Type = dbconn.CBDB
+		default:
+			Fail(fmt.Sprintf("Unsupported TEST_DB_TYPE: %s. Must be GPDB or CBDB.", envTestDbType))
+		}
 	}
 
 	SetupTestCluster()
