@@ -1,6 +1,7 @@
 package restore_test
 
 import (
+	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -135,64 +136,82 @@ options:
   pgport: 1234
 `
 
-		sampleBackupHistConfig1 := history.BackupConfig{
-			BackupDir:             "",
-			BackupVersion:         "1.11.0+dev.28.g10571fdxs",
-			Compressed:            false,
-			DatabaseName:          "plugin_test_db",
-			DatabaseVersion:       "4.3.99.0+dev.18.gb29642fb22 build dev",
-			DataOnly:              false,
-			DateDeleted:           "",
-			ExcludeRelations:      make([]string, 0),
-			ExcludeSchemaFiltered: false,
-			ExcludeSchemas:        make([]string, 0),
-			ExcludeTableFiltered:  false,
-			IncludeRelations:      make([]string, 0),
-			IncludeSchemaFiltered: false,
-			IncludeSchemas:        make([]string, 0),
-			IncludeTableFiltered:  false,
-			Incremental:           false,
-			LeafPartitionData:     false,
-			MetadataOnly:          false,
-			Plugin:                "/Users/pivotal/workspace/gp-backup-ddboost-plugin/gpbackup_ddboost_plugin",
-			RestorePlan:           []history.RestorePlanEntry{{Timestamp: "20170415154408", TableFQNs: []string{"public.test_table"}}},
-			SingleDataFile:        false,
-			Timestamp:             "20170415154408",
-			WithStatistics:        false,
-		}
-		sampleBackupHistConfig2 := history.BackupConfig{
-			BackupDir:             "",
-			BackupVersion:         "1.11.0+dev.28.g10571fd",
-			Compressed:            false,
-			DatabaseName:          "plugin_test_db",
-			DatabaseVersion:       "4.3.99.0+dev.18.gb29642fb22 build dev",
-			DataOnly:              false,
-			DateDeleted:           "",
-			ExcludeRelations:      make([]string, 0),
-			ExcludeSchemaFiltered: false,
-			ExcludeSchemas:        make([]string, 0),
-			ExcludeTableFiltered:  false,
-			IncludeRelations:      make([]string, 0),
-			IncludeSchemaFiltered: false,
-			IncludeSchemas:        make([]string, 0),
-			IncludeTableFiltered:  false,
-			Incremental:           false,
-			LeafPartitionData:     false,
-			MetadataOnly:          false,
-			Plugin:                "/Users/pivotal/workspace/gp-backup-ddboost-plugin/gpbackup_ddboost_plugin",
-			PluginVersion:         "99.99.9999",
-			RestorePlan:           []history.RestorePlanEntry{{Timestamp: "20180415154238", TableFQNs: []string{"public.test_table"}}},
-			SingleDataFile:        true,
-			Timestamp:             "20180415154238",
-			WithStatistics:        false,
-		}
+		var sampleBackupHistConfig1 history.BackupConfig
+		var sampleBackupHistConfig2 history.BackupConfig
+		var sampleBackupConfig string
+		var executor testhelper.TestExecutor
+		var testConfigPath = "/tmp/unit_test_plugin_config.yml"
+		var oldWd string
+		var mdd string
+		var tempDir string
 
-		sampleBackupConfig := `
+		BeforeEach(func() {
+			// Set up the backup history configurations.
+			// The DatabaseVersion is set dynamically based on the current test database type.
+			var dbVersion string
+			if connectionPool.Version.IsCBDB() {
+				dbVersion = "2.0.0.0+dev.18.gb29642fb22 build dev"
+			} else {
+				dbVersion = "4.3.99.0+dev.18.gb29642fb22 build dev"
+			}
+			sampleBackupHistConfig1 = history.BackupConfig{
+				BackupDir:             "",
+				BackupVersion:         "1.11.0+dev.28.g10571fdxs",
+				Compressed:            false,
+				DatabaseName:          "plugin_test_db",
+				DatabaseVersion:       dbVersion,
+				DataOnly:              false,
+				DateDeleted:           "",
+				ExcludeRelations:      make([]string, 0),
+				ExcludeSchemaFiltered: false,
+				ExcludeSchemas:        make([]string, 0),
+				ExcludeTableFiltered:  false,
+				IncludeRelations:      make([]string, 0),
+				IncludeSchemaFiltered: false,
+				IncludeSchemas:        make([]string, 0),
+				IncludeTableFiltered:  false,
+				Incremental:           false,
+				LeafPartitionData:     false,
+				MetadataOnly:          false,
+				Plugin:                "/Users/pivotal/workspace/gp-backup-ddboost-plugin/gpbackup_ddboost_plugin",
+				RestorePlan:           []history.RestorePlanEntry{{Timestamp: "20170415154408", TableFQNs: []string{"public.test_table"}}},
+				SingleDataFile:        false,
+				Timestamp:             "20170415154408",
+				WithStatistics:        false,
+			}
+			sampleBackupHistConfig2 = history.BackupConfig{
+				BackupDir:             "",
+				BackupVersion:         "1.11.0+dev.28.g10571fd",
+				Compressed:            false,
+				DatabaseName:          "plugin_test_db",
+				DatabaseVersion:       dbVersion,
+				DataOnly:              false,
+				DateDeleted:           "",
+				ExcludeRelations:      make([]string, 0),
+				ExcludeSchemaFiltered: false,
+				ExcludeSchemas:        make([]string, 0),
+				ExcludeTableFiltered:  false,
+				IncludeRelations:      make([]string, 0),
+				IncludeSchemaFiltered: false,
+				IncludeSchemas:        make([]string, 0),
+				IncludeTableFiltered:  false,
+				Incremental:           false,
+				LeafPartitionData:     false,
+				MetadataOnly:          false,
+				Plugin:                "/Users/pivotal/workspace/gp-backup-ddboost-plugin/gpbackup_ddboost_plugin",
+				PluginVersion:         "99.99.9999",
+				RestorePlan:           []history.RestorePlanEntry{{Timestamp: "20180415154238", TableFQNs: []string{"public.test_table"}}},
+				SingleDataFile:        true,
+				Timestamp:             "20180415154238",
+				WithStatistics:        false,
+			}
+
+			sampleBackupConfig = fmt.Sprintf(`
 backupdir: ""
 backupversion: 1.11.0+dev.28.g10571fd
 compressed: false
 databasename: plugin_test_db
-databaseversion: 4.3.99.0+dev.18.gb29642fb22 build dev
+databaseversion: %s
 dataonly: false
 deleted: false
 excluderelations: []
@@ -215,14 +234,8 @@ tablefqns:
 singledatafile: true
 timestamp: "20180415154238"
 withstatistics: false
-`
-		var executor testhelper.TestExecutor
-		var testConfigPath = "/tmp/unit_test_plugin_config.yml"
-		var oldWd string
-		var mdd string
-		var tempDir string
+`, dbVersion)
 
-		BeforeEach(func() {
 			tempDir, _ = ioutil.TempDir("", "temp")
 
 			err := ioutil.WriteFile(testConfigPath, []byte(sampleConfigContents), 0777)
