@@ -126,28 +126,39 @@ var _ = BeforeEach(func() {
 
 var _ = AfterSuite(func() {
 	CleanupBuildArtifacts()
-	if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("6") {
-		testutils.DestroyTestFilespace(connectionPool)
-	} else {
-		remoteOutput := testCluster.GenerateAndExecuteCommand(
-			"Removing /tmp/test_dir* directories on all hosts",
-			cluster.ON_HOSTS|cluster.INCLUDE_COORDINATOR,
-			func(contentID int) string {
-				return fmt.Sprintf("rm -rf /tmp/test_dir*")
-			})
-		if remoteOutput.NumErrors != 0 {
-			Fail("Could not remove /tmp/testdir* directories on 1 or more hosts")
-		}
-	}
+
+	// connectionPool can be nil if BeforeSuite fails before the connection is established.
+	// This can happen if the test environment is not set up correctly, for example if
+	// greenplum_path.sh was not sourced and the `createdb` command cannot be found.
+	// A nil check is necessary to prevent a panic during cleanup.
 	if connectionPool != nil {
+		if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("6") {
+			testutils.DestroyTestFilespace(connectionPool)
+		} else {
+			remoteOutput := testCluster.GenerateAndExecuteCommand(
+				"Removing /tmp/test_dir* directories on all hosts",
+				cluster.ON_HOSTS|cluster.INCLUDE_COORDINATOR,
+				func(contentID int) string {
+					return fmt.Sprintf("rm -rf /tmp/test_dir*")
+				})
+			if remoteOutput.NumErrors != 0 {
+				Fail("Could not remove /tmp/testdir* directories on 1 or more hosts")
+			}
+		}
+
 		connectionPool.Close()
 		err := exec.Command("dropdb", "testdb").Run()
 		Expect(err).To(BeNil())
+
+		// The following cleanup also depends on a successful BeforeSuite.
+		// It creates a new connection which requires the logger to be initialized,
+		// and it drops roles that would only have been created if setup succeeded.
+		template1Conn := testutils.SetupTestDbConn("template1")
+		testhelper.AssertQueryRuns(template1Conn, "DROP ROLE testrole")
+		testhelper.AssertQueryRuns(template1Conn, "DROP ROLE anothertestrole")
+		template1Conn.Close()
 	}
-	connection1 := testutils.SetupTestDbConn("template1")
-	testhelper.AssertQueryRuns(connection1, "DROP ROLE testrole")
-	testhelper.AssertQueryRuns(connection1, "DROP ROLE anothertestrole")
-	connection1.Close()
+
 	_ = os.RemoveAll("/tmp/helper_test")
 	_ = os.RemoveAll(examplePluginTestDir)
 })
