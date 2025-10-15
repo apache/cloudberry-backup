@@ -512,6 +512,9 @@ PARTITION BY LIST (gender)
 
 			results := backup.GetAllViews(connectionPool)
 			materialView := backup.View{Oid: 1, Schema: "public", Name: "simplematerialview", Definition: sql.NullString{String: " SELECT 1 AS a;", Valid: true}, IsMaterialized: true, DistPolicy: backup.DistPolicy{Policy: "DISTRIBUTED BY (a)"}}
+			if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
+				materialView.AccessMethodName = "heap"
+			}
 
 			materialView.Oid = testutils.OidFromObjectName(connectionPool, "public", "simplematerialview", backup.TYPE_RELATION)
 			Expect(results).To(HaveLen(1))
@@ -526,7 +529,9 @@ PARTITION BY LIST (gender)
 
 			results := backup.GetAllViews(connectionPool)
 			materialView := backup.View{Oid: 1, Schema: "public", Name: "simplematerialview", Definition: sql.NullString{String: " SELECT 1 AS a;", Valid: true}, Options: " WITH (fillfactor=50, autovacuum_enabled=false)", IsMaterialized: true, DistPolicy: backup.DistPolicy{Policy: "DISTRIBUTED BY (a)"}}
-
+			if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
+				materialView.AccessMethodName = "heap"
+			}
 			materialView.Oid = testutils.OidFromObjectName(connectionPool, "public", "simplematerialview", backup.TYPE_RELATION)
 			Expect(results).To(HaveLen(1))
 			structmatcher.ExpectStructsToMatchExcluding(&materialView, &results[0], "ColumnDefs", "DistPolicy.Oid")
@@ -542,7 +547,9 @@ PARTITION BY LIST (gender)
 
 			results := backup.GetAllViews(connectionPool)
 			materialView := backup.View{Oid: 1, Schema: "public", Name: "simplematerialview", Definition: sql.NullString{String: " SELECT 1 AS a;", Valid: true}, Tablespace: "test_tablespace", IsMaterialized: true, DistPolicy: backup.DistPolicy{Policy: "DISTRIBUTED BY (a)"}}
-
+			if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
+				materialView.AccessMethodName = "heap"
+			}
 			Expect(results).To(HaveLen(1))
 			structmatcher.ExpectStructsToMatchExcluding(&materialView, &results[0], "Oid", "ColumnDefs", "DistPolicy.Oid")
 		})

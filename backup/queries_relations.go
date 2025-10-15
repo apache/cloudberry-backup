@@ -344,16 +344,17 @@ func GetSequenceDefinition(connectionPool *dbconn.DBConn, seqName string) Sequen
 }
 
 type View struct {
-	Oid            uint32
-	Schema         string
-	Name           string
-	Options        string
-	Definition     sql.NullString
-	Tablespace     string
-	IsMaterialized bool
-	DistPolicy     DistPolicy
-	NeedsDummy     bool
-	ColumnDefs     []ColumnDefinition
+	Oid              uint32
+	Schema           string
+	Name             string
+	Options          string
+	Definition       sql.NullString
+	Tablespace       string
+	IsMaterialized   bool
+	DistPolicy       DistPolicy
+	NeedsDummy       bool
+	ColumnDefs       []ColumnDefinition
+	AccessMethodName string
 }
 
 func (v View) GetMetadataEntry() (string, toc.MetadataEntry) {
@@ -412,7 +413,7 @@ func GetAllViews(connectionPool *dbconn.DBConn) []View {
 
 	// Materialized views were introduced in GPDB 7 and backported to GPDB 6.2.
 	// Reloptions and tablespace added to pg_class in GPDB 6
-	atLeast6Query := fmt.Sprintf(`
+	version6Query := fmt.Sprintf(`
 	SELECT
 		c.oid AS oid,
 		quote_ident(n.nspname) AS schema,
@@ -428,11 +429,31 @@ func GetAllViews(connectionPool *dbconn.DBConn) []View {
 		AND %s
 		AND %s`, relationAndSchemaFilterClause(), ExtensionFilterClause("c"))
 
+	atLeast7Query := fmt.Sprintf(`
+	SELECT
+		c.oid AS oid,
+		quote_ident(n.nspname) AS schema,
+		quote_ident(c.relname) AS name,
+		pg_get_viewdef(c.oid) AS definition,
+		coalesce(' WITH (' || array_to_string(c.reloptions, ', ') || ')', '') AS options,
+		coalesce(quote_ident(t.spcname), '') AS tablespace,
+		c.relkind='m' AS ismaterialized,
+		coalesce(quote_ident(am.amname), '') AS accessmethodname
+	FROM pg_class c
+		LEFT JOIN pg_namespace n ON n.oid = c.relnamespace
+		LEFT JOIN pg_tablespace t ON t.oid = c.reltablespace
+		LEFT JOIN pg_am am ON am.oid = c.relam
+	WHERE c.relkind IN ('m', 'v')
+		AND %s
+		AND %s`, relationAndSchemaFilterClause(), ExtensionFilterClause("c"))
+
 	query := ""
 	if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("6") {
 		query = before6Query
+	} else if connectionPool.Version.IsGPDB() && connectionPool.Version.Is("6") {
+		query = version6Query
 	} else {
-		query = atLeast6Query
+		query = atLeast7Query
 	}
 
 	results := make([]View, 0)
