@@ -444,8 +444,12 @@ func PrintCreateViewStatement(metadataFile *utils.FileWithByteCount, objToc *toc
 	if !view.IsMaterialized {
 		metadataFile.MustPrintf("\n\nCREATE VIEW %s%s AS %s\n", view.FQN(), view.Options, view.Definition.String)
 	} else {
-		metadataFile.MustPrintf("\n\nCREATE MATERIALIZED VIEW %s%s%s AS %s\nWITH NO DATA\n%s;\n",
-			view.FQN(), view.Options, tablespaceClause, view.Definition.String[:len(view.Definition.String)-1], view.DistPolicy.Policy)
+		accessMethodClause := ""
+		if view.AccessMethodName != "" {
+			accessMethodClause = fmt.Sprintf(" USING %s", view.AccessMethodName)
+		}
+		metadataFile.MustPrintf("\n\nCREATE MATERIALIZED VIEW %s%s%s%s AS %s\nWITH NO DATA\n%s;\n",
+			view.FQN(), accessMethodClause, view.Options, tablespaceClause, view.Definition.String[:len(view.Definition.String)-1], view.DistPolicy.Policy)
 	}
 	section, entry := view.GetMetadataEntry()
 	tier := globalTierMap[view.GetUniqueID()]
