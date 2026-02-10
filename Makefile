@@ -11,7 +11,7 @@ HELPER=gpbackup_helper
 S3PLUGIN=gpbackup_s3_plugin
 BIN_DIR=$(shell echo $${GOPATH:-~/go} | awk -F':' '{ print $$1 "/bin"}')
 GINKGO_FLAGS := -r --keep-going --randomize-suites --randomize-all --no-color
-GIT_VERSION := $(shell git describe --tags | perl -pe 's/(.*)-([0-9]*)-(g[0-9a-f]*)/\1+dev.\2.\3/')
+GIT_VERSION := $(shell v=$$(git describe --tags 2>/dev/null); if [ -n "$$v" ]; then echo $$v | perl -pe 's/(.*)-([0-9]*)-(g[0-9a-f]*)/\1+dev.\2.\3/'; else cat VERSION 2>/dev/null || echo "dev"; fi)
 BACKUP_VERSION_STR=github.com/apache/cloudberry-backup/backup.version=$(GIT_VERSION)
 RESTORE_VERSION_STR=github.com/apache/cloudberry-backup/restore.version=$(GIT_VERSION)
 HELPER_VERSION_STR=github.com/apache/cloudberry-backup/helper.version=$(GIT_VERSION)
@@ -153,3 +153,79 @@ test-s3-local: build install
 	${PWD}/plugins/plugin_test.sh $(BIN_DIR)/gpbackup_s3_plugin /tmp/minio_config.yaml
 	docker stop s3-minio
 	docker rm s3-minio
+
+# Packaging targets
+# NOTE: Build on a baseline system with older glibc (e.g., Rocky 8)
+# for maximum runtime compatibility across distributions.
+PACKAGE_NAME=apache-cloudberry-backup-incubating
+PACKAGE_VERSION=$(shell cat VERSION 2>/dev/null || git describe --tags --exact-match 2>/dev/null || git describe --tags --always | sed 's/-.*//' || echo "dev")
+
+# Auto-detect current platform if not specified
+CURRENT_GOOS=$(shell go env GOOS)
+CURRENT_GOARCH=$(shell go env GOARCH)
+GOOS ?= $(CURRENT_GOOS)
+GOARCH ?= $(CURRENT_GOARCH)
+
+BUILD_DIR=build
+
+# CGO is required for SQLite support
+CGO ?= 1
+
+package: build
+	@echo "Building package for $(GOOS)/$(GOARCH) with CGO_ENABLED=$(CGO)..."
+	@mkdir -p $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/bin
+	@GOOS=$(GOOS) GOARCH=$(GOARCH) CGO_ENABLED=$(CGO) go build -tags '$(BACKUP)' -o $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/bin/$(BACKUP) --ldflags '-X $(BACKUP_VERSION_STR)'
+	@GOOS=$(GOOS) GOARCH=$(GOARCH) CGO_ENABLED=$(CGO) go build -tags '$(RESTORE)' -o $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/bin/$(RESTORE) --ldflags '-X $(RESTORE_VERSION_STR)'
+	@GOOS=$(GOOS) GOARCH=$(GOARCH) CGO_ENABLED=$(CGO) go build -tags '$(HELPER)' -o $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/bin/$(HELPER) --ldflags '-X $(HELPER_VERSION_STR)'
+	@GOOS=$(GOOS) GOARCH=$(GOARCH) CGO_ENABLED=$(CGO) go build -tags '$(S3PLUGIN)' -o $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/bin/$(S3PLUGIN) --ldflags '-X $(S3PLUGIN_VERSION_STR)'
+	@echo "Creating install script..."
+	@echo '#!/bin/bash' > $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
+	@echo 'set -e' >> $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
+	@echo '' >> $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
+	@echo '# Use GPHOME if set, otherwise use default path' >> $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
+	@echo 'if [ -n "$$GPHOME" ]; then' >> $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
+	@echo '    INSTALL_DIR="$$GPHOME"' >> $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
+	@echo 'elif [ -n "$$INSTALL_DIR" ]; then' >> $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
+	@echo '    INSTALL_DIR="$$INSTALL_DIR"' >> $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
+	@echo 'else' >> $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
+	@echo '    INSTALL_DIR="/usr/local"' >> $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
+	@echo 'fi' >> $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
+	@echo '' >> $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
+	@echo 'SCRIPT_DIR="$$(cd "$$(dirname "$${BASH_SOURCE[0]}")" && pwd)"' >> $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
+	@echo '' >> $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
+	@echo 'echo "Installing $(PACKAGE_NAME) to $$INSTALL_DIR..."' >> $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
+	@echo '' >> $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
+	@echo '# Install binary files' >> $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
+	@echo 'sudo cp "$${SCRIPT_DIR}/bin/"* "$${INSTALL_DIR}/bin/"' >> $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
+	@echo '' >> $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
+	@echo '# Set permissions' >> $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
+	@echo 'sudo chmod 755 "$${INSTALL_DIR}/bin/$(BACKUP)"' >> $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
+	@echo 'sudo chmod 755 "$${INSTALL_DIR}/bin/$(RESTORE)"' >> $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
+	@echo 'sudo chmod 755 "$${INSTALL_DIR}/bin/$(HELPER)"' >> $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
+	@echo 'sudo chmod 755 "$${INSTALL_DIR}/bin/$(S3PLUGIN)"' >> $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
+	@echo '' >> $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
+	@echo 'echo "Installation complete!"' >> $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
+	@echo 'echo "$(PACKAGE_NAME) binaries installed to $${INSTALL_DIR}/bin/"' >> $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
+	@chmod +x $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
+	@echo "Creating tar.gz package..."
+	@cd $(BUILD_DIR) && tar -czf $(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH).tar.gz $(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/
+	@echo "Package created: $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH).tar.gz"
+	@echo "Contents:"
+	@cd $(BUILD_DIR) && tar -tzf $(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH).tar.gz | head -20
+
+package-linux-amd64:
+	@echo "Building Linux AMD64 package..."
+	GOOS=linux GOARCH=amd64 make package
+
+package-linux-arm64:
+	@echo "Building Linux ARM64 package..."
+	GOOS=linux GOARCH=arm64 make package
+
+package-all: package-linux-amd64 package-linux-arm64
+	@echo "All packages built successfully!"
+
+package-clean:
+	@rm -rf $(BUILD_DIR)
+	@echo "Build directory cleaned"
+
+.PHONY: package package-linux-amd64 package-linux-arm64 package-all package-clean
