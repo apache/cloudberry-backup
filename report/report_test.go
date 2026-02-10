@@ -97,7 +97,7 @@ data file format: Single Data File Per Segment`,
 			Expect(buffer).To(Say(`Apache Cloudberry Backup Report
 
 timestamp key:         20170101010101
-gpdb version:          5\.0\.0 build test
+database version:      5\.0\.0 build test
 gpbackup version:      0\.1\.0
 
 database name:         testdb
@@ -127,7 +127,7 @@ types       1000`))
 			Expect(buffer).To(Say(`Apache Cloudberry Backup Report
 
 timestamp key:         20170101010101
-gpdb version:          5\.0\.0 build test
+database version:      5\.0\.0 build test
 gpbackup version:      0\.1\.0
 
 database name:         testdb
@@ -159,7 +159,7 @@ types       1000`))
 			Expect(buffer).To(Say(`Apache Cloudberry Backup Report
 
 timestamp key:         20170101010101
-gpdb version:          5\.0\.0 build test
+database version:      5\.0\.0 build test
 gpbackup version:      0\.1\.0
 
 database name:         testdb
@@ -248,7 +248,7 @@ incremental backup set:
 			Expect(buffer).To(Say(`Apache Cloudberry Restore Report
 
 timestamp key:           20170101010101
-gpdb version:            5\.0\.0 build test
+database version:        5\.0\.0 build test
 gprestore version:       0\.1\.0
 
 database name:           testdb
@@ -269,7 +269,7 @@ restore error:           Cannot access /tmp/backups: Permission denied`))
 			Expect(buffer).To(Say(`Apache Cloudberry Restore Report
 
 timestamp key:           20170101010101
-gpdb version:            5\.0\.0 build test
+database version:        5\.0\.0 build test
 gprestore version:       0\.1\.0
 
 database name:           testdb
@@ -289,7 +289,7 @@ restore status:          Success`))
 			Expect(buffer).To(Say(`Apache Cloudberry Restore Report
 
 timestamp key:           20170101010101
-gpdb version:            5\.0\.0 build test
+database version:        5\.0\.0 build test
 gprestore version:       0\.1\.0
 
 database name:           testdb

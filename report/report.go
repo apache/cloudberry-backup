@@ -127,7 +127,7 @@ func (report *Report) WriteBackupReportFile(reportFilename string, timestamp str
 	reportInfo := make([]LineInfo, 0)
 	reportInfo = append(reportInfo,
 		LineInfo{Key: "timestamp key:", Value: timestamp},
-		LineInfo{Key: "gpdb version:", Value: report.DatabaseVersion},
+		LineInfo{Key: "database version:", Value: report.DatabaseVersion},
 		LineInfo{Key: "gpbackup version:", Value: fmt.Sprintf("%s\n", report.BackupVersion)},
 		LineInfo{Key: "database name:", Value: report.DatabaseName},
 		LineInfo{Key: "command line:", Value: gpbackupCommandLine},
@@ -189,7 +189,7 @@ func WriteRestoreReportFile(reportFilename string, backupTimestamp string, start
 	reportInfo := make([]LineInfo, 0)
 	reportInfo = append(reportInfo,
 		LineInfo{Key: "timestamp key:", Value: backupTimestamp},
-		LineInfo{Key: "gpdb version:", Value: connectionPool.Version.VersionString},
+		LineInfo{Key: "database version:", Value: connectionPool.Version.VersionString},
 		LineInfo{Key: "gprestore version:", Value: fmt.Sprintf("%s\n", restoreVersion)},
 		LineInfo{Key: "database name:", Value: connectionPool.DBName},
 		LineInfo{Key: "command line:", Value: fmt.Sprintf("%s\n", gprestoreCommandLine)},
