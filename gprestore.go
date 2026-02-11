@@ -14,7 +14,7 @@ import (
 func main() {
 	var rootCmd = &cobra.Command{
 		Use:     "gprestore",
-		Short:   "gprestore is the parallel restore utility for Greenplum",
+		Short:   "gprestore is the parallel restore utility for Cloudberry",
 		Args:    cobra.NoArgs,
 		Version: GetVersion(),
 		Run: func(cmd *cobra.Command, args []string) {

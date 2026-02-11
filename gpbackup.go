@@ -14,7 +14,7 @@ import (
 func main() {
 	var rootCmd = &cobra.Command{
 		Use:     "gpbackup",
-		Short:   "gpbackup is the parallel backup utility for Greenplum",
+		Short:   "gpbackup is the parallel backup utility for Cloudberry",
 		Args:    cobra.NoArgs,
 		Version: GetVersion(),
 		Run: func(cmd *cobra.Command, args []string) {

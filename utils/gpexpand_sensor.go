@@ -12,9 +12,9 @@ import (
 )
 
 const (
-	BackupPreventedByGpexpandMessage GpexpandFailureMessage = `Greenplum expansion currently in process, please re-run gpbackup when the expansion has completed`
+	BackupPreventedByGpexpandMessage GpexpandFailureMessage = `Cloudberry expansion currently in process, please re-run gpbackup when the expansion has completed`
 
-	RestorePreventedByGpexpandMessage GpexpandFailureMessage = `Greenplum expansion currently in process.  Once expansion is complete, it will be possible to restart gprestore, but please note existing backup sets taken with a different cluster configuration may no longer be compatible with the newly expanded cluster configuration`
+	RestorePreventedByGpexpandMessage GpexpandFailureMessage = `Cloudberry expansion currently in process.  Once expansion is complete, it will be possible to restart gprestore, but please note existing backup sets taken with a different cluster configuration may no longer be compatible with the newly expanded cluster configuration`
 
 	CoordinatorDataDirQuery           = `select datadir from gp_segment_configuration where content=-1 and role='p'`
 	GpexpandTemporaryTableStatusQuery = `SELECT status FROM gpexpand.status ORDER BY updated DESC LIMIT 1`
