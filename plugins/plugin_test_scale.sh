@@ -59,8 +59,9 @@ test_backup_and_restore_with_plugin() {
     gpbackup_return_code=$?
 
     # Parse out the backup timestamp for gprestore and plugin delete_backup
-    timestamp=`head -10 $log_file | grep "Backup Timestamp " | grep -Eo "[[:digit:]]{14}"`
-    if [ ! $? -eq 0 ]; then
+    # Look for 14-digit timestamp in the log file (format: YYYYMMDDHHMMSS)
+    timestamp=`grep -o '[0-9]\{14\}' $log_file | head -1`
+    if [ -z "$timestamp" ]; then
         echo "Unable to parse backup timestamp. Check gpbackup log file in ~/gpAdminLogs for details."
         echo
         cat $log_file

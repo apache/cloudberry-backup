@@ -40,8 +40,8 @@ testdatalarge="$testdir/testdatalarge_$time_second.txt"
 logdir="/tmp/test_bench_logs"
 
 text="this is some text"
-data=`LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 1000 ; echo`
-data_large=`LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 1000000 ; echo`
+data=`LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom 2>/dev/null | head -c 1000 ; echo`
+data_large=`LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom 2>/dev/null | head -c 1000000 ; echo`
 mkdir -p $testdir
 mkdir -p $logdir
 echo $text > $testfile

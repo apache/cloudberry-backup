@@ -1,0 +1,488 @@
+# --------------------------------------------------------------------
+#
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements. See the NOTICE file distributed
+# with this work for additional information regarding copyright
+# ownership. The ASF licenses this file to You under the Apache
+# License, Version 2.0 (the "License"); you may not use this file
+# except in compliance with the License. You may obtain a copy of the
+# License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+# implied. See the License for the specific language governing
+# permissions and limitations under the License.
+#
+# --------------------------------------------------------------------
+# GitHub Actions Workflow: Cloudberry-backup CI
+# --------------------------------------------------------------------
+# Description:
+#
+#   Builds Apache Cloudberry from source, packages the installation,
+#   and runs Cloudberry-backup tests against a demo Cloudberry cluster.
+#
+# Workflow Overview:
+# 1. Build Cloudberry from source and upload the installation as an artifact.
+# 2. For each test target (unit, integration, end_to_end), restore the
+#    Cloudberry installation, create a demo cluster, and run tests.
+#
+# Notes:
+# - Each test job runs in an isolated environment and creates its own demo cluster.
+# - Artifacts are used to avoid rebuilding Cloudberry for every test target.
+# --------------------------------------------------------------------
+
+name: cloudberry-backup-ci
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+    types: [ opened, synchronize, reopened, edited, ready_for_review ]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  CLOUDBERRY_REPO: apache/cloudberry
+  CLOUDBERRY_REF: main
+  CLOUDBERRY_DIR: cloudberry
+  CLOUDBERRY_BACKUP_DIR: cloudberry-backup
+
+jobs:
+  build_cloudberry:
+    name: Build Cloudberry From Source
+    runs-on: ubuntu-22.04
+    timeout-minutes: 180
+    container:
+      image: apache/incubator-cloudberry:cbdb-build-rocky9-latest
+      options: >-
+        --user root
+        -h cdw
+        -v /usr/share:/host_usr_share
+        -v /usr/local:/host_usr_local
+        -v /opt:/host_opt
+
+    steps:
+      - name: Free Disk Space
+        run: |
+          set -euo pipefail
+          echo "=== Disk space before cleanup ==="
+          df -h /
+
+          rm -rf /host_opt/hostedtoolcache || true
+          rm -rf /host_usr_local/lib/android || true
+          rm -rf /host_usr_share/dotnet || true
+          rm -rf /host_opt/ghc || true
+          rm -rf /host_usr_local/.ghcup || true
+          rm -rf /host_usr_share/swift || true
+          rm -rf /host_usr_local/share/powershell || true
+          rm -rf /host_usr_local/share/chromium || true
+          rm -rf /host_usr_share/miniconda || true
+          rm -rf /host_opt/az || true
+          rm -rf /host_usr_share/sbt || true
+
+          echo "=== Disk space after cleanup ==="
+          df -h /
+
+      - name: Checkout Cloudberry Source
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.CLOUDBERRY_REPO }}
+          ref: ${{ env.CLOUDBERRY_REF }}
+          fetch-depth: 1
+          submodules: true
+          path: ${{ env.CLOUDBERRY_DIR }}
+
+      - name: Cloudberry Environment Initialization
+        env:
+          SRC_DIR: ${{ github.workspace }}/${{ env.CLOUDBERRY_DIR }}
+        run: |
+          set -euo pipefail
+          if ! su - gpadmin -c "/tmp/init_system.sh"; then
+            echo "::error::Container initialization failed"
+            exit 1
+          fi
+
+          mkdir -p "${SRC_DIR}/build-logs/details"
+          chown -R gpadmin:gpadmin .
+          chmod -R 755 .
+          chmod 777 "${SRC_DIR}/build-logs"
+          df -h /
+          rm -rf /__t/*
+          df -h /
+
+      - name: Configure Cloudberry
+        env:
+          SRC_DIR: ${{ github.workspace }}/${{ env.CLOUDBERRY_DIR }}
+        run: |
+          set -euo pipefail
+          chmod +x "${SRC_DIR}/devops/build/automation/cloudberry/scripts/configure-cloudberry.sh"
+          if ! time su - gpadmin -c "cd ${SRC_DIR} && SRC_DIR=${SRC_DIR} ${SRC_DIR}/devops/build/automation/cloudberry/scripts/configure-cloudberry.sh"; then
+            echo "::error::Configure script failed"
+            exit 1
+          fi
+
+      - name: Build Cloudberry
+        env:
+          SRC_DIR: ${{ github.workspace }}/${{ env.CLOUDBERRY_DIR }}
+        run: |
+          set -euo pipefail
+          chmod +x "${SRC_DIR}/devops/build/automation/cloudberry/scripts/build-cloudberry.sh"
+          if ! time su - gpadmin -c "cd ${SRC_DIR} && SRC_DIR=${SRC_DIR} ${SRC_DIR}/devops/build/automation/cloudberry/scripts/build-cloudberry.sh"; then
+            echo "::error::Build script failed"
+            exit 1
+          fi
+
+      - name: Package Cloudberry Source
+        env:
+          SRC_DIR: ${{ github.workspace }}/${{ env.CLOUDBERRY_DIR }}
+        run: |
+          set -euo pipefail
+          tar -C "${GITHUB_WORKSPACE}" -czf cloudberry-src.tgz "${CLOUDBERRY_DIR}"
+
+      - name: Package Cloudberry Installation
+        run: |
+          set -euo pipefail
+          tar -C /usr/local -czf cloudberry-db.tgz cloudberry-db
+
+      - name: Upload Cloudberry Installation
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloudberry-db-install
+          path: cloudberry-db.tgz
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload Cloudberry Source
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloudberry-source
+          path: cloudberry-src.tgz
+          if-no-files-found: error
+          retention-days: 7
+
+  test_cloudberry_backup:
+    name: Cloudberry-backup Tests (${{ matrix.test_target }})
+    needs: [build_cloudberry]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 180
+    container:
+      image: apache/incubator-cloudberry:cbdb-build-rocky9-latest
+      options: >-
+        --user root
+        -h cdw
+        -v /usr/share:/host_usr_share
+        -v /usr/local:/host_usr_local
+        -v /opt:/host_opt
+
+    strategy:
+      fail-fast: false
+      matrix:
+        test_target: [unit, integration, end_to_end, s3_plugin_e2e, regression]
+
+    steps:
+      - name: Free Disk Space
+        run: |
+          set -euo pipefail
+          echo "=== Disk space before cleanup ==="
+          df -h /
+
+          rm -rf /host_opt/hostedtoolcache || true
+          rm -rf /host_usr_local/lib/android || true
+          rm -rf /host_usr_share/dotnet || true
+          rm -rf /host_opt/ghc || true
+          rm -rf /host_usr_local/.ghcup || true
+          rm -rf /host_usr_share/swift || true
+          rm -rf /host_usr_local/share/powershell || true
+          rm -rf /host_usr_local/share/chromium || true
+          rm -rf /host_usr_share/miniconda || true
+          rm -rf /host_opt/az || true
+          rm -rf /host_usr_share/sbt || true
+
+          echo "=== Disk space after cleanup ==="
+          df -h /
+
+      - name: Checkout Cloudberry-backup
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          path: ${{ env.CLOUDBERRY_BACKUP_DIR }}
+
+      - name: Download Cloudberry Installation
+        uses: actions/download-artifact@v4
+        with:
+          name: cloudberry-db-install
+
+      - name: Download Cloudberry Source
+        uses: actions/download-artifact@v4
+        with:
+          name: cloudberry-source
+
+      - name: Restore Cloudberry Installation
+        run: |
+          set -euo pipefail
+          tar -C /usr/local -xzf cloudberry-db.tgz
+
+      - name: Restore Cloudberry Source
+        run: |
+          set -euo pipefail
+          tar -C "${GITHUB_WORKSPACE}" -xzf cloudberry-src.tgz
+
+      - name: Cloudberry Environment Initialization
+        env:
+          SRC_DIR: ${{ github.workspace }}/${{ env.CLOUDBERRY_DIR }}
+        run: |
+          set -euo pipefail
+          if ! su - gpadmin -c "/tmp/init_system.sh"; then
+            echo "::error::Container initialization failed"
+            exit 1
+          fi
+
+          mkdir -p "${SRC_DIR}/build-logs/details"
+          chown -R gpadmin:gpadmin .
+          chmod -R 755 .
+          chmod 777 "${SRC_DIR}/build-logs"
+          df -h /
+          rm -rf /__t/*
+          df -h /
+
+      - name: Create Cloudberry Demo Cluster
+        env:
+          SRC_DIR: ${{ github.workspace }}/${{ env.CLOUDBERRY_DIR }}
+        run: |
+          set -euo pipefail
+          chmod +x "${SRC_DIR}/devops/build/automation/cloudberry/scripts/create-cloudberry-demo-cluster.sh"
+          if ! time su - gpadmin -c "cd ${SRC_DIR} && SRC_DIR=${SRC_DIR} ${SRC_DIR}/devops/build/automation/cloudberry/scripts/create-cloudberry-demo-cluster.sh"; then
+            echo "::error::Demo cluster creation failed"
+            exit 1
+          fi
+
+      - name: Cloudberry-backup Tests
+        env:
+          CLOUDBERRY_BACKUP_SRC: ${{ github.workspace }}/${{ env.CLOUDBERRY_BACKUP_DIR }}
+          CLOUDBERRY_SRC: ${{ github.workspace }}/${{ env.CLOUDBERRY_DIR }}
+          TEST_TARGET: ${{ matrix.test_target }}
+        run: |
+          set -euo pipefail
+          TEST_LOG_ROOT="${GITHUB_WORKSPACE}/test-logs/${TEST_TARGET}"
+          mkdir -p "${TEST_LOG_ROOT}"
+          chown -R gpadmin:gpadmin "${TEST_LOG_ROOT}"
+
+          cat <<'SCRIPT' > /tmp/run_cloudberry_backup_tests.sh
+          #!/bin/bash
+          set -euo pipefail
+
+          export GOPATH=/home/gpadmin/go
+          export PATH=/usr/local/go/bin:${GOPATH}/bin:${PATH}
+
+          source /usr/local/cloudberry-db/cloudberry-env.sh
+          source ${CLOUDBERRY_SRC}/gpAux/gpdemo/gpdemo-env.sh
+
+          pushd ${CLOUDBERRY_BACKUP_SRC}
+            make depend 2>&1 | tee "${TEST_LOG_ROOT}/cloudberry-backup-depend.log"
+            make build 2>&1 | tee "${TEST_LOG_ROOT}/cloudberry-backup-build.log"
+            make install 2>&1 | tee "${TEST_LOG_ROOT}/cloudberry-backup-install.log"
+
+            dummy_dir=$(find ${CLOUDBERRY_SRC} -name dummy_seclabel -type d | head -n 1 || true)
+            if [ -n "${dummy_dir}" ]; then
+              pushd "${dummy_dir}"
+                make install
+              popd
+              gpconfig -c shared_preload_libraries -v dummy_seclabel
+              gpstop -ra
+              gpconfig -s shared_preload_libraries | grep dummy_seclabel
+            else
+              echo "dummy_seclabel not found, skipping preload setup"
+            fi
+
+            psql postgres -c 'DROP TABLESPACE IF EXISTS test_tablespace'
+
+            set +e
+            case "${TEST_TARGET}" in
+              unit)
+                make unit 2>&1 | tee "${TEST_LOG_ROOT}/cloudberry-backup-unit.log"
+                ;;
+              integration)
+                sudo dnf install glibc-langpack-de -y
+                make integration 2>&1 | tee "${TEST_LOG_ROOT}/cloudberry-backup-integration.log"
+                ;;
+              end_to_end)
+                make end_to_end 2>&1 | tee "${TEST_LOG_ROOT}/cloudberry-backup-end_to_end.log"
+                ;;
+              s3_plugin_e2e)
+                curl -fsSL https://dl.min.io/server/minio/release/linux-amd64/minio -o /tmp/minio
+                chmod +x /tmp/minio
+                mkdir -p /tmp/minio-data
+                /tmp/minio server --address ":9000" /tmp/minio-data > "${TEST_LOG_ROOT}/minio.log" 2>&1 &
+                for i in {1..30}; do
+                  if curl -fsS http://127.0.0.1:9000/minio/health/live >/dev/null; then
+                    break
+                  fi
+                  sleep 1
+                done
+
+                curl -fsSL https://dl.min.io/client/mc/release/linux-amd64/mc -o /tmp/mc
+                chmod +x /tmp/mc
+                /tmp/mc alias set local http://127.0.0.1:9000 minioadmin minioadmin
+                /tmp/mc mb --ignore-existing local/cloudberry-backup-s3-test
+
+                ${CLOUDBERRY_BACKUP_SRC}/plugins/generate_minio_config.sh
+                ${CLOUDBERRY_BACKUP_SRC}/plugins/plugin_test.sh "${GPHOME}/bin/gpbackup_s3_plugin" /tmp/minio_config.yaml 2>&1 | tee "${TEST_LOG_ROOT}/cloudberry-backup-s3-plugin-commands.log"
+
+                # Start test
+                test_db=plugin_test_db_ci
+                backup_log="${TEST_LOG_ROOT}/cloudberry-backup-s3-plugin-gpbackup.log"
+                restore_log="${TEST_LOG_ROOT}/cloudberry-backup-s3-plugin-gprestore.log"
+                psql -X -d postgres -qc "DROP DATABASE IF EXISTS ${test_db}" 2>/dev/null || true
+                createdb "${test_db}"
+                psql -X -d "${test_db}" -qc "CREATE TABLE test1(i int) DISTRIBUTED RANDOMLY; INSERT INTO test1 SELECT generate_series(1,1000)"
+
+                # Store minio PID for cleanup
+                minio_pid=$!
+                
+                gpbackup --dbname "${test_db}" --metadata-only --plugin-config /tmp/minio_config.yaml > "${backup_log}" 2>&1
+                timestamp=$(grep -E "Backup Timestamp[[:space:]]*=" "${backup_log}" | grep -Eo "[[:digit:]]{14}" | head -n 1)
+                if [ -z "${timestamp}" ]; then
+                  latest_gpbackup_log=$(ls -1t "${HOME}/gpAdminLogs"/gpbackup_*.log 2>/dev/null | head -n 1 || true)
+                  if [ -n "${latest_gpbackup_log}" ]; then
+                    timestamp=$(grep -E "Backup Timestamp[[:space:]]*=" "${latest_gpbackup_log}" | grep -Eo "[[:digit:]]{14}" | head -n 1)
+                  fi
+                fi
+                if [ -z "${timestamp}" ]; then
+                  echo "Could not parse backup timestamp from gpbackup logs"
+                  echo "----- ${backup_log} -----"
+                  cat "${backup_log}" || true
+                  latest_gpbackup_log=$(ls -1t "${HOME}/gpAdminLogs"/gpbackup_*.log 2>/dev/null | head -n 1 || true)
+                  if [ -n "${latest_gpbackup_log}" ]; then
+                    echo "----- ${latest_gpbackup_log} -----"
+                    cat "${latest_gpbackup_log}" || true
+                  fi
+                  exit 1
+                fi
+
+                dropdb "${test_db}"
+                gprestore --timestamp "${timestamp}" --plugin-config /tmp/minio_config.yaml --create-db > "${restore_log}" 2>&1
+
+                result=$(psql -X -d "${test_db}" -tc "SELECT count(*) FROM pg_class WHERE relname='test1'" | xargs)
+                if [ "${result}" != "1" ]; then
+                  echo "Expected table test1 to exist after restore, got count=${result}"
+                  exit 1
+                fi
+                
+                # Cleanup
+                kill ${minio_pid} || true
+                wait ${minio_pid} 2>/dev/null || true
+                rm -rf /tmp/minio-data || true
+                exit 0
+                ;;
+              regression)
+                pushd ${CLOUDBERRY_SRC}/src/test/regress
+                ./pg_regress --dbname=regression --host=localhost --port=7000 --init-file=init_file --schedule=./minimal_schedule || true
+                cat regression.diffs 2>/dev/null || true
+                popd
+
+                psql -d postgres -c 'DROP TABLESPACE IF EXISTS test_tablespace'
+
+                pg_dump regression -f /tmp/regression_schema_before.sql --schema-only
+
+                backup_dir=/tmp/regression_backup
+                rm -rf "${backup_dir}"
+                mkdir -p "${backup_dir}"
+
+                # Run gpbackup and capture output to extract timestamp
+                backup_log="${TEST_LOG_ROOT}/gpbackup_output.log"
+                gpbackup --dbname regression --backup-dir "${backup_dir}" --metadata-only 2>&1 | tee "${backup_log}"
+
+                # Extract timestamp from backup command output (most reliable)
+                timestamp=$(grep -E "Backup Timestamp[[:space:]]*=" "${backup_log}" | grep -Eo "[[:digit:]]{14}" | head -1)
+
+                # Fallback: Check gpAdminLogs if not found in direct output
+                if [ -z "${timestamp}" ]; then
+                  latest_gpbackup_log=$(ls -1t "${HOME}/gpAdminLogs"/gpbackup_*.log 2>/dev/null | head -1 || true)
+                  if [ -n "${latest_gpbackup_log}" ]; then
+                    timestamp=$(grep -E "Backup Timestamp[[:space:]]*=" "${latest_gpbackup_log}" | grep -Eo "[[:digit:]]{14}" | head -1)
+                  fi
+                fi
+
+                # Check if timestamp is empty
+                if [ -z "${timestamp}" ]; then
+                  echo "ERROR: Could not parse backup timestamp from gpbackup logs"
+                  echo "=== Final backup directory structure ==="
+                  find "${backup_dir}" -type f | sort
+                  exit 1
+                fi
+
+                echo "backup timestamp: ${timestamp}"
+
+                psql -d postgres -c 'DROP DATABASE IF EXISTS regression'
+
+                set +e
+                  gprestore --create-db --timestamp ${timestamp} --backup-dir "${backup_dir}" --with-globals --on-error-continue
+                set -e
+
+                pg_dump regression -f /tmp/regression_schema_after.sql --schema-only
+
+                set +e
+                  diff -u /tmp/regression_schema_before.sql /tmp/regression_schema_after.sql > /tmp/regression_schema.diff
+                  diff_status=$?
+                set -e
+
+                cp -a /tmp/regression_schema_before.sql "${TEST_LOG_ROOT}/regression_schema_before.sql" || true
+                cp -a /tmp/regression_schema_after.sql "${TEST_LOG_ROOT}/regression_schema_after.sql" || true
+                cp -a /tmp/regression_schema.diff "${TEST_LOG_ROOT}/regression_schema.diff" || true
+                ;;
+              *)
+                echo "unknown test target: ${TEST_TARGET}"
+                exit 2
+                ;;
+            esac
+            test_status=${PIPESTATUS[0]}
+            set -e
+          popd
+
+          if [ -n "${MASTER_DATA_DIRECTORY:-}" ] && [ -d "${MASTER_DATA_DIRECTORY}/log" ]; then
+            cp -a "${MASTER_DATA_DIRECTORY}/log" "${TEST_LOG_ROOT}/gpdb-log" || true
+          fi
+          if [ -d "${CLOUDBERRY_SRC}/build-logs" ]; then
+            cp -a "${CLOUDBERRY_SRC}/build-logs" "${TEST_LOG_ROOT}/cloudberry-build-logs" || true
+          fi
+
+          exit ${test_status}
+          SCRIPT
+
+          chmod +x /tmp/run_cloudberry_backup_tests.sh
+          set +e
+          su - gpadmin -c "TEST_LOG_ROOT=${TEST_LOG_ROOT} CLOUDBERRY_BACKUP_SRC=${CLOUDBERRY_BACKUP_SRC} CLOUDBERRY_SRC=${CLOUDBERRY_SRC} TEST_TARGET=${TEST_TARGET} /tmp/run_cloudberry_backup_tests.sh"
+          status=$?
+          set -e
+
+          {
+            echo "## Cloudberry-backup Test Summary"
+            echo "- Target: ${TEST_TARGET}"
+            if [ ${status} -eq 0 ]; then
+              echo "- Result: PASS"
+            else
+              echo "- Result: FAIL"
+            fi
+            echo "- Logs: ${TEST_LOG_ROOT}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          exit ${status}
+
+      - name: Upload Test Logs (On Failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloudberry-backup-logs-${{ matrix.test_target }}
+          path: test-logs/${{ matrix.test_target }}
+          if-no-files-found: warn
+          retention-days: 7

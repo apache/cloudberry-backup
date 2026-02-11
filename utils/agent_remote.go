@@ -155,6 +155,7 @@ func StartGpbackupHelpers(c *cluster.Cluster, fpInfo filepath.FilePathInfo, oper
 	defer helperMutex.Unlock()
 
 	gphomePath := operating.System.Getenv("GPHOME")
+	envSourceCommand := SourceClusterEnvCommand(gphomePath)
 	pluginStr := ""
 	if pluginConfigFile != "" {
 		_, configFilename := path.Split(pluginConfigFile)
@@ -188,12 +189,12 @@ func StartGpbackupHelpers(c *cluster.Cluster, fpInfo filepath.FilePathInfo, oper
 		// we run these commands in sequence to ensure that any failure is critical; the last command ensures the agent process was successfully started
 		return fmt.Sprintf(`cat << HEREDOC > %[1]s && chmod +x %[1]s && ( nohup %[1]s &> /dev/null &)
 #!/bin/bash
-source %[2]s/greenplum_path.sh
-%[2]s/bin/%s
+%[3]s
+%[2]s/bin/%[4]s
 
 HEREDOC
 
-`, scriptFile, gphomePath, helperCmdStr)
+`, scriptFile, gphomePath, envSourceCommand, helperCmdStr)
 	})
 	c.CheckClusterError(remoteOutput, "Error starting gpbackup_helper agent", func(contentID int) string {
 		return "Error starting gpbackup_helper agent"

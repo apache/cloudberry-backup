@@ -28,7 +28,10 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-var Version string
+var (
+	version string // This will be set by ldflags
+	Version = version // Public alias
+)
 
 const apiVersion = "0.5.0"
 const Mebibyte = 1024 * 1024

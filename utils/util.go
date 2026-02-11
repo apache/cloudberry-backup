@@ -35,6 +35,25 @@ func CommandExists(cmd string) bool {
 	return err == nil
 }
 
+func ClusterEnvScriptPath(gphome string) string {
+	greenplumPath := path.Join(gphome, "greenplum_path.sh")
+	if FileExists(greenplumPath) {
+		return greenplumPath
+	}
+
+	cloudberryPath := path.Join(gphome, "cloudberry-env.sh")
+	if FileExists(cloudberryPath) {
+		return cloudberryPath
+	}
+
+	// Preserve previous behavior as fallback for clearer error messages upstream.
+	return greenplumPath
+}
+
+func SourceClusterEnvCommand(gphome string) string {
+	return fmt.Sprintf("source %s", ClusterEnvScriptPath(gphome))
+}
+
 func FileExists(filename string) bool {
 	_, err := os.Stat(filename)
 	return err == nil

@@ -6,7 +6,7 @@ options:
   endpoint: http://localhost:9000/
   aws_access_key_id: minioadmin
   aws_secret_access_key: minioadmin
-  bucket: gpbackup-s3-test
+  bucket: cloudberry-backup-s3-test
   folder: test/backup
   backup_max_concurrent_requests: 2
   backup_multipart_chunksize: 5MB
