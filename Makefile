@@ -171,7 +171,7 @@ BUILD_DIR=build
 # CGO is required for SQLite support
 CGO ?= 1
 
-package: build
+package:
 	@echo "Building package for $(GOOS)/$(GOARCH) with CGO_ENABLED=$(CGO)..."
 	@mkdir -p $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/bin
 	@GOOS=$(GOOS) GOARCH=$(GOARCH) CGO_ENABLED=$(CGO) go build -tags '$(BACKUP)' -o $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/bin/$(BACKUP) --ldflags '-X $(BACKUP_VERSION_STR)'
