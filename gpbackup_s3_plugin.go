@@ -15,28 +15,14 @@ import (
 func main() {
 	gplog.InitializeLogging("gpbackup_s3_plugin", "")
 	app := cli.NewApp()
-	app.Name = "gpbackup_s3_plugin"
+	cli.VersionFlag = cli.BoolFlag{
+		Name:  "version",
+		Usage: "print version of gpbackup_s3_plugin",
+	}
 	app.Version = s3plugin.Version
 	app.Usage = ""
 	app.UsageText = "Not supported as a standalone utility. " +
 		"This plugin must be used in conjunction with gpbackup and gprestore."
-
-	// Manually add version flags to handle both --version and -v
-	app.Flags = []cli.Flag{
-		cli.BoolFlag{
-			Name:  "version, v",
-			Usage: "print the version",
-		},
-	}
-
-	// Add a default action to handle version flag when no subcommand is provided
-	app.Action = func(c *cli.Context) error {
-		if c.Bool("version") {
-			fmt.Printf("%s version %s\n", app.Name, app.Version)
-			return nil
-		}
-		return cli.NewExitError("No command provided. See --help for usage.", 1)
-	}
 
 	app.Commands = []cli.Command{
 		{
