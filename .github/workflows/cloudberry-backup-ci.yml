@@ -187,7 +187,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        test_target: [unit, integration, end_to_end, s3_plugin_e2e, regression]
+        test_target: [unit, integration, end_to_end, s3_plugin_e2e, regression, scale]
 
     steps:
       - name: Free Disk Space
@@ -439,6 +439,13 @@ jobs:
                 cp -a /tmp/regression_schema_before.sql "${TEST_LOG_ROOT}/regression_schema_before.sql" || true
                 cp -a /tmp/regression_schema_after.sql "${TEST_LOG_ROOT}/regression_schema_after.sql" || true
                 cp -a /tmp/regression_schema.diff "${TEST_LOG_ROOT}/regression_schema.diff" || true
+                ;;
+              scale)
+                export BACKUP_DIR=/tmp/scale_backup
+                export LOG_DIR="${TEST_LOG_ROOT}/scale"
+                mkdir -p "${LOG_DIR}"
+                chmod +x "${CLOUDBERRY_BACKUP_SRC}/.github/workflows/scale-tests-cloudberry-ci.bash"
+                "${CLOUDBERRY_BACKUP_SRC}/.github/workflows/scale-tests-cloudberry-ci.bash" 2>&1 | tee "${TEST_LOG_ROOT}/cloudberry-backup-scale.log"
                 ;;
               *)
                 echo "unknown test target: ${TEST_TARGET}"
