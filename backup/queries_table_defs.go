@@ -32,6 +32,9 @@ func (t Table) GetMetadataEntry() (string, toc.MetadataEntry) {
 	if (t.ForeignDef != ForeignTableDefinition{}) {
 		objectType = toc.OBJ_FOREIGN_TABLE
 	}
+	if t.IsExternal && ((connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB()) {
+		objectType = toc.OBJ_FOREIGN_TABLE
+	}
 	referenceObject := ""
 	if t.AttachPartitionInfo != (AttachPartitionInfo{}) {
 		referenceObject = t.AttachPartitionInfo.Parent

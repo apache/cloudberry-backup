@@ -95,7 +95,11 @@ var _ = Describe("backup/predata_externals tests", func() {
 			extTableDef.URIs = []string{"file://host:port/path/file"}
 			testTable.ExtTableDef = extTableDef
 			backup.PrintExternalTableCreateStatement(backupfile, tocfile, testTable)
-			testutils.ExpectEntry(tocfile.PredataEntries, 0, "public", "", "tablename", toc.OBJ_TABLE)
+			expectedObjectType := toc.OBJ_TABLE
+			if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
+				expectedObjectType = toc.OBJ_FOREIGN_TABLE
+			}
+			testutils.ExpectEntry(tocfile.PredataEntries, 0, "public", "", "tablename", expectedObjectType)
 			testutils.AssertBufferContents(tocfile.PredataEntries, buffer, `CREATE READABLE EXTERNAL TABLE public.tablename (
 ) LOCATION (
 	'file://host:port/path/file'
