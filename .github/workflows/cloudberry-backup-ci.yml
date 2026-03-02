@@ -313,6 +313,10 @@ jobs:
                 ;;
               integration)
                 sudo dnf install glibc-langpack-de -y
+                # Recompile the de_DE locale with UTF-8 character map so that
+                # PostgreSQL's encoding/locale compatibility check passes when
+                # the cluster database encoding is UTF-8.
+                sudo localedef -i de_DE -f UTF-8 de_DE
                 make integration 2>&1 | tee "${TEST_LOG_ROOT}/cloudberry-backup-integration.log"
                 ;;
               end_to_end)
