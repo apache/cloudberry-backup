@@ -38,9 +38,9 @@ name: cloudberry-backup-ci
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, REL_2_STABLE ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, REL_2_STABLE ]
     types: [ opened, synchronize, reopened, edited, ready_for_review ]
   workflow_dispatch:
 
@@ -53,7 +53,7 @@ permissions:
 
 env:
   CLOUDBERRY_REPO: apache/cloudberry
-  CLOUDBERRY_REF: main
+  CLOUDBERRY_REF: REL_2_STABLE
   CLOUDBERRY_DIR: cloudberry
   CLOUDBERRY_BACKUP_DIR: cloudberry-backup
 
