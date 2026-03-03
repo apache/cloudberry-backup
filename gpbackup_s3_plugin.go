@@ -19,7 +19,7 @@ func main() {
 		Name:  "version",
 		Usage: "print version of gpbackup_s3_plugin",
 	}
-	app.Version = s3plugin.Version
+	app.Version = s3plugin.GetVersion()
 	app.Usage = ""
 	app.UsageText = "Not supported as a standalone utility. " +
 		"This plugin must be used in conjunction with gpbackup and gprestore."

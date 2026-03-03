@@ -40,15 +40,6 @@ func SetupPluginForBackup(c *cli.Context) error {
 	return err
 }
 
-func VersionCommand(c *cli.Context) error {
-	if Version == "" {
-		Version = "dev" // fallback for local builds without ldflags
-	}
-	fmt.Printf("gpbackup_s3_plugin version %s\n", Version)
-	fmt.Printf("gpbackup_s3_plugin api version %s\n", apiVersion)
-	return nil
-}
-
 func BackupFile(c *cli.Context) error {
 	config, sess, err := readConfigAndStartSession(c)
 	if err != nil {

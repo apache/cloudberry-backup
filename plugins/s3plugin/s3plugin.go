@@ -28,10 +28,15 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-var (
-	version string // This will be set by ldflags
-	Version = version // Public alias
-)
+// version is set at build time via ldflags:
+//
+//	go build -ldflags "-X github.com/apache/cloudberry-backup/plugins/s3plugin.version=..."
+var version string
+
+// GetVersion returns the build version string injected via ldflags.
+func GetVersion() string {
+	return version
+}
 
 const apiVersion = "0.5.0"
 const Mebibyte = 1024 * 1024
