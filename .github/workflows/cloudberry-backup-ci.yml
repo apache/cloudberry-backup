@@ -255,6 +255,14 @@ jobs:
           rm -rf /__t/*
           df -h /
 
+      - name: Setup Locale for Integration Tests
+        run: |
+          # Install German locale and recompile de_DE with UTF-8 encoding BEFORE
+          # the cluster starts. PostgreSQL memory-maps the locale archive at
+          # startup, so localedef must run before any PG process is launched.
+          dnf install -y glibc-langpack-de
+          localedef -i de_DE -f UTF-8 de_DE
+
       - name: Create Cloudberry Demo Cluster
         env:
           SRC_DIR: ${{ github.workspace }}/${{ env.CLOUDBERRY_DIR }}
@@ -312,11 +320,6 @@ jobs:
                 make unit 2>&1 | tee "${TEST_LOG_ROOT}/cloudberry-backup-unit.log"
                 ;;
               integration)
-                sudo dnf install glibc-langpack-de -y
-                # Recompile the de_DE locale with UTF-8 character map so that
-                # PostgreSQL's encoding/locale compatibility check passes when
-                # the cluster database encoding is UTF-8.
-                sudo localedef -i de_DE -f UTF-8 de_DE
                 make integration 2>&1 | tee "${TEST_LOG_ROOT}/cloudberry-backup-integration.log"
                 ;;
               end_to_end)
