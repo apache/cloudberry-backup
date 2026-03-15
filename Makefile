@@ -9,6 +9,7 @@ BACKUP=gpbackup
 RESTORE=gprestore
 HELPER=gpbackup_helper
 S3PLUGIN=gpbackup_s3_plugin
+GPBACKMAN=gpbackman
 BIN_DIR=$(shell echo $${GOPATH:-~/go} | awk -F':' '{ print $$1 "/bin"}')
 GINKGO_FLAGS := -r --keep-going --randomize-suites --randomize-all --no-color
 GIT_VERSION := $(shell v=$$(git describe --tags 2>/dev/null); if [ -n "$$v" ]; then echo $$v | perl -pe 's/(.*)-([0-9]*)-(g[0-9a-f]*)/\1+dev.\2.\3/'; else cat VERSION 2>/dev/null || echo "dev"; fi)
@@ -16,9 +17,10 @@ BACKUP_VERSION_STR=github.com/apache/cloudberry-backup/backup.version=$(GIT_VERS
 RESTORE_VERSION_STR=github.com/apache/cloudberry-backup/restore.version=$(GIT_VERSION)
 HELPER_VERSION_STR=github.com/apache/cloudberry-backup/helper.version=$(GIT_VERSION)
 S3PLUGIN_VERSION_STR=github.com/apache/cloudberry-backup/plugins/s3plugin.version=$(GIT_VERSION)
+GPBACKMAN_VERSION_STR=github.com/apache/cloudberry-backup/gpbackman/cmd.version=$(GIT_VERSION)
 
 # note that /testutils is not a production directory, but has unit tests to validate testing tools
-SUBDIRS_HAS_UNIT=backup/ filepath/ history/ helper/ options/ report/ restore/ toc/ utils/ testutils/ plugins/s3plugin/
+SUBDIRS_HAS_UNIT=backup/ filepath/ history/ helper/ options/ report/ restore/ toc/ utils/ testutils/ plugins/s3plugin/ gpbackman/cmd/ gpbackman/gpbckpconfig/ gpbackman/textmsg/
 SUBDIRS_ALL=$(SUBDIRS_HAS_UNIT) integration/ end_to_end/
 GOLANG_LINTER=$(GOPATH)/bin/golangci-lint
 GINKGO=$(GOPATH)/bin/ginkgo
@@ -87,21 +89,24 @@ build : $(GOSQLITE)
 		CGO_ENABLED=1 $(GO_BUILD) -tags '$(RESTORE)' -o $(BIN_DIR)/$(RESTORE) --ldflags '-X $(RESTORE_VERSION_STR)'
 		CGO_ENABLED=1 $(GO_BUILD) -tags '$(HELPER)' -o $(BIN_DIR)/$(HELPER) --ldflags '-X $(HELPER_VERSION_STR)'
 		CGO_ENABLED=1 $(GO_BUILD) -tags '$(S3PLUGIN)' -o $(BIN_DIR)/$(S3PLUGIN) --ldflags '-X $(S3PLUGIN_VERSION_STR)'
+		CGO_ENABLED=1 $(GO_BUILD) -tags '$(GPBACKMAN)' -o $(BIN_DIR)/$(GPBACKMAN) --ldflags '-X $(GPBACKMAN_VERSION_STR)'
 
 debug :
 		CGO_ENABLED=1 $(GO_BUILD) -tags '$(BACKUP)' -o $(BIN_DIR)/$(BACKUP) -ldflags "-X $(BACKUP_VERSION_STR)" $(DEBUG)
 		CGO_ENABLED=1 $(GO_BUILD) -tags '$(RESTORE)' -o $(BIN_DIR)/$(RESTORE) -ldflags "-X $(RESTORE_VERSION_STR)" $(DEBUG)
 		CGO_ENABLED=1 $(GO_BUILD) -tags '$(HELPER)' -o $(BIN_DIR)/$(HELPER) -ldflags "-X $(HELPER_VERSION_STR)" $(DEBUG)
 		CGO_ENABLED=1 $(GO_BUILD) -tags '$(S3PLUGIN)' -o $(BIN_DIR)/$(S3PLUGIN) -ldflags "-X $(S3PLUGIN_VERSION_STR)" $(DEBUG)
+		CGO_ENABLED=1 $(GO_BUILD) -tags '$(GPBACKMAN)' -o $(BIN_DIR)/$(GPBACKMAN) -ldflags "-X $(GPBACKMAN_VERSION_STR)" $(DEBUG)
 
 build_linux :
 		env GOOS=linux GOARCH=amd64 $(GO_BUILD) -tags '$(BACKUP)' -o $(BACKUP) -ldflags "-X $(BACKUP_VERSION_STR)"
 		env GOOS=linux GOARCH=amd64 $(GO_BUILD) -tags '$(RESTORE)' -o $(RESTORE) -ldflags "-X $(RESTORE_VERSION_STR)"
 		env GOOS=linux GOARCH=amd64 $(GO_BUILD) -tags '$(HELPER)' -o $(HELPER) -ldflags "-X $(HELPER_VERSION_STR)"
 		env GOOS=linux GOARCH=amd64 $(GO_BUILD) -tags '$(S3PLUGIN)' -o $(S3PLUGIN) -ldflags "-X $(S3PLUGIN_VERSION_STR)"
+		env GOOS=linux GOARCH=amd64 $(GO_BUILD) -tags '$(GPBACKMAN)' -o $(GPBACKMAN) -ldflags "-X $(GPBACKMAN_VERSION_STR)"
 
 install :
-		cp $(BIN_DIR)/$(BACKUP) $(BIN_DIR)/$(RESTORE) $(GPHOME)/bin
+		cp $(BIN_DIR)/$(BACKUP) $(BIN_DIR)/$(RESTORE) $(BIN_DIR)/$(GPBACKMAN) $(GPHOME)/bin
 		@psql -X -t -d template1 -c 'select distinct hostname from gp_segment_configuration where content != -1' > /tmp/seg_hosts 2>/dev/null; \
 		if [ $$? -eq 0 ]; then \
 			$(COPYUTIL) -f /tmp/seg_hosts $(helper_path) $(s3plugin_path) =:$(GPHOME)/bin/; \
@@ -119,7 +124,7 @@ install :
 
 clean :
 		# Build artifacts
-		rm -f $(BIN_DIR)/$(BACKUP) $(BACKUP) $(BIN_DIR)/$(RESTORE) $(RESTORE) $(BIN_DIR)/$(HELPER) $(HELPER) $(BIN_DIR)/$(S3PLUGIN) $(S3PLUGIN)
+		rm -f $(BIN_DIR)/$(BACKUP) $(BACKUP) $(BIN_DIR)/$(RESTORE) $(RESTORE) $(BIN_DIR)/$(HELPER) $(HELPER) $(BIN_DIR)/$(S3PLUGIN) $(S3PLUGIN) $(BIN_DIR)/$(GPBACKMAN) $(GPBACKMAN)
 		# Test artifacts
 		rm -rf /tmp/go-build* /tmp/gexec_artifacts* /tmp/ginkgo*
 		docker stop s3-minio # stop minio before removing its data directories
@@ -178,6 +183,7 @@ package:
 	@GOOS=$(GOOS) GOARCH=$(GOARCH) CGO_ENABLED=$(CGO) go build -tags '$(RESTORE)' -o $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/bin/$(RESTORE) --ldflags '-X $(RESTORE_VERSION_STR)'
 	@GOOS=$(GOOS) GOARCH=$(GOARCH) CGO_ENABLED=$(CGO) go build -tags '$(HELPER)' -o $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/bin/$(HELPER) --ldflags '-X $(HELPER_VERSION_STR)'
 	@GOOS=$(GOOS) GOARCH=$(GOARCH) CGO_ENABLED=$(CGO) go build -tags '$(S3PLUGIN)' -o $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/bin/$(S3PLUGIN) --ldflags '-X $(S3PLUGIN_VERSION_STR)'
+	@GOOS=$(GOOS) GOARCH=$(GOARCH) CGO_ENABLED=$(CGO) go build -tags '$(GPBACKMAN)' -o $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/bin/$(GPBACKMAN) --ldflags '-X $(GPBACKMAN_VERSION_STR)'
 	@echo "Creating install script..."
 	@echo '#!/bin/bash' > $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
 	@echo 'set -e' >> $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
@@ -203,6 +209,7 @@ package:
 	@echo 'sudo chmod 755 "$${INSTALL_DIR}/bin/$(RESTORE)"' >> $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
 	@echo 'sudo chmod 755 "$${INSTALL_DIR}/bin/$(HELPER)"' >> $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
 	@echo 'sudo chmod 755 "$${INSTALL_DIR}/bin/$(S3PLUGIN)"' >> $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
+	@echo 'sudo chmod 755 "$${INSTALL_DIR}/bin/$(GPBACKMAN)"' >> $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
 	@echo '' >> $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
 	@echo 'echo "Installation complete!"' >> $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
 	@echo 'echo "$(PACKAGE_NAME) binaries installed to $${INSTALL_DIR}/bin/"' >> $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
