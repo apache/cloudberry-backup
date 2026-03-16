@@ -218,3 +218,27 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
+
+The Greenplum Database Backup software includes:
+- backup/
+- end_to_end/
+- filepath/
+- gppkg/
+- helper/
+- history/
+- integration/
+- options/
+- plugins/
+- report/
+- restore/
+- testutils/
+- toc/
+- utils/
+- go.mod
+- go.sum
+- gpbackup.go
+- gprestore.go
+- gpbackup_helper.go
+- gpbackup_s3_plugin.go
+- tools.go
+- show_coverage.go

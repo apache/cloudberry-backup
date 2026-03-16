@@ -27,3 +27,6 @@ _testmain.go
 gpbackup
 gprestore
 gpbackup_helper
+
+# Logs
+*.log

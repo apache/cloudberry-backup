@@ -1,0 +1,328 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+Licensed to the Apache Software Foundation (ASF) under one or more
+contributor license agreements.  See the NOTICE file distributed with
+this work for additional information regarding copyright ownership.
+The ASF licenses this file to you under the Apache License, Version 2.0
+(the "License"); you may not use this file except in compliance with
+the License.  You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+Usage:
+This pom.xml file defines the Apache RAT license matching rules used to
+validate the source tree for Apache Cloudberry Backup (Incubating).
+
+Do not modify matcher categories without reviewing their use across the
+source tree. Add new license matchers as needed when introducing third-party
+code or new licensing patterns.
+-->
+
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>org.apache.cloudberry</groupId>
+  <artifactId>apache-cloudberry-backup-incubating</artifactId>
+  <version>2.1.0-incubating</version>
+  <packaging>pom</packaging>
+
+  <name>Apache Cloudberry Backup (Incubating)</name>
+  <description>Backup and Restore for Apache Cloudberry (Incubating)</description>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.rat</groupId>
+        <artifactId>apache-rat-plugin</artifactId>
+        <version>0.16.1</version>
+        <configuration>
+          <consoleOutput>true</consoleOutput>
+          <excludes>
+            <!--
+                The following files are part of the original Greenplum
+                Backup open-source files, licensed under the Apache
+                License 2.0 by Greenplum/Pivotal/VMware.
+
+                Original files located:
+                  https://github.com/greenplum-db/gpbackup-archive
+                  https://github.com/greenplum-db/gpbackup-s3-plugin-archive
+
+                These files do not contain license headers or recognizable
+                license markers, but are Apache-licensed by virtue of their
+                inclusion in the upstream Greenplum project. We exclude them
+                from Apache RAT scans to avoid false positives, while
+                retaining them in the source distribution.
+            -->
+            <exclude>options/flag.go</exclude>
+            <exclude>options/options.go</exclude>
+            <exclude>options/options_suite_test.go</exclude>
+            <exclude>options/flag_test.go</exclude>
+            <exclude>options/options_test.go</exclude>
+
+            <exclude>toc/toc.go</exclude>
+            <exclude>toc/toc_test.go</exclude>
+
+            <exclude>end_to_end/special_characters_test.go</exclude>
+            <exclude>end_to_end/incremental_test.go</exclude>
+            <exclude>end_to_end/signal_handler_test.go</exclude>
+            <exclude>end_to_end/resources/8-segment-db-rowcounts.txt</exclude>
+            <exclude>end_to_end/resources/test_db_ddl.sql</exclude>
+            <exclude>end_to_end/resources/4-segment-db-rowcounts.txt</exclude>
+            <exclude>end_to_end/resources/test_tables_ddl.sql</exclude>
+            <exclude>end_to_end/resources/gpdb6_objects.sql</exclude>
+            <exclude>end_to_end/resources/test_rowcount_ddl.sql</exclude>
+            <exclude>end_to_end/resources/gpdb4_compatible_objects_after_gpdb7.sql</exclude>
+            <exclude>end_to_end/resources/gpdb5_objects.sql</exclude>
+            <exclude>end_to_end/resources/7-segment-db-incremental-rowcounts.txt</exclude>
+            <exclude>end_to_end/resources/implicit_casts.sql</exclude>
+            <exclude>end_to_end/resources/replicated_table.sql</exclude>
+            <exclude>end_to_end/resources/9-segment-db-rowcounts.txt</exclude>
+            <exclude>end_to_end/resources/5-segment-db-rowcounts.txt</exclude>
+            <exclude>end_to_end/resources/1-segment-db-rowcounts.txt</exclude>
+            <exclude>end_to_end/resources/test_db_incremental_ddl.sql</exclude>
+            <exclude>end_to_end/resources/3-segment-db-incremental-rowcounts.txt</exclude>
+            <exclude>end_to_end/resources/3-segment-db-rowcounts.txt</exclude>
+            <exclude>end_to_end/resources/gpdb4_compatible_objects_before_gpdb7.sql</exclude>
+            <exclude>end_to_end/resources/7-segment-db-rowcounts.txt</exclude>
+            <exclude>end_to_end/resources/10-segment-db-rowcounts.txt</exclude>
+            <exclude>end_to_end/resources/2-segment-db-incremental-rowcounts.txt</exclude>
+            <exclude>end_to_end/resources/6-segment-db-rowcounts.txt</exclude>
+            <exclude>end_to_end/resources/test_tables_data.sql</exclude>
+            <exclude>end_to_end/resources/2-segment-db-rowcounts.txt</exclude>
+            <exclude>end_to_end/resources/gpdb4_objects.sql</exclude>
+            <exclude>end_to_end/locks_test.go</exclude>
+            <exclude>end_to_end/plugin_test.go</exclude>
+            <exclude>end_to_end/filtered_test.go</exclude>
+            <exclude>end_to_end/end_to_end_suite_test.go</exclude>
+
+            <exclude>filepath/filepath_test.go</exclude>
+            <exclude>filepath/filepath.go</exclude>
+
+            <exclude>plugins/plugin_test.sh</exclude>
+            <exclude>plugins/example_plugin.bash</exclude>
+            <exclude>plugins/README.md</exclude>
+            <exclude>plugins/example_plugin_config.yaml</exclude>
+            <exclude>plugins/generate_minio_config.sh</exclude>
+            <exclude>plugins/plugin_test_scale.sh</exclude>
+            <exclude>plugins/s3plugin/backup.go</exclude>
+            <exclude>plugins/s3plugin/s3plugin_test.go</exclude>
+            <exclude>plugins/s3plugin/README.md</exclude>
+            <exclude>plugins/s3plugin/restore.go</exclude>
+            <exclude>plugins/s3plugin/s3plugin.go</exclude>
+
+            <exclude>integration/predata_acl_queries_test.go</exclude>
+            <exclude>integration/statistics_queries_test.go</exclude>
+            <exclude>integration/predata_acl_create_test.go</exclude>
+            <exclude>integration/postdata_queries_test.go</exclude>
+            <exclude>integration/helper_test.go</exclude>
+            <exclude>integration/utils_test.go</exclude>
+            <exclude>integration/predata_shared_queries_test.go</exclude>
+            <exclude>integration/parallel_queries_test.go</exclude>
+            <exclude>integration/statistics_create_test.go</exclude>
+            <exclude>integration/options_integration_test.go</exclude>
+            <exclude>integration/predata_textsearch_queries_test.go</exclude>
+            <exclude>integration/dependency_queries_test.go</exclude>
+            <exclude>integration/predata_types_queries_test.go</exclude>
+            <exclude>integration/predata_externals_queries_test.go</exclude>
+            <exclude>integration/incremental_queries_test.go</exclude>
+            <exclude>integration/predata_types_create_test.go</exclude>
+            <exclude>integration/agent_remote_test.go</exclude>
+            <exclude>integration/predata_shared_create_test.go</exclude>
+            <exclude>integration/wrappers_test.go</exclude>
+            <exclude>integration/integration_suite_test.go</exclude>
+            <exclude>integration/predata_relations_create_test.go</exclude>
+            <exclude>integration/predata_relations_queries_test.go</exclude>
+            <exclude>integration/snapshot_test.go</exclude>
+            <exclude>integration/metadata_globals_queries_test.go</exclude>
+            <exclude>integration/postdata_create_test.go</exclude>
+            <exclude>integration/inheritance_test.go</exclude>
+            <exclude>integration/predata_operators_queries_test.go</exclude>
+            <exclude>integration/predata_operators_create_test.go</exclude>
+            <exclude>integration/metadata_globals_create_test.go</exclude>
+            <exclude>integration/predata_table_defs_queries_test.go</exclude>
+            <exclude>integration/predata_textsearch_create_test.go</exclude>
+            <exclude>integration/data_backup_test.go</exclude>
+            <exclude>integration/predata_externals_create_test.go</exclude>
+            <exclude>integration/gpexpand_not_running_test.go</exclude>
+            <exclude>integration/predata_functions_queries_test.go</exclude>
+            <exclude>integration/predata_functions_create_test.go</exclude>
+
+            <exclude>utils/compression_test.go</exclude>
+            <exclude>utils/agent_remote.go</exclude>
+            <exclude>utils/util_test.go</exclude>
+            <exclude>utils/io.go</exclude>
+            <exclude>utils/utils_suite_test.go</exclude>
+            <exclude>utils/agent_remote_test.go</exclude>
+            <exclude>utils/progress_bar_test.go</exclude>
+            <exclude>utils/compression.go</exclude>
+            <exclude>utils/util.go</exclude>
+            <exclude>utils/plugin_test.go</exclude>
+            <exclude>utils/set_test.go</exclude>
+            <exclude>utils/plugin.go</exclude>
+            <exclude>utils/gpexpand_sensor.go</exclude>
+            <exclude>utils/gpexpand_sensor_test.go</exclude>
+            <exclude>utils/set.go</exclude>
+            <exclude>utils/io_test.go</exclude>
+            <exclude>utils/progress_bar.go</exclude>
+
+            <exclude>history/history_test.go</exclude>
+            <exclude>history/history.go</exclude>
+
+            <exclude>report/report.go</exclude>
+            <exclude>report/report_test.go</exclude>
+
+            <exclude>gppkg/gpbackup_control.in</exclude>
+            <exclude>gppkg/gppkg_spec.yml.in</exclude>
+            <exclude>gppkg/gppkg_v2_spec.yml.in</exclude>
+            <exclude>gppkg/gpbackup_tools.spec.in</exclude>
+
+            <exclude>backup/predata_operators.go</exclude>
+            <exclude>backup/predata_relations_tables_test.go</exclude>
+            <exclude>backup/global_variables.go</exclude>
+            <exclude>backup/predata_acl.go</exclude>
+            <exclude>backup/queries_postdata.go</exclude>
+            <exclude>backup/backup_suite_test.go</exclude>
+            <exclude>backup/postdata_test.go</exclude>
+            <exclude>backup/backup.go</exclude>
+            <exclude>backup/incremental_test.go</exclude>
+            <exclude>backup/predata_types.go</exclude>
+            <exclude>backup/queries_acl.go</exclude>
+            <exclude>backup/predata_shared.go</exclude>
+            <exclude>backup/data_test.go</exclude>
+            <exclude>backup/queries_textsearch.go</exclude>
+            <exclude>backup/validate_test.go</exclude>
+            <exclude>backup/predata_textsearch_test.go</exclude>
+            <exclude>backup/queries_globals.go</exclude>
+            <exclude>backup/queries_operators.go</exclude>
+            <exclude>backup/predata_acl_test.go</exclude>
+            <exclude>backup/queries_table_defs.go</exclude>
+            <exclude>backup/queries_functions_test.go</exclude>
+            <exclude>backup/queries_shared.go</exclude>
+            <exclude>backup/predata_operators_test.go</exclude>
+            <exclude>backup/predata_relations.go</exclude>
+            <exclude>backup/predata_shared_test.go</exclude>
+            <exclude>backup/predata_externals.go</exclude>
+            <exclude>backup/predata_functions_test.go</exclude>
+            <exclude>backup/wrappers.go</exclude>
+            <exclude>backup/predata_externals_test.go</exclude>
+            <exclude>backup/metadata_globals.go</exclude>
+            <exclude>backup/queries_functions.go</exclude>
+            <exclude>backup/validate.go</exclude>
+            <exclude>backup/queries_shared_test.go</exclude>
+            <exclude>backup/queries_acl_test.go</exclude>
+            <exclude>backup/incremental.go</exclude>
+            <exclude>backup/dependencies.go</exclude>
+            <exclude>backup/snapshot.go</exclude>
+            <exclude>backup/data.go</exclude>
+            <exclude>backup/dependencies_test.go</exclude>
+            <exclude>backup/predata_textsearch.go</exclude>
+            <exclude>backup/predata_types_test.go</exclude>
+            <exclude>backup/queries_postdata_test.go</exclude>
+            <exclude>backup/predata_functions.go</exclude>
+            <exclude>backup/queries_externals.go</exclude>
+            <exclude>backup/queries_relations.go</exclude>
+            <exclude>backup/queries_incremental.go</exclude>
+            <exclude>backup/statistics_test.go</exclude>
+            <exclude>backup/queries_types.go</exclude>
+            <exclude>backup/queries_statistics.go</exclude>
+            <exclude>backup/queries_relation_test.go</exclude>
+            <exclude>backup/postdata.go</exclude>
+            <exclude>backup/backup_internal_test.go</exclude>
+            <exclude>backup/statistics.go</exclude>
+            <exclude>backup/metadata_globals_test.go</exclude>
+            <exclude>backup/predata_relations_other_test.go</exclude>
+
+            <exclude>restore/restore_internal_test.go</exclude>
+            <exclude>restore/global_variables.go</exclude>
+            <exclude>restore/parallel_test.go</exclude>
+            <exclude>restore/data_test.go</exclude>
+            <exclude>restore/validate_test.go</exclude>
+            <exclude>restore/wrappers_test.go</exclude>
+            <exclude>restore/remote.go</exclude>
+            <exclude>restore/wrappers.go</exclude>
+            <exclude>restore/remote_test.go</exclude>
+            <exclude>restore/validate.go</exclude>
+            <exclude>restore/data.go</exclude>
+            <exclude>restore/restore_suite_test.go</exclude>
+            <exclude>restore/restore.go</exclude>
+            <exclude>restore/parallel.go</exclude>
+
+            <exclude>helper/backup_helper.go</exclude>
+            <exclude>helper/restore_helper.go</exclude>
+            <exclude>helper/helper.go</exclude>
+            <exclude>helper/backup_helper_pipes.go</exclude>
+
+            <exclude>testutils/functions.go</exclude>
+            <exclude>testutils/functions_test.go</exclude>
+
+            <exclude>Makefile</exclude>
+            <exclude>gpbackup_s3_plugin.go</exclude>
+            <exclude>gprestore.go</exclude>
+            <exclude>show_coverage.sh</exclude>
+            <exclude>go.mod</exclude>
+            <exclude>gometalinter.config</exclude>
+            <exclude>.github/workflows/build_and_unit_test.yml</exclude>
+            <exclude>gpbackup_helper.go</exclude>
+            <exclude>tools.go</exclude>
+            <exclude>go.sum</exclude>
+            <exclude>gpbackup.go</exclude>
+
+          <!-- End of the legacy Greenplum Backup files -->
+
+          <!-- The following files are introduced by Cloudberry,
+                but need to be excluded from the RAT scan.
+          -->
+            <exclude>.github/pull_request_template.md</exclude>
+            <exclude>VERSION</exclude>
+          
+          </excludes>
+
+          <licenses>
+
+            <license implementation="org.apache.rat.analysis.license.SimplePatternBasedLicense">
+              <licenseFamilyName>Apache License (Greenplum-derived)</licenseFamilyName>
+              <licenseFamilyCategory>GRPM</licenseFamilyCategory>
+              <patterns>
+                <pattern>copyright (c) 2007, 2008, 2009 GreenPlum.  All rights reserved.</pattern>
+              </patterns>
+            </license>
+
+            <license implementation="org.apache.rat.analysis.license.SimplePatternBasedLicense">
+              <licenseFamilyName>Apache License (VMware-derived)</licenseFamilyName>
+              <licenseFamilyCategory>VMW</licenseFamilyCategory>
+              <patterns>
+                <pattern>Copyright 2018-Present VMware, Inc. or its affiliates.</pattern>
+                <pattern>Portions Copyright (c) 2023 VMware, Inc. or its affiliates.</pattern>
+              </patterns>
+            </license>
+          </licenses>
+
+          <licenseFamilies>
+            <licenseFamily implementation="org.apache.rat.license.SimpleLicenseFamily">
+              <familyName>Apache License (Greenplum-derived)</familyName>
+            </licenseFamily>
+            <licenseFamily implementation="org.apache.rat.license.SimpleLicenseFamily">
+              <familyName>Apache License (VMware-derived)</familyName>
+            </licenseFamily>
+          </licenseFamilies>
+
+        </configuration>
+        <executions>
+          <execution>
+            <phase>verify</phase>
+            <goals>
+              <goal>check</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>
