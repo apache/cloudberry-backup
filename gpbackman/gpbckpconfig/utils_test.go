@@ -232,22 +232,5 @@ var _ = Describe("utils tests", func() {
 		})
 	})
 
-	Describe("searchFilter", func() {
-		It("returns correct result for various inputs", func() {
-			tests := []struct {
-				name  string
-				list  []string
-				value string
-				want  bool
-			}{
-				{"value in list", []string{"item1", "item2", "item3"}, "item2", true},
-				{"value not in list", []string{"item1", "item2", "item3"}, "item4", false},
-				{"empty list", []string{}, "item1", false},
-				{"empty value", []string{"item1", "item2", "item3"}, "", false},
-			}
-			for _, tt := range tests {
-				Expect(searchFilter(tt.list, tt.value)).To(Equal(tt.want), tt.name)
-			}
-		})
-	})
+
 })

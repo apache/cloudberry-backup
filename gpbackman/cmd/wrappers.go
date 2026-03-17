@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/apache/cloudberry-go-libs/gplog"
 	"github.com/spf13/pflag"
@@ -69,10 +68,6 @@ func getHistoryDBPath(historyDBPath string) string {
 		return historyDBPath
 	}
 	return historyDBName
-}
-
-func getCurrentTimestamp() string {
-	return time.Now().Format(gpbckpconfig.Layout)
 }
 
 func checkCompatibleFlags(flags *pflag.FlagSet, flagNames ...string) error {
