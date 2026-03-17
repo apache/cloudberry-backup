@@ -153,12 +153,4 @@ func BackupDirPath(backupDir, timestamp string) string {
 	return filepath.Join(backupDir, "backups", timestamp[0:8], timestamp)
 }
 
-// searchFilter returns true if the value is present in the list
-func searchFilter(list []string, value string) bool {
-	for _, item := range list {
-		if item == value {
-			return true
-		}
-	}
-	return false
-}
+

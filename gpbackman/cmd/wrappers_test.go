@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/apache/cloudberry-backup/gpbackman/gpbckpconfig"
 	"github.com/apache/cloudberry-backup/history"
@@ -38,14 +37,6 @@ var _ = Describe("wrappers tests", func() {
 			for _, tt := range tests {
 				Expect(formatBackupDuration(tt.value)).To(Equal(tt.want), tt.name)
 			}
-		})
-	})
-
-	Describe("getCurrentTimestamp", func() {
-		It("returns valid timestamp", func() {
-			result := getCurrentTimestamp()
-			_, err := time.Parse(gpbckpconfig.Layout, result)
-			Expect(err).ToNot(HaveOccurred())
 		})
 	})
 
