@@ -19,6 +19,7 @@ import (
 
 	"github.com/apache/cloudberry-backup/gpbackman/gpbckpconfig"
 	"github.com/apache/cloudberry-backup/gpbackman/textmsg"
+	"github.com/apache/cloudberry-backup/history"
 	"github.com/apache/cloudberry-backup/utils"
 )
 
@@ -300,7 +301,7 @@ func backupDeleteDBCascade(backupList []string, deleteForce, ignoreErrors, skipL
 
 func backupDeleteDBPluginFunc(backupName, pluginConfigPath string, pluginConfig *utils.PluginConfig, hDB *sql.DB, ignoreErrors bool) error {
 	var err error
-	dateDeleted := getCurrentTimestamp()
+	dateDeleted := history.CurrentTimestamp()
 	gplog.Info("%s", textmsg.InfoTextBackupDeleteStart(backupName))
 	err = gpbckpconfig.UpdateDeleteStatus(backupName, gpbckpconfig.DateDeletedInProgress, hDB)
 	if err != nil {
@@ -353,7 +354,7 @@ func backupDeleteDBPluginFunc(backupName, pluginConfigPath string, pluginConfig 
 
 func backupDeleteDBLocalFunc(backupName, backupDir string, maxParallelProcesses int, hDB *sql.DB, ignoreErrors bool) error {
 	var err, errUpdate error
-	dateDeleted := getCurrentTimestamp()
+	dateDeleted := history.CurrentTimestamp()
 	gplog.Info("%s", textmsg.InfoTextBackupDeleteStart(backupName))
 	errUpdate = gpbckpconfig.UpdateDeleteStatus(backupName, gpbckpconfig.DateDeletedInProgress, hDB)
 	if errUpdate != nil {

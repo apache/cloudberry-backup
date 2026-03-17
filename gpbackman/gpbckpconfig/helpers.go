@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/apache/cloudberry-backup/history"
+	"github.com/apache/cloudberry-backup/utils"
 )
 
 // GetBackupType Get backup type.
@@ -210,22 +211,22 @@ func CheckObjectFilteringExists(backupConfig *history.BackupConfig, tableFilter,
 	switch {
 	case tableFilter != "" && !excludeFilter:
 		if objectFilter == objectFilteringIncludeTable {
-			return searchFilter(backupConfig.IncludeRelations, tableFilter)
+			return utils.Exists(backupConfig.IncludeRelations, tableFilter)
 		}
 		return false
 	case tableFilter != "" && excludeFilter:
 		if objectFilter == objectFilteringExcludeTable {
-			return searchFilter(backupConfig.ExcludeRelations, tableFilter)
+			return utils.Exists(backupConfig.ExcludeRelations, tableFilter)
 		}
 		return false
 	case schemaFilter != "" && !excludeFilter:
 		if objectFilter == objectFilteringIncludeSchema {
-			return searchFilter(backupConfig.IncludeSchemas, schemaFilter)
+			return utils.Exists(backupConfig.IncludeSchemas, schemaFilter)
 		}
 		return false
 	case schemaFilter != "" && excludeFilter:
 		if objectFilter == objectFilteringExcludeSchema {
-			return searchFilter(backupConfig.ExcludeSchemas, schemaFilter)
+			return utils.Exists(backupConfig.ExcludeSchemas, schemaFilter)
 		}
 		return false
 	default:
