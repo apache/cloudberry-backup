@@ -3,8 +3,8 @@
 
 package main
 
-import "github.com/apache/cloudberry-backup/gpbackman/cmd"
+import . "github.com/apache/cloudberry-backup/gpbackman/cmd"
 
 func main() {
-	cmd.Execute()
+	Execute()
 }
