@@ -559,6 +559,7 @@ options:
 		oldBackupVersionStr := os.Getenv("OLD_BACKUP_VERSION")
 
 		_, restoreHelperPath, gprestorePath = buildAndInstallBinaries()
+		gpbackmanPath = fmt.Sprintf("%s/go/bin/gpbackman", operating.System.Getenv("HOME"))
 
 		// Precompiled binaries will exist when running the ci job, `backward-compatibility`
 		if _, err := os.Stat(fmt.Sprintf("/tmp/%s", oldBackupVersionStr)); err == nil {
