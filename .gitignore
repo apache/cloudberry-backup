@@ -27,6 +27,12 @@ _testmain.go
 gpbackup
 gprestore
 gpbackup_helper
+gpbackman
+
+!gpbackman/
 
 # Logs
 *.log
+
+# vscode
+.vscode/
