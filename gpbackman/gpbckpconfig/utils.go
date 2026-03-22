@@ -23,7 +23,7 @@ func CheckTimestamp(timestamp string) error {
 	return nil
 }
 
-func GetTimestampOlderThen(value uint) string {
+func GetTimestampOlderThan(value uint) string {
 	return time.Now().AddDate(0, 0, -int(value)).Format(Layout)
 }
 
