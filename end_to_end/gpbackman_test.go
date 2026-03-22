@@ -40,6 +40,11 @@ func isSeparatorLine(line string) bool {
 }
 
 var _ = Describe("gpbackman end to end tests", func() {
+	BeforeEach(func() {
+		if useOldBackupVersion {
+			Skip("gpbackman tests are not applicable in old backup version mode")
+		}
+	})
 
 	// ------------------------------------------------------------------ //
 	//  backup-info
