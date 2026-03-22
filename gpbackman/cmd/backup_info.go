@@ -270,7 +270,6 @@ func backupInfoDB(opts BackupInfoOptions, hDB *sql.DB, t *tablewriter.Table) err
 
 func initTable(t *tablewriter.Table, includeDetails bool) {
 	t.SetBorder(false)
-	t.SetAutoFormatHeaders(false)
 	header := []string{
 		"timestamp",
 		"date",
