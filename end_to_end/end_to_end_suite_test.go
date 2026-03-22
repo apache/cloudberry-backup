@@ -1,6 +1,7 @@
 package end_to_end_test
 
 import (
+	"database/sql"
 	"encoding/csv"
 	"flag"
 	"fmt"
@@ -30,6 +31,7 @@ import (
 	"github.com/apache/cloudberry-go-libs/structmatcher"
 	"github.com/apache/cloudberry-go-libs/testhelper"
 	"github.com/blang/semver"
+	_ "github.com/mattn/go-sqlite3"
 	"github.com/pkg/errors"
 	"github.com/spf13/pflag"
 
@@ -69,6 +71,7 @@ var (
 	schema2TupleCounts      map[string]int
 	backupDir               string
 	segmentCount            int
+	gpbackmanPath           string
 )
 
 const (
@@ -463,6 +466,38 @@ func moveSegmentBackupFiles(tarBaseName string, extractDirectory string, isMulti
 	}
 }
 
+// gpbackman helpers
+
+func gpbackman(args ...string) []byte {
+	command := exec.Command(gpbackmanPath, args...)
+	return mustRunCommand(command)
+}
+
+func gpbackmanWithError(args ...string) ([]byte, error) {
+	command := exec.Command(gpbackmanPath, args...)
+	return command.CombinedOutput()
+}
+
+func getHistoryDBPathForCluster() string {
+	mdd := backupCluster.GetDirForContent(-1)
+	return path.Join(mdd, "gpbackup_history.db")
+}
+
+// queryHistoryDB runs an SQL query against gpbackup_history.db using database/sql and returns the trimmed output.
+func queryHistoryDB(historyDB string, query string) string {
+	db, err := sql.Open("sqlite3", historyDB)
+	Expect(err).ToNot(HaveOccurred())
+	defer db.Close()
+
+	var result string
+	err = db.QueryRow(query).Scan(&result)
+	if err == sql.ErrNoRows {
+		return ""
+	}
+	Expect(err).ToNot(HaveOccurred())
+	return strings.TrimSpace(result)
+}
+
 func TestEndToEnd(t *testing.T) {
 	format.MaxLength = 0
 	RegisterFailHandler(Fail)
@@ -544,6 +579,7 @@ options:
 		gprestorePath = fmt.Sprintf("%s/gprestore", binDir)
 		backupHelperPath = fmt.Sprintf("%s/gpbackup_helper", binDir)
 		restoreHelperPath = backupHelperPath
+		gpbackmanPath = fmt.Sprintf("%s/gpbackman", binDir)
 	}
 	segConfig := cluster.MustGetSegmentConfiguration(backupConn)
 	backupCluster = cluster.NewCluster(segConfig)
