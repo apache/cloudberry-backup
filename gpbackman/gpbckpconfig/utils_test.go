@@ -121,10 +121,10 @@ var _ = Describe("utils tests", func() {
 		})
 	})
 
-	Describe("GetTimestampOlderThen", func() {
+	Describe("GetTimestampOlderThan", func() {
 		It("returns timestamp within expected range", func() {
 			input := uint(1)
-			got := GetTimestampOlderThen(input)
+			got := GetTimestampOlderThan(input)
 			parsedTime, err := time.ParseInLocation(Layout, got, time.Now().Location())
 			Expect(err).ToNot(HaveOccurred())
 			now := time.Now()

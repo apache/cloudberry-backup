@@ -26,7 +26,7 @@ const (
 	failedFlagName               = "failed"
 	cascadeFlagName              = "cascade"
 	forceFlagName                = "force"
-	olderThenDaysFlagName        = "older-than-days"
+	olderThanDaysFlagName        = "older-than-days"
 	beforeTimestampFlagName      = "before-timestamp"
 	afterTimestampFlagName       = "after-timestamp"
 	typeFlagName                 = "type"
