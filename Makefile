@@ -54,15 +54,15 @@ $(GOSQLITE) :
 format : $(GOIMPORTS)
 		@goimports -w $(shell find . -type f -name '*.go' -not -path "./vendor/*")
 
-LINTER_VERSION=1.16.0
+LINTER_VERSION=2.10.1
 $(GOLANG_LINTER) :
 		mkdir -p $(GOPATH)/bin
-		curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(GOPATH)/bin v${LINTER_VERSION}
+		curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/main/install.sh | sh -s -- -b $(GOPATH)/bin v${LINTER_VERSION}
 
 .PHONY : coverage integration end_to_end
 
 lint : $(GOLANG_LINTER)
-		golangci-lint run --tests=false
+		golangci-lint run
 
 unit : $(GINKGO)
 	TEST_DB_TYPE=CBDB TEST_DB_VERSION=2.999.0 ginkgo $(GINKGO_FLAGS) $(SUBDIRS_HAS_UNIT) 2>&1

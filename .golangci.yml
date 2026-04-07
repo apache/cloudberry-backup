@@ -1,0 +1,42 @@
+version: "2"
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - govet
+    - revive
+    - unparam
+    - unused
+  settings:
+    govet:
+      enable:
+        - shadow
+    revive:
+      confidence: 0.1
+  exclusions:
+    generated: lax
+    rules:
+      - linters:
+          - revive
+        text: should have comment
+      - linters:
+          - revive
+        text: comment on exported
+      - linters:
+          - revive
+        text: should not use dot imports
+      - linters:
+          - revive
+        text: don't use ALL_CAPS in Go names; use CamelCase
+      - linters:
+          - revive
+        text: and that stutters
+      - linters:
+          - revive
+        text: don't use an underscore in package name
+    paths:
+      - vendor
+
+run:
+  timeout: 5m
