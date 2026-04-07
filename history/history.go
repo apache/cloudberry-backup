@@ -414,7 +414,8 @@ func GetBackupConfig(timestamp string, historyDB *sql.DB) (*BackupConfig, error)
 		restorePlan.Timestamp = restorePlanTimestamp
 
 		restorePlanTablesQuery := fmt.Sprintf("SELECT table_fqn FROM restore_plan_tables WHERE timestamp = '%s' and restore_plan_timestamp = '%s'", timestamp, restorePlanTimestamp)
-		restorePlanTableRows, err := historyDB.Query(restorePlanTablesQuery)
+		var restorePlanTableRows *sql.Rows
+		restorePlanTableRows, err = historyDB.Query(restorePlanTablesQuery)
 		if err != nil {
 			return nil, err
 		}

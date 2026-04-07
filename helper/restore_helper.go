@@ -193,7 +193,7 @@ func doRestoreAgent() error {
 			nextBatchNum := nextOidWithBatch.batch
 			nextPipeToCreate := fmt.Sprintf("%s_%d_%d", *pipeFile, nextOid, nextBatchNum)
 			logVerbose(fmt.Sprintf("Oid %d, Batch %d: Creating pipe %s\n", nextOid, nextBatchNum, nextPipeToCreate))
-			err := createPipe(nextPipeToCreate)
+			err = createPipe(nextPipeToCreate)
 			if err != nil {
 				logError(fmt.Sprintf("Oid %d, Batch %d: Failed to create pipe %s\n", nextOid, nextBatchNum, nextPipeToCreate))
 				// In the case this error is hit it means we have lost the
@@ -366,6 +366,8 @@ func replaceContentInFilename(filename string, content int) string {
 func getRestoreDataReader(fileToRead string, objToc *toc.SegmentTOC, oidList []int) (*RestoreReader, error) {
 	var readHandle io.Reader
 	var seekHandle io.ReadSeeker
+	var gzipReader *gzip.Reader
+	var zstdReader *zstd.Decoder
 	var isSubset bool
 	var err error = nil
 	restoreReader := new(RestoreReader)
@@ -402,14 +404,14 @@ func getRestoreDataReader(fileToRead string, objToc *toc.SegmentTOC, oidList []i
 	if restoreReader.readerType == SEEKABLE {
 		restoreReader.seekReader = seekHandle
 	} else if strings.HasSuffix(fileToRead, ".gz") {
-		gzipReader, err := gzip.NewReader(readHandle)
+		gzipReader, err = gzip.NewReader(readHandle)
 		if err != nil {
 			// error logging handled by calling functions
 			return nil, err
 		}
 		restoreReader.bufReader = bufio.NewReader(gzipReader)
 	} else if strings.HasSuffix(fileToRead, ".zst") {
-		zstdReader, err := zstd.NewReader(readHandle)
+		zstdReader, err = zstd.NewReader(readHandle)
 		if err != nil {
 			// error logging handled by calling functions
 			return nil, err
