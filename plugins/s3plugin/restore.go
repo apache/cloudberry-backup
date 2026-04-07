@@ -44,7 +44,7 @@ func RestoreFile(c *cli.Context) error {
 	if err != nil {
 		fileErr := os.Remove(fileName)
 		if fileErr != nil {
-			gplog.Error(fileErr.Error())
+			gplog.Error("%s", fileErr.Error())
 		}
 		return err
 	}
@@ -95,7 +95,7 @@ func RestoreDirectory(c *cli.Context) error {
 		if err != nil {
 			fileErr := os.Remove(filename)
 			if fileErr != nil {
-				gplog.Error(fileErr.Error())
+				gplog.Error("%s", fileErr.Error())
 			}
 			return err
 		}
@@ -175,7 +175,7 @@ func RestoreDirectoryParallel(c *cli.Context) error {
 					numFiles++
 					msg := fmt.Sprintf("Downloaded %d bytes for %s in %v", bytes,
 						filepath.Base(fileKey), elapsed.Round(time.Millisecond))
-					gplog.Verbose(msg)
+					gplog.Verbose("%s", msg)
 					fmt.Println(msg)
 				} else {
 					finalErr = err

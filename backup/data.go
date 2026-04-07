@@ -117,7 +117,7 @@ func BackupSingleTableData(table Table, rowsCopiedMap map[uint32]int64, counters
 	logMessage := fmt.Sprintf("%sWriting data for table %s to file", workerInfo, table.FQN())
 	// Avoid race condition by incrementing counters in call to sprintf
 	tableCount := fmt.Sprintf(" (table %d of %d)", atomic.AddInt64(&counters.NumRegTables, 1), counters.TotalRegTables)
-	utils.LogProgress(logMessage + tableCount)
+	utils.LogProgress("%s", logMessage+tableCount)
 
 	destinationToWrite := ""
 	if MustGetFlagBool(options.SINGLE_DATA_FILE) {

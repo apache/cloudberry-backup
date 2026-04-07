@@ -111,7 +111,7 @@ func restoreSingleTableData(fpInfo *filepath.FilePathInfo, entry toc.Coordinator
 		partialRowsRestored, copyErr := CopyTableIn(connectionPool, tableName, entry.AttributeString, destinationToRead, backupConfig.SingleDataFile, whichConn)
 
 		if copyErr != nil {
-			gplog.Error(copyErr.Error())
+			gplog.Error("%s", copyErr.Error())
 			if MustGetFlagBool(options.ON_ERROR_CONTINUE) {
 				if ((connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("6")) || connectionPool.Version.IsCBDB()) && backupConfig.SingleDataFile {
 					// inform segment helpers to skip this entry
@@ -149,7 +149,7 @@ func restoreSingleTableData(fpInfo *filepath.FilePathInfo, entry toc.Coordinator
 	// The subsequent division in gprestore leads to a miscalculated row count, causing this check to fail.
 	err := CheckRowsRestored(numRowsRestored, numRowsBackedUp, tableName)
 	if err != nil {
-		gplog.Error(err.Error())
+		gplog.Error("%s", err.Error())
 		return err
 	}
 
@@ -158,12 +158,12 @@ func restoreSingleTableData(fpInfo *filepath.FilePathInfo, entry toc.Coordinator
 		if entry.IsReplicated && (origSize < destSize) {
 			err := ExpandReplicatedTable(origSize, tableName, whichConn)
 			if err != nil {
-				gplog.Error(err.Error())
+				gplog.Error("%s", err.Error())
 			}
 		} else {
 			err := RedistributeTableData(tableName, whichConn)
 			if err != nil {
-				gplog.Error(err.Error())
+				gplog.Error("%s", err.Error())
 			}
 		}
 	}
@@ -294,7 +294,7 @@ func restoreDataFromTimestamp(fpInfo filepath.FilePathInfo, dataEntries []toc.Co
 					gplog.Verbose("Truncating table %s prior to restoring data", tableName)
 					_, err := connectionPool.Exec(`TRUNCATE `+tableName, whichConn)
 					if err != nil {
-						gplog.Error(err.Error())
+						gplog.Error("%s", err.Error())
 					}
 				}
 				if err == nil {
