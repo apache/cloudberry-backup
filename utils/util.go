@@ -252,7 +252,7 @@ func ValidateGPDBVersionCompatibility(connectionPool *dbconn.DBConn) {
 
 func LogExecutionTime(start time.Time, name string) {
 	elapsed := time.Since(start)
-	gplog.Debug(fmt.Sprintf("%s took %s", name, elapsed))
+	gplog.Debug("%s took %s", name, elapsed)
 }
 
 func Exists(slice []string, val string) bool {

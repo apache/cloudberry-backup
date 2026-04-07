@@ -612,7 +612,7 @@ func DoTeardown() {
 	if err := recover(); err != nil {
 		// Check if gplog.Fatal did not cause the panic
 		if gplog.GetErrorCode() != 2 {
-			gplog.Error(fmt.Sprintf("%v: %s", err, debug.Stack()))
+			gplog.Error("%v: %s", err, debug.Stack())
 			gplog.SetErrorCode(2)
 		} else {
 			errStr = fmt.Sprintf("%+v", err)
@@ -733,7 +733,7 @@ func DoCleanup(restoreFailed bool) {
 			if wasTerminated {
 				err := utils.CheckAgentErrorsOnSegments(globalCluster, globalFPInfo)
 				if err != nil {
-					gplog.Error(err.Error())
+					gplog.Error("%s", err.Error())
 				}
 			}
 		}

@@ -336,7 +336,7 @@ func DeleteBackup(c *cli.Context) error {
 	if !IsValidTimestamp(timestamp) {
 		msg := fmt.Sprintf("delete requires a <timestamp> with format "+
 			"YYYYMMDDHHMMSS, but received: %s", timestamp)
-		return fmt.Errorf(msg)
+		return fmt.Errorf("%s", msg)
 	}
 
 	date := timestamp[0:8]

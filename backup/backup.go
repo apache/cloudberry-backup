@@ -387,7 +387,7 @@ func DoTeardown() {
 	if err := recover(); err != nil {
 		// gplog's Fatal will cause a panic with error code 2
 		if gplog.GetErrorCode() != 2 {
-			gplog.Error(fmt.Sprintf("%v: %s", err, debug.Stack()))
+			gplog.Error("%v: %s", err, debug.Stack())
 			gplog.SetErrorCode(2)
 		} else {
 			errStr = fmt.Sprintf("%v", err)
@@ -448,12 +448,12 @@ func DoTeardown() {
 			if pluginConfig != nil {
 				err = pluginConfig.BackupFile(configFilename)
 				if err != nil {
-					gplog.Error(fmt.Sprintf("%v", err))
+					gplog.Error("%v", err)
 					return
 				}
 				err = pluginConfig.BackupFile(reportFilename)
 				if err != nil {
-					gplog.Error(fmt.Sprintf("%v", err))
+					gplog.Error("%v", err)
 					return
 				}
 			}
@@ -499,7 +499,7 @@ func DoCleanup(backupFailed bool) {
 		if wasTerminated {
 			err := utils.CheckAgentErrorsOnSegments(globalCluster, globalFPInfo)
 			if err != nil {
-				gplog.Error(err.Error())
+				gplog.Error("%s", err.Error())
 			}
 		}
 	}
@@ -519,12 +519,12 @@ func DoCleanup(backupFailed bool) {
 		historyDBName := globalFPInfo.GetBackupHistoryDatabasePath()
 		historyDB, err := history.InitializeHistoryDatabase(historyDBName)
 		if err != nil {
-			gplog.Error(fmt.Sprintf("Unable to update history database.  Error: %v", err))
+			gplog.Error("Unable to update history database. Error: %v", err)
 		} else {
 			_, err := historyDB.Exec(fmt.Sprintf("UPDATE backups SET status='%s', end_time='%s' WHERE timestamp='%s'", statusString, backupReport.BackupConfig.EndTime, globalFPInfo.Timestamp))
 			historyDB.Close()
 			if err != nil {
-				gplog.Error(fmt.Sprintf("Unable to update history database.  Error: %v", err))
+				gplog.Error("Unable to update history database. Error: %v", err)
 			}
 		}
 	}
@@ -559,7 +559,7 @@ func cancelBlockedQueries(timestamp string) {
 		return
 	}
 
-	gplog.Info(fmt.Sprintf("Canceling %d blocked queries", len(pids)))
+	gplog.Info("Canceling %d blocked queries", len(pids))
 	// Cancel all gpbackup queries waiting for a lock
 	for _, pid := range pids {
 		conn.MustExec(fmt.Sprintf("SELECT pg_cancel_backend(%d)", pid))

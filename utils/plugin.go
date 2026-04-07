@@ -245,10 +245,10 @@ func (plugin *PluginConfig) executeHook(c *cluster.Cluster, verboseCommandMsg st
 		plugin.buildHookString(command, fpInfo, scope, coordinatorContentID))
 	if coordinatorErr != nil {
 		if noFatal {
-			gplog.Error(coordinatorOutput)
+			gplog.Error("%s", coordinatorOutput)
 			return
 		}
-		gplog.Fatal(coordinatorErr, coordinatorOutput)
+		gplog.Fatal(coordinatorErr, "%s", coordinatorOutput)
 	}
 
 	// Execute command once on each segment host
@@ -368,14 +368,14 @@ func (plugin *PluginConfig) createHostPluginConfig(contentIDForSegmentOnHost int
 	if plugin.UsesEncryption() {
 		pluginName, err := plugin.GetPluginName(c)
 		if err != nil {
-			_, _ = fmt.Fprintf(operating.System.Stdout, err.Error())
-			gplog.Fatal(nil, err.Error())
+			_, _ = fmt.Fprintf(operating.System.Stdout, "%s", err.Error())
+			gplog.Fatal(nil, "%s", err.Error())
 		}
 
 		secret, err := GetSecretKey(pluginName, c.GetDirForContent(-1))
 		if err != nil {
-			_, _ = fmt.Fprintf(operating.System.Stdout, err.Error())
-			gplog.Fatal(nil, err.Error())
+			_, _ = fmt.Fprintf(operating.System.Stdout, "%s", err.Error())
+			gplog.Fatal(nil, "%s", err.Error())
 		}
 		plugin.Options[pluginName] = secret
 	}

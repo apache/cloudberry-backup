@@ -236,9 +236,9 @@ func logOutputReport(reportFile io.WriteCloser, reportInfo []LineInfo) {
 
 	for _, lineInfo := range reportInfo {
 		if lineInfo.Key == "" {
-			utils.MustPrintf(reportFile, fmt.Sprintf("\n"))
+			utils.MustPrintf(reportFile, "\n")
 		} else {
-			utils.MustPrintf(reportFile, fmt.Sprintf("%-*s%s\n", maxSize+3, lineInfo.Key, lineInfo.Value))
+			utils.MustPrintf(reportFile, "%-*s%s\n", maxSize+3, lineInfo.Key, lineInfo.Value)
 		}
 	}
 }
@@ -279,7 +279,7 @@ func PrintObjectCounts(reportFile io.WriteCloser, objectCounts map[string]int) {
 			objectStr += fmt.Sprintf("%-*s%d\n", maxSize+3, strings.ToLower(object), objectCounts[object])
 		}
 	}
-	utils.MustPrintf(reportFile, objectStr)
+	utils.MustPrintf(reportFile, "%s", objectStr)
 }
 
 /*

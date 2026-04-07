@@ -138,7 +138,7 @@ WHERE quote_ident(n.nspname) || '.' || quote_ident(c.relname) IN (%s)`, quotedTa
 		errMsg = fmt.Sprintf("Relation %s already exists", relationsInDB[0])
 	}
 	if errMsg != "" {
-		gplog.Fatal(nil, errMsg)
+		gplog.Fatal(nil, "%s", errMsg)
 	}
 }
 
@@ -147,7 +147,7 @@ func ValidateRedirectSchema(connectionPool *dbconn.DBConn, redirectSchema string
 	schemaInDB := dbconn.MustSelectStringSlice(connectionPool, query)
 
 	if len(schemaInDB) == 0 {
-		gplog.Fatal(nil, fmt.Sprintf("Schema %s to redirect into does not exist", redirectSchema))
+		gplog.Fatal(nil, "Schema %s to redirect into does not exist", redirectSchema)
 	}
 }
 
