@@ -19,9 +19,12 @@ import (
 
 func doBackupAgent() error {
 	var lastRead uint64
+	var numBytes int64
 	var (
 		pipeWriter BackupPipeWriterCloser
 		writeCmd   *exec.Cmd
+		reader     io.Reader
+		readHandle io.ReadCloser
 	)
 	tocfile := &toc.SegmentTOC{}
 	tocfile.DataEntries = make(map[uint]toc.SegmentDataEntry)
@@ -48,7 +51,7 @@ func doBackupAgent() error {
 		if i < len(oidList)-*copyQueue {
 			nextPipeToCreate := fmt.Sprintf("%s_%d", *pipeFile, oidList[i+*copyQueue])
 			logVerbose(fmt.Sprintf("Oid %d: Creating pipe %s\n", oidList[i+*copyQueue], nextPipeToCreate))
-			err := createPipe(nextPipeToCreate)
+			err = createPipe(nextPipeToCreate)
 			if err != nil {
 				logError(fmt.Sprintf("Oid %d: Failed to create pipe %s\n", oidList[i+*copyQueue], nextPipeToCreate))
 				return err
@@ -56,7 +59,7 @@ func doBackupAgent() error {
 		}
 
 		logInfo(fmt.Sprintf("Oid %d: Opening pipe %s", oid, currentPipe))
-		reader, readHandle, err := getBackupPipeReader(currentPipe)
+		reader, readHandle, err = getBackupPipeReader(currentPipe)
 		if err != nil {
 			logError(fmt.Sprintf("Oid %d: Error encountered getting backup pipe reader: %v", oid, err))
 			return err
@@ -70,7 +73,7 @@ func doBackupAgent() error {
 		}
 
 		logInfo(fmt.Sprintf("Oid %d: Backing up table with pipe %s", oid, currentPipe))
-		numBytes, err := io.Copy(pipeWriter, reader)
+		numBytes, err = io.Copy(pipeWriter, reader)
 		if err != nil {
 			logError(fmt.Sprintf("Oid %d: Error encountered copying bytes from pipeWriter to reader: %v", oid, err))
 			return errors.Wrap(err, strings.Trim(errBuf.String(), "\x00"))
@@ -96,7 +99,7 @@ func doBackupAgent() error {
 		 * written to verify the agent completed.
 		 */
 		logVerbose("Uploading remaining data to plugin destination")
-		err := writeCmd.Wait()
+		err = writeCmd.Wait()
 		if err != nil {
 			logError(fmt.Sprintf("Error encountered writing either TOC file or error file: %v", err))
 			return errors.Wrap(err, strings.Trim(errBuf.String(), "\x00"))
