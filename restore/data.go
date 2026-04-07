@@ -292,7 +292,7 @@ func restoreDataFromTimestamp(fpInfo filepath.FilePathInfo, dataEntries []toc.Co
 				var err error
 				if MustGetFlagBool(options.INCREMENTAL) || MustGetFlagBool(options.TRUNCATE_TABLE) {
 					gplog.Verbose("Truncating table %s prior to restoring data", tableName)
-					_, err := connectionPool.Exec(`TRUNCATE `+tableName, whichConn)
+					_, err = connectionPool.Exec(`TRUNCATE `+tableName, whichConn)
 					if err != nil {
 						gplog.Error("%s", err.Error())
 					}

@@ -35,6 +35,16 @@ linters:
       - linters:
           - revive
         text: don't use an underscore in package name
+      - linters:
+          - govet
+        text: "shadow:"
+        path: _test\.go
+      - linters:
+          - errcheck
+        path: _test\.go
+      - linters:
+          - unparam
+        path: _test\.go
     paths:
       - vendor
 

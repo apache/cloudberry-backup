@@ -111,6 +111,7 @@ func readAndValidatePluginConfig(configFile string) (*PluginConfig, error) {
 func InitializeAndValidateConfig(config *PluginConfig) error {
 	var err error
 	var errTxt string
+	var chunkSize bytesize.ByteSize
 	opt := &config.Options
 
 	// Initialize defaults
@@ -155,7 +156,7 @@ func InitializeAndValidateConfig(config *PluginConfig) error {
 		errTxt += fmt.Sprintf("Invalid value for remove_duplicate_bucket. Valid choices are true or false.\n")
 	}
 	if opt.BackupMultipartChunksize != "" {
-		chunkSize, err := bytesize.Parse(opt.BackupMultipartChunksize)
+		chunkSize, err = bytesize.Parse(opt.BackupMultipartChunksize)
 		if err != nil {
 			errTxt += fmt.Sprintf("Invalid backup_multipart_chunksize. Err: %s\n", err)
 		}
@@ -170,7 +171,7 @@ func InitializeAndValidateConfig(config *PluginConfig) error {
 		}
 	}
 	if opt.RestoreMultipartChunksize != "" {
-		chunkSize, err := bytesize.Parse(opt.RestoreMultipartChunksize)
+		chunkSize, err = bytesize.Parse(opt.RestoreMultipartChunksize)
 		if err != nil {
 			errTxt += fmt.Sprintf("Invalid restore_multipart_chunksize. Err: %s\n", err)
 		}
@@ -363,6 +364,7 @@ func DeleteBackup(c *cli.Context) error {
 
 func ListDirectory(c *cli.Context) error {
 	var err error
+	var totalBytes int64
 	config, sess, err := readConfigAndStartSession(c)
 	if err != nil {
 		return err
@@ -392,7 +394,7 @@ func ListDirectory(c *cli.Context) error {
 			u.PartSize = config.Options.DownloadChunkSize
 		})
 
-		totalBytes, err := getFileSize(downloader.S3, bucket, *key.Key)
+		totalBytes, err = getFileSize(downloader.S3, bucket, *key.Key)
 		if err != nil {
 			return err
 		}

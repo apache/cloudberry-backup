@@ -1,10 +1,7 @@
 package restore_test
 
 import (
-	"fmt"
 	"regexp"
-	"sort"
-	"strings"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/apache/cloudberry-backup/backup"
@@ -134,22 +131,3 @@ var _ = Describe("restore/data tests", func() {
 		})
 	})
 })
-
-func batchMapToString(m map[int]map[int]int) string {
-	outer := make([]string, len(m))
-	for num, batch := range m {
-		outer[num] = fmt.Sprintf("%d: %s", num, contentMapToString(batch))
-	}
-	return strings.Join(outer, "; ")
-}
-
-func contentMapToString(m map[int]int) string {
-	inner := make([]string, len(m))
-	index := 0
-	for orig, dest := range m {
-		inner[index] = fmt.Sprintf("%d:%d", orig, dest)
-		index++
-	}
-	sort.Strings(inner)
-	return fmt.Sprintf("{%s}", strings.Join(inner, ", "))
-}
