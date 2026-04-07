@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"math"
 	"os"
 	"os/exec"
@@ -195,7 +195,7 @@ options:
 			setupRestoreFiles("", false)
 			helperCmd := gpbackupHelperRestore(gpbackupHelperPath, "--data-file", dataFileFullPath)
 			for _, i := range []int{1, 3} {
-				contents, _ := ioutil.ReadFile(fmt.Sprintf("%s_%d_0", pipeFile, i))
+				contents, _ := os.ReadFile(fmt.Sprintf("%s_%d_0", pipeFile, i))
 				Expect(string(contents)).To(Equal("here is some data\n"))
 			}
 			err := helperCmd.Wait()
@@ -207,7 +207,7 @@ options:
 			setupRestoreFiles("gzip", false)
 			helperCmd := gpbackupHelperRestore(gpbackupHelperPath, "--data-file", dataFileFullPath+".gz")
 			for _, i := range []int{1, 3} {
-				contents, _ := ioutil.ReadFile(fmt.Sprintf("%s_%d_0", pipeFile, i))
+				contents, _ := os.ReadFile(fmt.Sprintf("%s_%d_0", pipeFile, i))
 				Expect(string(contents)).To(Equal("here is some data\n"))
 			}
 			err := helperCmd.Wait()
@@ -219,7 +219,7 @@ options:
 			setupRestoreFiles("zstd", false)
 			helperCmd := gpbackupHelperRestore(gpbackupHelperPath, "--data-file", dataFileFullPath+".zst")
 			for _, i := range []int{1, 3} {
-				contents, _ := ioutil.ReadFile(fmt.Sprintf("%s_%d_0", pipeFile, i))
+				contents, _ := os.ReadFile(fmt.Sprintf("%s_%d_0", pipeFile, i))
 				Expect(string(contents)).To(Equal("here is some data\n"))
 			}
 			err := helperCmd.Wait()
@@ -231,7 +231,7 @@ options:
 			setupRestoreFiles("", true)
 			helperCmd := gpbackupHelperRestore(gpbackupHelperPath, "--data-file", dataFileFullPath, "--plugin-config", examplePluginTestConfig)
 			for _, i := range []int{1, 3} {
-				contents, _ := ioutil.ReadFile(fmt.Sprintf("%s_%d_0", pipeFile, i))
+				contents, _ := os.ReadFile(fmt.Sprintf("%s_%d_0", pipeFile, i))
 				Expect(string(contents)).To(Equal("here is some data\n"))
 			}
 			err := helperCmd.Wait()
@@ -243,7 +243,7 @@ options:
 			setupRestoreFiles("gzip", true)
 			helperCmd := gpbackupHelperRestore(gpbackupHelperPath, "--data-file", dataFileFullPath+".gz", "--plugin-config", examplePluginTestConfig)
 			for _, i := range []int{1, 3} {
-				contents, _ := ioutil.ReadFile(fmt.Sprintf("%s_%d_0", pipeFile, i))
+				contents, _ := os.ReadFile(fmt.Sprintf("%s_%d_0", pipeFile, i))
 				Expect(string(contents)).To(Equal("here is some data\n"))
 			}
 			err := helperCmd.Wait()
@@ -255,7 +255,7 @@ options:
 			setupRestoreFiles("zstd", true)
 			helperCmd := gpbackupHelperRestore(gpbackupHelperPath, "--data-file", dataFileFullPath+".zst", "--plugin-config", examplePluginTestConfig)
 			for _, i := range []int{1, 3} {
-				contents, _ := ioutil.ReadFile(fmt.Sprintf("%s_%d_0", pipeFile, i))
+				contents, _ := os.ReadFile(fmt.Sprintf("%s_%d_0", pipeFile, i))
 				Expect(string(contents)).To(Equal("here is some data\n"))
 			}
 			err := helperCmd.Wait()
@@ -329,7 +329,7 @@ options:
 					errClose := file.Close()
 					Expect(errClose).ToNot(HaveOccurred())
 				} else {
-					contents, err := ioutil.ReadFile(currentPipe)
+					contents, err := os.ReadFile(currentPipe)
 					Expect(err).ToNot(HaveOccurred())
 					Expect(string(contents)).To(Equal("here is some data\n"))
 				}
@@ -404,11 +404,11 @@ func assertBackupArtifacts(withPlugin bool) {
 	if withPlugin {
 		dataFile = examplePluginTestDataFile
 	}
-	contents, err = ioutil.ReadFile(dataFile)
+	contents, err = os.ReadFile(dataFile)
 	Expect(err).ToNot(HaveOccurred())
 	Expect(string(contents)).To(Equal(expectedData))
 
-	contents, err = ioutil.ReadFile(tocFile)
+	contents, err = os.ReadFile(tocFile)
 	Expect(err).ToNot(HaveOccurred())
 	Expect(string(contents)).To(Equal(expectedTOC))
 	assertNoErrors()
@@ -424,9 +424,9 @@ func assertBackupArtifactsWithCompression(compressionType string, withPlugin boo
 	}
 
 	if compressionType == "gzip" {
-		contents, err = ioutil.ReadFile(dataFile + ".gz")
+		contents, err = os.ReadFile(dataFile + ".gz")
 	} else if compressionType == "zstd" {
-		contents, err = ioutil.ReadFile(dataFile + ".zst")
+		contents, err = os.ReadFile(dataFile + ".zst")
 	} else {
 		Fail("unknown compression type " + compressionType)
 	}
@@ -434,16 +434,16 @@ func assertBackupArtifactsWithCompression(compressionType string, withPlugin boo
 
 	if compressionType == "gzip" {
 		r, _ := gzip.NewReader(bytes.NewReader(contents))
-		contents, _ = ioutil.ReadAll(r)
+		contents, _ = io.ReadAll(r)
 	} else if compressionType == "zstd" {
 		r, _ := zstd.NewReader(bytes.NewReader(contents))
-		contents, _ = ioutil.ReadAll(r)
+		contents, _ = io.ReadAll(r)
 	} else {
 		Fail("unknown compression type " + compressionType)
 	}
 	Expect(string(contents)).To(Equal(expectedData))
 
-	contents, err = ioutil.ReadFile(tocFile)
+	contents, err = os.ReadFile(tocFile)
 	Expect(err).ToNot(HaveOccurred())
 	Expect(string(contents)).To(Equal(expectedTOC))
 

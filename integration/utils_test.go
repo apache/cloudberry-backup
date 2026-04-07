@@ -2,7 +2,6 @@ package integration
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"time"
@@ -21,7 +20,7 @@ import (
 
 var _ = Describe("utils integration", func() {
 	It("TerminateHangingCopySessions stops hanging COPY sessions", func() {
-		tempDir, err := ioutil.TempDir("", "temp")
+		tempDir, err := os.MkdirTemp("", "temp")
 		Expect(err).To(Not(HaveOccurred()))
 		defer os.Remove(tempDir)
 		testPipe := filepath.Join(tempDir, "test_pipe")
