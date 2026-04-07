@@ -1,7 +1,6 @@
 package options_test
 
 import (
-	"io/ioutil"
 	"os"
 
 	"github.com/DATA-DOG/go-sqlmock"
@@ -70,7 +69,7 @@ var _ = Describe("options", func() {
 			Expect(includedTables[1]).To(Equal("bar.baz"))
 		})
 		It("returns the text-file tables when specified", func() {
-			file, err := ioutil.TempFile("/tmp", "gpbackup_test_options*.txt")
+			file, err := os.CreateTemp("/tmp", "gpbackup_test_options*.txt")
 			Expect(err).To(Not(HaveOccurred()))
 			defer func() {
 				_ = os.Remove(file.Name())
@@ -93,7 +92,7 @@ var _ = Describe("options", func() {
 			Expect(includedTables[1]).To(Equal("myschema.mytable2"))
 		})
 		It("sets the INCLUDE_RELATIONS flag from file", func() {
-			file, err := ioutil.TempFile("/tmp", "gpbackup_test_options*.txt")
+			file, err := os.CreateTemp("/tmp", "gpbackup_test_options*.txt")
 			Expect(err).To(Not(HaveOccurred()))
 			defer func() {
 				_ = os.Remove(file.Name())
@@ -117,7 +116,7 @@ var _ = Describe("options", func() {
 			Expect(includedTables[1]).To(Equal("myschema.mytable2"))
 		})
 		It("skips empty lines in files provided for filtering tables", func() {
-			file, err := ioutil.TempFile("/tmp", "gpbackup_test_options*.txt")
+			file, err := os.CreateTemp("/tmp", "gpbackup_test_options*.txt")
 			Expect(err).To(Not(HaveOccurred()))
 			defer func() {
 				_ = os.Remove(file.Name())
@@ -150,7 +149,7 @@ var _ = Describe("options", func() {
 			Expect(excludedTables[1]).To(Equal("myschema.mytable2"))
 		})
 		It("skips empty lines in files provided for filtering schemas", func() {
-			file, err := ioutil.TempFile("/tmp", "gpbackup_test_options*.txt")
+			file, err := os.CreateTemp("/tmp", "gpbackup_test_options*.txt")
 			Expect(err).To(Not(HaveOccurred()))
 			defer func() {
 				_ = os.Remove(file.Name())

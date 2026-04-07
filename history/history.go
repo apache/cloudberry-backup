@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
 
 	"github.com/apache/cloudberry-backup/utils"
@@ -63,7 +62,7 @@ func (backup *BackupConfig) Failed() bool {
 
 func ReadConfigFile(filename string) *BackupConfig {
 	config := &BackupConfig{}
-	contents, err := ioutil.ReadFile(filename)
+	contents, err := os.ReadFile(filename)
 	gplog.FatalOnError(err)
 	err = yaml.Unmarshal(contents, config)
 	gplog.FatalOnError(err)

@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"io/fs"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	path "path/filepath"
@@ -362,7 +361,7 @@ func getMetdataFileContents(backupDir string, timestamp string, fileSuffix strin
 	}
 	file, err := path.Glob(path.Join(backupDir, filePath))
 	Expect(err).ToNot(HaveOccurred())
-	fileContentBytes, err := ioutil.ReadFile(file[0])
+	fileContentBytes, err := os.ReadFile(file[0])
 	Expect(err).ToNot(HaveOccurred())
 
 	return fileContentBytes
@@ -695,7 +694,7 @@ func end_to_end_setup() {
 	_ = os.Remove(historyFilePath)
 
 	// Assign a unique directory for each test
-	backupDir, _ = ioutil.TempDir(customBackupDir, "temp")
+	backupDir, _ = os.MkdirTemp(customBackupDir, "temp")
 }
 
 func end_to_end_teardown() {
@@ -901,7 +900,7 @@ var _ = Describe("backup and restore end to end tests", func() {
 			Expect(files).To(HaveLen(2))
 
 			Expect(files[0]).To(HaveSuffix("_data"))
-			contents, err := ioutil.ReadFile(files[0])
+			contents, err := os.ReadFile(files[0])
 			Expect(err).ToNot(HaveOccurred())
 			tables := strings.Split(string(contents), "\n")
 			Expect(tables).To(Equal(expectedErrorTablesData))
@@ -909,7 +908,7 @@ var _ = Describe("backup and restore end to end tests", func() {
 
 			Expect(files).To(HaveLen(2))
 			Expect(files[1]).To(HaveSuffix("_metadata"))
-			contents, err = ioutil.ReadFile(files[1])
+			contents, err = os.ReadFile(files[1])
 			Expect(err).ToNot(HaveOccurred())
 			tables = strings.Split(string(contents), "\n")
 			sort.Strings(tables)
@@ -932,7 +931,7 @@ var _ = Describe("backup and restore end to end tests", func() {
 				"*-1/backups/*", "20190809230424", "*error_tables*"))
 			Expect(files).To(HaveLen(1))
 			Expect(files[0]).To(HaveSuffix("_metadata"))
-			contents, err = ioutil.ReadFile(files[0])
+			contents, err = os.ReadFile(files[0])
 			Expect(err).ToNot(HaveOccurred())
 			tables = strings.Split(string(contents), "\n")
 			sort.Strings(tables)
@@ -967,7 +966,7 @@ var _ = Describe("backup and restore end to end tests", func() {
 			Expect(files).To(HaveLen(1))
 
 			Expect(files[0]).To(HaveSuffix("_metadata"))
-			contents, err := ioutil.ReadFile(files[0])
+			contents, err := os.ReadFile(files[0])
 			Expect(err).ToNot(HaveOccurred())
 			tables := strings.Split(string(contents), "\n")
 			Expect(tables).To(Equal(expectedErrorTablesMetadata))
@@ -1598,7 +1597,7 @@ var _ = Describe("backup and restore end to end tests", func() {
 			Expect(err).ToNot(HaveOccurred())
 			Expect(configFile).To(HaveLen(1))
 
-			contents, err := ioutil.ReadFile(configFile[0])
+			contents, err := os.ReadFile(configFile[0])
 			Expect(err).ToNot(HaveOccurred())
 
 			Expect(string(contents)).To(ContainSubstring("compressed: false"))

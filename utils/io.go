@@ -8,7 +8,6 @@ package utils
 import (
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 
 	"github.com/apache/cloudberry-go-libs/gplog"
@@ -90,12 +89,12 @@ func CopyFile(src, dest string) error {
 	info, err := os.Stat(src)
 	if err == nil {
 		var content []byte
-		content, err = ioutil.ReadFile(src)
+		content, err = os.ReadFile(src)
 		if err != nil {
 			gplog.Error("Error: %v, encountered when reading file: %s", err, src)
 			return err
 		}
-		return ioutil.WriteFile(dest, content, info.Mode())
+		return os.WriteFile(dest, content, info.Mode())
 	}
 	gplog.Error("Error: %v, encountered when trying to stat file: %s", err, src)
 	return err

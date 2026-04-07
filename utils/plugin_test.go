@@ -2,7 +2,6 @@ package utils_test
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -29,7 +28,7 @@ var _ = Describe("utils/plugin tests", func() {
 
 	BeforeEach(func() {
 		operating.InitializeSystemFunctions()
-		tempDir, _ = ioutil.TempDir("", "temp")
+		tempDir, _ = os.MkdirTemp("", "temp")
 		operating.System.Stdout = stdout
 		subject = utils.PluginConfig{
 			ExecutablePath: "/a/b/myPlugin",
@@ -68,7 +67,7 @@ var _ = Describe("utils/plugin tests", func() {
 		_ = os.Remove(subject.ConfigPath)
 		confDir := filepath.Dir(subject.ConfigPath)
 		confFileName := filepath.Base(subject.ConfigPath)
-		files, _ := ioutil.ReadDir(confDir)
+		files, _ := os.ReadDir(confDir)
 		for _, f := range files {
 			match, _ := filepath.Match(confFileName+"*", f.Name())
 			if match {
@@ -110,7 +109,7 @@ options:
     field2: hello
     field3: 567
 `
-			err := ioutil.WriteFile(testConfigPath, []byte(testConfigContents), 0777)
+			err := os.WriteFile(testConfigPath, []byte(testConfigContents), 0777)
 			Expect(err).To(Not(HaveOccurred()))
 			subject.SetBackupPluginVersion("myTimestamp", "my.test.version")
 			subject.CopyPluginConfigToAllHosts(testCluster)
@@ -157,7 +156,7 @@ options:
     field2: hello
     field3: 567
 `
-				err := ioutil.WriteFile(testConfigPath, []byte(testConfigContents), 0777)
+				err := os.WriteFile(testConfigPath, []byte(testConfigContents), 0777)
 				subject.Options["password_encryption"] = "on"
 				mdd := testCluster.GetDirForContent(-1)
 				_ = os.MkdirAll(mdd, 0777)
@@ -286,7 +285,7 @@ options:
 			mdd := testCluster.GetDirForContent(-1)
 			_ = os.MkdirAll(mdd, 0777)
 			secretFilePath := filepath.Join(mdd, utils.SecretKeyFile)
-			err := ioutil.WriteFile(secretFilePath, []byte(`gpbackup_fake_plugin: 0123456789`), 0777)
+			err := os.WriteFile(secretFilePath, []byte(`gpbackup_fake_plugin: 0123456789`), 0777)
 			Expect(err).To(Not(HaveOccurred()))
 
 			key, err := utils.GetSecretKey("gpbackup_fake_plugin", mdd)
@@ -307,7 +306,7 @@ options:
 			mdd := testCluster.GetDirForContent(-1)
 			_ = os.MkdirAll(mdd, 0777)
 			secretFilePath := filepath.Join(mdd, utils.SecretKeyFile)
-			err := ioutil.WriteFile(secretFilePath, []byte(""), 0777)
+			err := os.WriteFile(secretFilePath, []byte(""), 0777)
 			Expect(err).To(Not(HaveOccurred()))
 
 			pluginName := "gpbackup_fake_plugin"
@@ -320,7 +319,7 @@ options:
 			mdd := testCluster.GetDirForContent(-1)
 			_ = os.MkdirAll(mdd, 0777)
 			secretFilePath := filepath.Join(mdd, utils.SecretKeyFile)
-			err := ioutil.WriteFile(secretFilePath, []byte("improperlyFormattedYaml"), 0777)
+			err := os.WriteFile(secretFilePath, []byte("improperlyFormattedYaml"), 0777)
 			Expect(err).To(Not(HaveOccurred()))
 
 			pluginName := "gpbackup_fake_plugin"
