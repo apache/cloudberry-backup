@@ -86,7 +86,7 @@ func GetLatestMatchingBackupConfig(historyDBPath string, currentBackupConfig *hi
 		ORDER BY timestamp DESC`, whereClause)
 	timestampRows, err := historyDB.Query(getBackupTimetampsQuery)
 	if err != nil {
-		gplog.Error(err.Error())
+		gplog.Error("%s", err.Error())
 		return nil
 	}
 	defer timestampRows.Close()
@@ -96,7 +96,7 @@ func GetLatestMatchingBackupConfig(historyDBPath string, currentBackupConfig *hi
 		var timestamp string
 		err = timestampRows.Scan(&timestamp)
 		if err != nil {
-			gplog.Error(err.Error())
+			gplog.Error("%s", err.Error())
 			return nil
 		}
 		timestamps = append(timestamps, timestamp)
@@ -105,7 +105,7 @@ func GetLatestMatchingBackupConfig(historyDBPath string, currentBackupConfig *hi
 	for _, ts := range timestamps {
 		backupConfig, err := history.GetBackupConfig(ts, historyDB)
 		if err != nil {
-			gplog.Error(err.Error())
+			gplog.Error("%s", err.Error())
 			return nil
 		}
 		if !backupConfig.Failed() && matchesIncrementalFlags(backupConfig, currentBackupConfig) {

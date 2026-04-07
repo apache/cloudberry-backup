@@ -63,7 +63,7 @@ func initializeConnectionPool(timestamp string) {
 		numConns = 2
 	}
 
-	gplog.Verbose(fmt.Sprintf("Initializing %d database connections", numConns))
+	gplog.Verbose("Initializing %d database connections", numConns)
 	connectionPool.MustConnect(numConns)
 
 	utils.ValidateGPDBVersionCompatibility(connectionPool)
@@ -183,7 +183,7 @@ func createBackupLockFile(timestamp string) {
 	gplog.FatalOnError(err)
 	err = backupLockFile.TryLock()
 	if err != nil {
-		gplog.Error(err.Error())
+		gplog.Error("%s", err.Error())
 		gplog.Fatal(errors.Errorf("A backup with timestamp %s is already in progress. Wait 1 second and try the backup again.", timestamp), "")
 	}
 }

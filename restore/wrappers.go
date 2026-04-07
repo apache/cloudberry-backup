@@ -366,10 +366,10 @@ func RestoreSchemas(schemaStatements []toc.StatementWithType, progressBar utils.
 			} else {
 				errMsg := fmt.Sprintf("Error encountered while creating schema %s", schema.Name)
 				if MustGetFlagBool(options.ON_ERROR_CONTINUE) {
-					gplog.Verbose(fmt.Sprintf("%s: %s", errMsg, err.Error()))
+					gplog.Verbose("%s: %s", errMsg, err.Error())
 					numErrors++
 				} else {
-					gplog.Fatal(err, errMsg)
+					gplog.Fatal(err, "%s", errMsg)
 				}
 			}
 		}

@@ -155,7 +155,7 @@ func BackupDirectoryParallel(c *cli.Context) error {
 					totalBytes += bytes
 					msg := fmt.Sprintf("Uploaded %d bytes for %s in %v", bytes,
 						filepath.Base(fileKey), elapsed.Round(time.Millisecond))
-					gplog.Verbose(msg)
+					gplog.Verbose("%s", msg)
 					fmt.Println(msg)
 				} else {
 					finalErr = err
