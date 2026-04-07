@@ -1,5 +1,4 @@
 //go:build gprestore
-// +build gprestore
 
 package main
 
