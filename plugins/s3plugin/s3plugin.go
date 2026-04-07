@@ -3,7 +3,6 @@ package s3plugin
 import (
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"net/url"
 	"os"
@@ -95,7 +94,7 @@ func GetAPIVersion(c *cli.Context) {
 
 func readAndValidatePluginConfig(configFile string) (*PluginConfig, error) {
 	config := &PluginConfig{}
-	contents, err := ioutil.ReadFile(configFile)
+	contents, err := os.ReadFile(configFile)
 	if err != nil {
 		return nil, err
 	}

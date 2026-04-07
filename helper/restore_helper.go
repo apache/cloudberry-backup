@@ -5,7 +5,6 @@ import (
 	"compress/gzip"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"path"
@@ -457,7 +456,7 @@ func startRestorePluginCommand(fileToRead string, objToc *toc.SegmentTOC, oidLis
 	}
 	cmdStr := ""
 	if objToc != nil && pluginConfig.CanRestoreSubset() && *isFiltered && !strings.HasSuffix(fileToRead, ".gz") && !strings.HasSuffix(fileToRead, ".zst") {
-		offsetsFile, _ := ioutil.TempFile("/tmp", "gprestore_offsets_")
+		offsetsFile, _ := os.CreateTemp("/tmp", "gprestore_offsets_")
 		defer func() {
 			offsetsFile.Close()
 		}()

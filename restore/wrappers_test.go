@@ -2,7 +2,6 @@ package restore_test
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 
@@ -236,9 +235,9 @@ timestamp: "20180415154238"
 withstatistics: false
 `, dbVersion)
 
-			tempDir, _ = ioutil.TempDir("", "temp")
+			tempDir, _ = os.MkdirTemp("", "temp")
 
-			err := ioutil.WriteFile(testConfigPath, []byte(sampleConfigContents), 0777)
+			err := os.WriteFile(testConfigPath, []byte(sampleConfigContents), 0777)
 			Expect(err).ToNot(HaveOccurred())
 			err = cmdFlags.Set(options.PLUGIN_CONFIG, testConfigPath)
 			Expect(err).ToNot(HaveOccurred())
@@ -286,7 +285,7 @@ withstatistics: false
 			configDir := filepath.Join(mdd, "backups/20170101/20170101010101/")
 			_ = os.MkdirAll(configDir, 0777)
 			configPath := filepath.Join(configDir, "gpbackup_20170101010101_config.yaml")
-			err = ioutil.WriteFile(configPath, []byte(sampleBackupConfig), 0777)
+			err = os.WriteFile(configPath, []byte(sampleBackupConfig), 0777)
 			Expect(err).ToNot(HaveOccurred())
 
 			restore.SetVersion("1.11.0+dev.28.g10571fd")
@@ -298,7 +297,7 @@ withstatistics: false
 			_ = os.Remove(testConfigPath)
 			confDir := filepath.Dir(testConfigPath)
 			confFileName := filepath.Base(testConfigPath)
-			files, _ := ioutil.ReadDir(confDir)
+			files, _ := os.ReadDir(confDir)
 			for _, f := range files {
 				match, _ := filepath.Match("*"+confFileName+"*", f.Name())
 				if match {

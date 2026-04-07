@@ -1,7 +1,6 @@
 package utils_test
 
 import (
-	"io/ioutil"
 	"os"
 
 	"github.com/apache/cloudberry-backup/utils"
@@ -62,12 +61,12 @@ var _ = Describe("utils/io tests", func() {
 			_ = os.Remove(destFilePath)
 		})
 		It("copies source file to dest file", func() {
-			_ = ioutil.WriteFile(sourceFilePath, []byte{1, 2, 3, 4}, 0777)
+			_ = os.WriteFile(sourceFilePath, []byte{1, 2, 3, 4}, 0777)
 
 			err := utils.CopyFile(sourceFilePath, destFilePath)
 
 			Expect(err).ToNot(HaveOccurred())
-			contents, _ := ioutil.ReadFile(destFilePath)
+			contents, _ := os.ReadFile(destFilePath)
 			Expect(contents).To(Equal([]byte{1, 2, 3, 4}))
 		})
 		It("returns an err when cannot read source file", func() {
