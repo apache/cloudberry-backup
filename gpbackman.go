@@ -1,5 +1,4 @@
 //go:build gpbackman
-// +build gpbackman
 
 /*
 Licensed to the Apache Software Foundation (ASF) under one
