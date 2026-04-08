@@ -45,6 +45,8 @@ github:
     merge: false
     # enable rebase button:
     rebase: true
+  collaborators:
+    - woblerr
   protected_branches:
     main:
       required_status_checks:
