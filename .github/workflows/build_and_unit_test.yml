@@ -38,6 +38,28 @@ jobs:
         cd ${GOPATH}/src/github.com/apache/cloudberry-backup
         make build
 
+    - name: Smoke Test
+      run: |
+        set -euo pipefail
+        cd ${GOPATH}/src/github.com/apache/cloudberry-backup
+        echo "Running smoke tests..."
+        echo "=== Testing gpbackup ==="
+        ${GOPATH}/bin/gpbackup --version
+        ${GOPATH}/bin/gpbackup --help > /dev/null
+        echo "=== Testing gprestore ==="
+        ${GOPATH}/bin/gprestore --version
+        ${GOPATH}/bin/gprestore --help > /dev/null
+        echo "=== Testing gpbackup_helper ==="
+        ${GOPATH}/bin/gpbackup_helper --version
+        ${GOPATH}/bin/gpbackup_helper --help > /dev/null
+        echo "=== Testing gpbackup_s3_plugin ==="
+        ${GOPATH}/bin/gpbackup_s3_plugin --version
+        ${GOPATH}/bin/gpbackup_s3_plugin --help > /dev/null
+        echo "=== Testing gpbackman ==="
+        ${GOPATH}/bin/gpbackman --version
+        ${GOPATH}/bin/gpbackman --help > /dev/null
+        echo "=== All smoke tests passed ==="
+
     - name: Unit Test
       run: |
         cd ${GOPATH}/src/github.com/apache/cloudberry-backup

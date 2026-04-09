@@ -187,7 +187,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        test_target: [unit, integration, end_to_end, s3_plugin_e2e, regression, scale]
+        test_target: [smoke, unit, integration, end_to_end, s3_plugin_e2e, regression, scale]
 
     steps:
       - name: Free Disk Space
@@ -316,6 +316,26 @@ jobs:
 
             set +e
             case "${TEST_TARGET}" in
+              smoke)
+                set -e
+                echo "Running smoke tests..."
+                echo "=== Testing gpbackup ==="
+                ${GPHOME}/bin/gpbackup --version
+                ${GPHOME}/bin/gpbackup --help > /dev/null
+                echo "=== Testing gprestore ==="
+                ${GPHOME}/bin/gprestore --version
+                ${GPHOME}/bin/gprestore --help > /dev/null
+                echo "=== Testing gpbackup_helper ==="
+                ${GPHOME}/bin/gpbackup_helper --version
+                ${GPHOME}/bin/gpbackup_helper --help > /dev/null
+                echo "=== Testing gpbackup_s3_plugin ==="
+                ${GPHOME}/bin/gpbackup_s3_plugin --version
+                ${GPHOME}/bin/gpbackup_s3_plugin --help > /dev/null
+                echo "=== Testing gpbackman ==="
+                ${GPHOME}/bin/gpbackman --version
+                ${GPHOME}/bin/gpbackman --help > /dev/null
+                echo "=== All smoke tests passed ===" | tee "${TEST_LOG_ROOT}/cloudberry-backup-smoke.log"
+                ;;
               unit)
                 make unit 2>&1 | tee "${TEST_LOG_ROOT}/cloudberry-backup-unit.log"
                 ;;
