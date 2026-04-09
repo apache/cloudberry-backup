@@ -317,6 +317,7 @@ jobs:
             set +e
             case "${TEST_TARGET}" in
               smoke)
+                set -e
                 echo "Running smoke tests..."
                 echo "=== Testing gpbackup ==="
                 ${GPHOME}/bin/gpbackup --version
