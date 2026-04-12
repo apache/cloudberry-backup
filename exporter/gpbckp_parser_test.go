@@ -35,7 +35,7 @@ import (
 )
 
 func getLogger() *slog.Logger {
-	return slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+	return slog.New(slog.NewTextHandler(&bytes.Buffer{}, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
 	}))
 }
