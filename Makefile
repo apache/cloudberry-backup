@@ -114,7 +114,7 @@ build_linux :
 		env GOOS=linux GOARCH=amd64 $(GO_BUILD) -tags '$(EXPORTER)' -o $(EXPORTER) -ldflags "$(EXPORTER_VERSION_STR)"
 
 install :
-		cp $(BIN_DIR)/$(BACKUP) $(BIN_DIR)/$(RESTORE) $(BIN_DIR)/$(GPBACKMAN) $(GPHOME)/bin
+		cp $(BIN_DIR)/$(BACKUP) $(BIN_DIR)/$(RESTORE) $(BIN_DIR)/$(GPBACKMAN) $(BIN_DIR)/$(EXPORTER) $(GPHOME)/bin
 		@psql -X -t -d template1 -c 'select distinct hostname from gp_segment_configuration where content != -1' > /tmp/seg_hosts 2>/dev/null; \
 		if [ $$? -eq 0 ]; then \
 			$(COPYUTIL) -f /tmp/seg_hosts $(helper_path) $(s3plugin_path) =:$(GPHOME)/bin/; \
