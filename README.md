@@ -45,8 +45,10 @@ export PATH=$PATH:/usr/local/go/bin:$GOPATH/bin
 1. Downloading the latest version:
 
 ```bash
-go install github.com/apache/cloudberry-backup@latest
+go install github.com/apache/cloudberry-backup@2.1.0-incubating
 ```
+
+**Note:** Please use the specific version `@2.1.0-incubating` instead of `@latest`. The `@latest` tag will install an older version due to Go modules version resolution rules.
 
 This will place the code in `$GOPATH/pkg/mod/github.com/apache/cloudberry-backup`.
 
