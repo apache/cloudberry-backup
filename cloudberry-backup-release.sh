@@ -510,13 +510,16 @@ section "Staging release: $TAG"
 
   section "Creating Source Tarball"
 
-  TAR_NAME="apache-cloudberry-backup-${TAG}-src.tar.gz"
+  TAR_NAME="apache-cloudberry-backup-${VERSION_FILE}-incubating-src.tar.gz"
   TMP_DIR=$(mktemp -d)
   trap 'rm -rf "$TMP_DIR"' EXIT
 
   # Set environment variables to prevent macOS extended attributes
   export COPYFILE_DISABLE=1
   export COPY_EXTENDED_ATTRIBUTES_DISABLE=1
+
+  # Use base version (without -rcN) for both tarball filename and extracted directory name.
+  # This allows direct svn mv to release repository after voting without renaming.
 
   git archive --format=tar --prefix="apache-cloudberry-backup-${VERSION_FILE}-incubating/" "$TAG" | tar -x -C "$TMP_DIR"
 
