@@ -57,7 +57,7 @@ var _ = Describe("Exporter", func() {
 	Describe("SetPromPortAndPath", func() {
 		It("sets web flags config and endpoint", func() {
 			testFlagsConfig := web.FlagConfig{
-				WebListenAddresses: &([]string{":9854"}),
+				WebListenAddresses: &([]string{":19854"}),
 				WebSystemdSocket:   func(i bool) *bool { return &i }(false),
 				WebConfigFile:      func(i string) *string { return &i }(""),
 			}
