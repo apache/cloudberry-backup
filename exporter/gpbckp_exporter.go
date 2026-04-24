@@ -46,7 +46,8 @@ func SetPromPortAndPath(flagsConfig web.FlagConfig, endpoint string) {
 func StartPromEndpoint(version string, logger *slog.Logger) {
 	go func(logger *slog.Logger) {
 		if webEndpoint == "" {
-			logger.Error("Metric endpoint is empty", "endpoint", webEndpoint)
+			logger.Error("Metric endpoint is empty; aborting exporter startup", "endpoint", webEndpoint)
+			os.Exit(1)
 		}
 		http.Handle(webEndpoint, promhttp.Handler())
 		if webEndpoint != "/" {
