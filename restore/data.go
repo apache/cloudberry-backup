@@ -242,7 +242,7 @@ func restoreDataFromTimestamp(fpInfo filepath.FilePathInfo, dataEntries []toc.Co
 		}
 
 		utils.WriteOidListToSegments(oidList, globalCluster, fpInfo, "oid")
-		initialPipes := CreateInitialSegmentPipes(oidList, globalCluster, connectionPool, fpInfo)
+		initialPipes := CreateInitialSegmentPipes(oidList, globalCluster, connectionPool, fpInfo, batches)
 		if wasTerminated {
 			return 0
 		}
@@ -339,12 +339,16 @@ func restoreDataFromTimestamp(fpInfo filepath.FilePathInfo, dataEntries []toc.Co
 	return numErrors
 }
 
-func CreateInitialSegmentPipes(oidList []string, c *cluster.Cluster, connectionPool *dbconn.DBConn, fpInfo filepath.FilePathInfo) int {
-	// Create min(connections, tables) segment pipes on each host
-	var maxPipes int
-	if connectionPool.NumConns < len(oidList) {
-		maxPipes = connectionPool.NumConns
-	} else {
+func CreateInitialSegmentPipes(oidList []string, c *cluster.Cluster, connectionPool *dbconn.DBConn, fpInfo filepath.FilePathInfo, batches int) int {
+	// oidList is laid out in oid-major order: [T1B0, T1B1, ..., T2B0, T2B1, ...].
+	// Workers dispatch one task per table and iterate batches sequentially within
+	// restoreSingleTableData, so NumConns concurrent workers may request pipes at
+	// oidList indices 0, batches, 2*batches, ..., (NumConns-1)*batches before the
+	// helper has had a chance to create any of them. Preload NumConns*batches
+	// pipes so every concurrent worker's first batch is covered; the helper then
+	// rolls the queue forward as each batch completes.
+	maxPipes := connectionPool.NumConns * batches
+	if maxPipes > len(oidList) {
 		maxPipes = len(oidList)
 	}
 	for i := 0; i < maxPipes; i++ {
