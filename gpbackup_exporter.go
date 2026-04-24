@@ -100,11 +100,11 @@ func main() {
 	// Method invoked upon seeing signal.
 	go func(logger *slog.Logger) {
 		s := <-sigs
-		logger.Warn(
+		logger.Info(
 			"Stopping exporter",
 			"name", filepath.Base(os.Args[0]),
 			"signal", s)
-		os.Exit(1)
+		os.Exit(0)
 	}(logger)
 	logger.Info(
 		"Starting exporter",
