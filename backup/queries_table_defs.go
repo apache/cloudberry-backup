@@ -327,9 +327,9 @@ func GetColumnDefinitions(connectionPool *dbconn.DBConn) map[uint32][]ColumnDefi
 	ORDER BY a.attrelid, a.attnum`, relationAndSchemaFilterClause())
 
 	// In GPDB7+ we do not want to exclude child partitions, they function as separate tables.
-	// Cannot use unnest() in CASE statements anymore in GPDB 7+ so convert
-	// it to a LEFT JOIN LATERAL. We do not use LEFT JOIN LATERAL for GPDB 6
-	// because the CASE unnest() logic is more performant.
+	// Use a top-level unnest(CASE ...) AS privileges instead of LEFT JOIN LATERAL.
+	// This removes an extra join and per-array expansion, reducing planner/executor work
+	// when scanning large catalogs. Keep the GPDB6 CASE-unnest because it was faster there.
 	atLeast7Query := fmt.Sprintf(`
 	SELECT a.attrelid,
 		a.attnum,
@@ -343,7 +343,11 @@ func GetColumnDefinitions(connectionPool *dbconn.DBConn) map[uint32][]ColumnDefi
 		coalesce('('||pg_catalog.pg_get_expr(ad.adbin, ad.adrelid)||')', '') AS defaultval,
 		coalesce(d.description, '') AS comment,
 		a.attgenerated,
-		ljl_unnest AS privileges,
+		unnest(CASE
+			WHEN a.attacl IS NULL OR array_length(a.attacl, 1) IS NULL
+			THEN ARRAY[NULL::aclitem]
+			ELSE a.attacl
+		END) AS privileges,
 		CASE
 			WHEN a.attacl IS NULL THEN ''
 			WHEN array_upper(a.attacl, 1) = 0 THEN 'Empty'
@@ -365,7 +369,6 @@ func GetColumnDefinitions(connectionPool *dbconn.DBConn) map[uint32][]ColumnDefi
 		LEFT JOIN pg_collation coll ON a.attcollation = coll.oid
 		LEFT JOIN pg_namespace cn ON coll.collnamespace = cn.oid
 		LEFT JOIN pg_seclabel sec ON sec.objoid = a.attrelid AND sec.classoid = 'pg_class'::regclass AND sec.objsubid = a.attnum
-		LEFT JOIN LATERAL unnest(a.attacl) ljl_unnest ON a.attacl IS NOT NULL AND array_length(a.attacl, 1) != 0
 	WHERE %s
 		AND c.reltype <> 0
 		AND a.attnum > 0::pg_catalog.int2
