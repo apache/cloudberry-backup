@@ -153,6 +153,28 @@ var _ = Describe("Exporter", func() {
 			Expect(out.String()).To(ContainSubstring(`No backup data returned`))
 		})
 
+		It("logs parse error and emits no metrics", func() {
+			tempFile, err := os.CreateTemp("", "test*.yaml")
+			Expect(err).ToNot(HaveOccurred())
+			defer os.Remove(tempFile.Name())
+			resetMetrics()
+			out := &bytes.Buffer{}
+			lc := slog.New(slog.NewTextHandler(out, &slog.HandlerOptions{
+				Level: slog.LevelDebug,
+				ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
+					if a.Key == slog.TimeKey {
+						return slog.Attr{}
+					}
+					return a
+				},
+			}))
+			GetGPBackupInfo(tempFile.Name(), "", false, false, []string{""}, []string{""}, 0, lc)
+			logOutput := out.String()
+			Expect(logOutput).To(ContainSubstring("Get data failed"))
+			Expect(logOutput).To(ContainSubstring("No backup data returned"))
+			Expect(logOutput).ToNot(ContainSubstring("Set up metric"))
+		})
+
 		It("warns when using depth and backup is older than depth interval", func() {
 			backupConfigs := []*history.BackupConfig{templateBackupConfig()}
 			dbFile, err := fakeHistoryFileData(backupConfigs)
@@ -192,6 +214,39 @@ var _ = Describe("Exporter", func() {
 			GetGPBackupInfo(dbFile, "", false, false, []string{"test"}, []string{"test"}, 0, lc)
 			Expect(out.String()).To(ContainSubstring(`DB is specified in include and exclude lists`))
 			Expect(out.String()).To(ContainSubstring(`DB=test`))
+		})
+
+		It("sets exporter status metric only for conflicting DB", func() {
+			goodConfig := templateBackupConfig()
+			goodConfig.DatabaseName = "good"
+			goodConfig.Timestamp = "20230118152654"
+			goodConfig.EndTime = "20230118152656"
+
+			badConfig := templateBackupConfig()
+			badConfig.DatabaseName = "bad"
+			badConfig.Timestamp = "20230118152655"
+			badConfig.EndTime = "20230118152657"
+
+			backupConfigs := []*history.BackupConfig{goodConfig, badConfig}
+			dbFile, err := fakeHistoryFileData(backupConfigs)
+			Expect(err).ToNot(HaveOccurred())
+			defer os.Remove(dbFile)
+			resetMetrics()
+			out := &bytes.Buffer{}
+			lc := slog.New(slog.NewTextHandler(out, &slog.HandlerOptions{
+				Level: slog.LevelDebug,
+				ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
+					if a.Key == slog.TimeKey {
+						return slog.Attr{}
+					}
+					return a
+				},
+			}))
+			// Include both good and bad, but exclude only bad -> conflict for bad
+			GetGPBackupInfo(dbFile, "", false, false, []string{"good", "bad"}, []string{"bad"}, 0, lc)
+			logOutput := out.String()
+			Expect(logOutput).To(ContainSubstring(`metric=gpbackup_exporter_status value=1 labels=good`))
+			Expect(logOutput).To(ContainSubstring(`metric=gpbackup_exporter_status value=0 labels=bad`))
 		})
 
 		It("logs errors for invalid backup values", func() {

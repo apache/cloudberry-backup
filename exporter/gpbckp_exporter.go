@@ -83,9 +83,8 @@ func StartPromEndpoint(version string, logger *slog.Logger) {
 
 // GetGPBackupInfo get and parse gpbackup history database.
 func GetGPBackupInfo(historyFile, backupType string, collectDeleted, collectFailed bool, dbInclude, dbExclude []string, collectDepth int, logger *slog.Logger) {
-	// The flag indicates whether it was possible to get data from the gpbackup history.
-	// By default, it's set to true.
-	getDataSuccessStatus := true
+	// To calculate the time elapsed since the last completed backup for specific database.
+	// For all databases values are calculated relative to one value.
 	// To calculate the time elapsed since the last completed backup for specific database.
 	// For all databases values are calculated relative to one value.
 	currentTime := time.Now()
@@ -97,7 +96,6 @@ func GetGPBackupInfo(historyFile, backupType string, collectDeleted, collectFail
 	backupConfigs, err := parseBackupData(historyFile, collectDeleted, collectFailed, logger)
 	if err != nil {
 		logger.Error("Get data failed", "err", err)
-		getDataSuccessStatus = false
 	}
 	// Reset metrics.
 	resetMetrics()
@@ -111,7 +109,7 @@ func GetGPBackupInfo(historyFile, backupType string, collectDeleted, collectFail
 			// then metrics for this database will not be collected.
 			if !dbInList(db, dbExclude) {
 				if listEmpty(dbInclude) || dbInList(db, dbInclude) {
-					dbStatus[db] = getDataSuccessStatus
+					dbStatus[db] = true
 					bckpType, err := gpbckpconfig.GetBackupType(backupConfigs[i])
 					if err != nil {
 						logger.Error("Parse backup type value failed", "err", err)
@@ -171,9 +169,8 @@ func GetGPBackupInfo(historyFile, backupType string, collectDeleted, collectFail
 			} else if dbInList(db, dbInclude) {
 				// When db is specified in both include and exclude lists, a warning is displayed in the log
 				// and data for this db is not collected.
-				// It is necessary to set zero metric value for this db.
-				getDataSuccessStatus = false
-				dbStatus[db] = getDataSuccessStatus
+				// Set zero metric value for this db.
+				dbStatus[db] = false
 				logger.Warn("DB is specified in include and exclude lists", "DB", db)
 			}
 		}
