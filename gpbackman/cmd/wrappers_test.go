@@ -33,12 +33,55 @@ import (
 
 var _ = Describe("wrappers tests", func() {
 	Describe("getHistoryDBPath", func() {
-		It("returns default path when input is empty", func() {
+		// Save and restore env vars so these cases don't leak into the rest
+		// of the suite when run with --randomize-all.
+		var savedEnv map[string]string
+
+		BeforeEach(func() {
+			savedEnv = make(map[string]string, len(historyDBEnvVars))
+			for _, name := range historyDBEnvVars {
+				savedEnv[name] = os.Getenv(name)
+				os.Unsetenv(name)
+			}
+		})
+
+		AfterEach(func() {
+			for name, val := range savedEnv {
+				if val == "" {
+					os.Unsetenv(name)
+				} else {
+					os.Setenv(name, val)
+				}
+			}
+		})
+
+		It("returns default filename when input is empty and no env vars are set", func() {
 			Expect(getHistoryDBPath("")).To(Equal(historyDBNameConst))
 		})
 
 		It("returns input path when not empty", func() {
 			Expect(getHistoryDBPath("path/to/" + historyDBNameConst)).To(Equal("path/to/" + historyDBNameConst))
+		})
+
+		It("falls back to COORDINATOR_DATA_DIRECTORY when input is empty", func() {
+			os.Setenv("COORDINATOR_DATA_DIRECTORY", "/coord/data")
+			Expect(getHistoryDBPath("")).To(Equal(filepath.Join("/coord/data", historyDBNameConst)))
+		})
+
+		It("falls back to MASTER_DATA_DIRECTORY when COORDINATOR is unset", func() {
+			os.Setenv("MASTER_DATA_DIRECTORY", "/master/data")
+			Expect(getHistoryDBPath("")).To(Equal(filepath.Join("/master/data", historyDBNameConst)))
+		})
+
+		It("prefers COORDINATOR over MASTER when both are set", func() {
+			os.Setenv("COORDINATOR_DATA_DIRECTORY", "/coord/data")
+			os.Setenv("MASTER_DATA_DIRECTORY", "/master/data")
+			Expect(getHistoryDBPath("")).To(Equal(filepath.Join("/coord/data", historyDBNameConst)))
+		})
+
+		It("explicit input wins over env vars", func() {
+			os.Setenv("COORDINATOR_DATA_DIRECTORY", "/coord/data")
+			Expect(getHistoryDBPath("/explicit/path.db")).To(Equal("/explicit/path.db"))
 		})
 	})
 

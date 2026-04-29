@@ -21,15 +21,38 @@ package gpbckpconfig
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/apache/cloudberry-backup/history"
 )
 
-// OpenHistoryDB opens the history backup database.
+// OpenHistoryDB opens an existing gpbackup_history.db SQLite database.
+//
+// The path is opened with the SQLite "rw" URI mode so that a missing file
+// produces a clear error rather than being silently created as an empty
+// database (which would later fail with a confusing "no such table: backups"
+// when callers issue queries). Existence is also pre-checked with os.Stat to
+// surface a friendly error message that points the caller at the relevant
+// flag and environment variables.
 func OpenHistoryDB(historyDBPath string) (*sql.DB, error) {
-	db, err := sql.Open("sqlite3", historyDBPath)
+	if _, err := os.Stat(historyDBPath); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, fmt.Errorf(
+				"gpbackup history database file not found: %s. "+
+					"Specify the path via --history-db, set "+
+					"COORDINATOR_DATA_DIRECTORY (or MASTER_DATA_DIRECTORY), "+
+					"or run gpbackman from the directory that contains "+
+					"gpbackup_history.db",
+				historyDBPath,
+			)
+		}
+		return nil, err
+	}
+	// mode=rw opens an existing database for read+write but never creates one.
+	db, err := sql.Open("sqlite3", "file:"+historyDBPath+"?mode=rw")
 	if err != nil {
 		return nil, err
 	}

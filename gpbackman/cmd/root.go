@@ -50,7 +50,9 @@ func init() {
 		&rootHistoryDB,
 		historyDBFlagName,
 		"",
-		"full path to the gpbackup_history.db file",
+		"full path to the gpbackup_history.db file (if unset, falls back to "+
+			"$COORDINATOR_DATA_DIRECTORY/gpbackup_history.db, then "+
+			"$MASTER_DATA_DIRECTORY/gpbackup_history.db, then the current directory)",
 	)
 	rootCmd.PersistentFlags().StringVar(
 		&rootLogFile,
