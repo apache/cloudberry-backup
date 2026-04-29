@@ -20,7 +20,10 @@ under the License.
 package gpbckpconfig
 
 import (
+	"database/sql"
 	"fmt"
+	"os"
+	"path/filepath"
 
 	"github.com/apache/cloudberry-backup/history"
 	. "github.com/onsi/ginkgo/v2"
@@ -28,6 +31,41 @@ import (
 )
 
 var _ = Describe("utils_db tests", func() {
+	Describe("OpenHistoryDB", func() {
+		It("returns a friendly error and does not create a file when the path does not exist", func() {
+			tempDir := GinkgoT().TempDir()
+			missing := filepath.Join(tempDir, "does-not-exist.db")
+
+			db, err := OpenHistoryDB(missing)
+
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("not found"))
+			Expect(err.Error()).To(ContainSubstring("--history-db"))
+			Expect(db).To(BeNil())
+
+			// Critical regression: no empty SQLite file must have been created.
+			_, statErr := os.Stat(missing)
+			Expect(os.IsNotExist(statErr)).To(BeTrue(), "OpenHistoryDB must not create the file when it is missing")
+		})
+
+		It("opens an existing SQLite history database successfully", func() {
+			tempDir := GinkgoT().TempDir()
+			path := filepath.Join(tempDir, "gpbackup_history.db")
+
+			// Seed an existing (but empty) SQLite file via the rwc URI mode.
+			seed, err := sql.Open("sqlite3", "file:"+path+"?mode=rwc")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(seed.Ping()).To(Succeed())
+			Expect(seed.Close()).To(Succeed())
+
+			db, err := OpenHistoryDB(path)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(db).NotTo(BeNil())
+			Expect(db.Ping()).To(Succeed())
+			Expect(db.Close()).To(Succeed())
+		})
+	})
+
 	Describe("getBackupNameQuery", func() {
 		It("returns correct query for various flag combinations", func() {
 			tests := []struct {
