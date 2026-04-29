@@ -81,12 +81,24 @@ func setLogLevelFile(level string) error {
 	return nil
 }
 
+// getHistoryDBPath resolves the path to the gpbackup_history.db file.
+// When the --history-db flag is empty, fall back (in order) to the
+// COORDINATOR_DATA_DIRECTORY and MASTER_DATA_DIRECTORY environment variables
+// that the standard Cloudberry/Greenplum environment scripts export, so that
+// users running gpbackman from a sourced cluster shell do not need to repeat
+// the path on every invocation. As a last resort, return the bare filename
+// (resolved against the current working directory), preserving the previous
+// behaviour.
 func getHistoryDBPath(historyDBPath string) string {
-	var historyDBName = historyDBNameConst
 	if historyDBPath != "" {
 		return historyDBPath
 	}
-	return historyDBName
+	for _, envVar := range historyDBEnvVars {
+		if dir := os.Getenv(envVar); dir != "" {
+			return filepath.Join(dir, historyDBNameConst)
+		}
+	}
+	return historyDBNameConst
 }
 
 func checkCompatibleFlags(flags *pflag.FlagSet, flagNames ...string) error {
