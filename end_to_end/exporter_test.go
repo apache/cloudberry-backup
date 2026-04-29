@@ -126,7 +126,7 @@ var _ = Describe("gpbackup_exporter end to end tests", func() {
 			"--collect.interval", "600",
 			"--web.listen-address", fmt.Sprintf("127.0.0.1:%d", port),
 		)
-		cmd.Start()
+		Expect(cmd.Start()).To(Succeed())
 		defer cmd.Process.Kill()
 		metricsURL := fmt.Sprintf("http://127.0.0.1:%d/metrics", port)
 		var body string
