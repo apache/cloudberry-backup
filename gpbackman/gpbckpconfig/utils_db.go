@@ -49,7 +49,7 @@ func OpenHistoryDB(historyDBPath string) (*sql.DB, error) {
 				historyDBPath,
 			)
 		}
-		return nil, err
+		return nil, fmt.Errorf("stat history db %q: %w", historyDBPath, err)
 	}
 	// mode=rw opens an existing database for read+write but never creates one.
 	db, err := sql.Open("sqlite3", "file:"+historyDBPath+"?mode=rw")
