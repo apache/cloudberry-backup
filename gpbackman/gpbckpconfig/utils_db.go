@@ -42,10 +42,10 @@ func OpenHistoryDB(historyDBPath string) (*sql.DB, error) {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, fmt.Errorf(
 				"gpbackup history database file not found: %s. "+
-					"Specify the path via --history-db, set "+
-					"COORDINATOR_DATA_DIRECTORY (or MASTER_DATA_DIRECTORY), "+
-					"or run gpbackman from the directory that contains "+
-					"gpbackup_history.db",
+					"Specify the path via --history-db, run gpbackman from "+
+					"the directory that contains gpbackup_history.db, or "+
+					"pass --auto-load-history-db to resolve it from "+
+					"$COORDINATOR_DATA_DIRECTORY (or $MASTER_DATA_DIRECTORY)",
 				historyDBPath,
 			)
 		}

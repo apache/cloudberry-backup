@@ -78,7 +78,7 @@ It is not necessary to use the --plugin-report-file-path flag for the following 
 
 The gpbackup_history.db file location can be set using the --history-db option.
 Can be specified only once. The full path to the file is required.
-If the --history-db option is not specified, the history database is looked for under $COORDINATOR_DATA_DIRECTORY (then $MASTER_DATA_DIRECTORY); if neither variable is set, the current directory is used as a last resort.`,
+If the --history-db option is not specified, the history database is looked for in the current directory. To resolve it from $COORDINATOR_DATA_DIRECTORY (then $MASTER_DATA_DIRECTORY) instead, pass the --auto-load-history-db flag.`,
 	Args: cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
 		doRootFlagValidation(cmd.Flags(), checkFileExistsConst)
@@ -174,7 +174,7 @@ func doReportInfo() {
 }
 
 func reportInfo() error {
-	hDB, err := gpbckpconfig.OpenHistoryDB(getHistoryDBPath(rootHistoryDB))
+	hDB, err := gpbckpconfig.OpenHistoryDB(getHistoryDBPath(rootHistoryDB, rootAutoLoadHistoryDB))
 	if err != nil {
 		gplog.Error("%s", textmsg.ErrorTextUnableActionHistoryDB("open", err))
 		return err
