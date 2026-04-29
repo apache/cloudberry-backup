@@ -33,10 +33,11 @@ var version string
 
 // Flags for the gpbackman command (rootCmd)
 var (
-	rootHistoryDB       string
-	rootLogFile         string
-	rootLogLevelConsole string
-	rootLogLevelFile    string
+	rootHistoryDB         string
+	rootAutoLoadHistoryDB bool
+	rootLogFile           string
+	rootLogLevelConsole   string
+	rootLogLevelFile      string
 )
 
 var rootCmd = &cobra.Command{
@@ -50,9 +51,15 @@ func init() {
 		&rootHistoryDB,
 		historyDBFlagName,
 		"",
-		"full path to the gpbackup_history.db file (if unset, falls back to "+
-			"$COORDINATOR_DATA_DIRECTORY/gpbackup_history.db, then "+
-			"$MASTER_DATA_DIRECTORY/gpbackup_history.db, then the current directory)",
+		"full path to the gpbackup_history.db file",
+	)
+	rootCmd.PersistentFlags().BoolVar(
+		&rootAutoLoadHistoryDB,
+		autoLoadHistoryDBFlagName,
+		false,
+		"when --history-db is unset, look up gpbackup_history.db under "+
+			"$COORDINATOR_DATA_DIRECTORY (then $MASTER_DATA_DIRECTORY) before "+
+			"falling back to the current directory",
 	)
 	rootCmd.PersistentFlags().StringVar(
 		&rootLogFile,
