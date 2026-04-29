@@ -53,7 +53,8 @@ Available Commands:
 
 Flags:
   -h, --help                       help for gpbackman
-      --history-db string          full path to the gpbackup_history.db file (if unset, falls back to $COORDINATOR_DATA_DIRECTORY/gpbackup_history.db, then $MASTER_DATA_DIRECTORY/gpbackup_history.db, then the current directory)
+      --auto-load-history-db       resolve gpbackup_history.db from $COORDINATOR_DATA_DIRECTORY (or $MASTER_DATA_DIRECTORY) when --history-db is unset
+      --history-db string          full path to the gpbackup_history.db file
       --log-file string            full path to log file directory, if not specified, the log file will be created in the $HOME/gpAdminLogs directory
       --log-level-console string   level for console logging (error, info, debug, verbose) (default "info")
       --log-level-file string      level for file logging (error, info, debug, verbose) (default "info")
