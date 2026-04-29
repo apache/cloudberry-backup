@@ -84,11 +84,10 @@ func setLogLevelFile(level string) error {
 // getHistoryDBPath resolves the path to the gpbackup_history.db file.
 // An explicit --history-db value always wins. Otherwise, when the caller
 // asks for auto-load (--auto-load-history-db), look up the file under the
-// COORDINATOR_DATA_DIRECTORY / MASTER_DATA_DIRECTORY environment variables
-// exported by the standard Cloudberry environment scripts. As a final
-// fallback, return the bare filename so it is resolved against the current
-// working directory, preserving the original behaviour for the default
-// invocation.
+// COORDINATOR_DATA_DIRECTORY environment variable exported by the standard
+// Cloudberry environment scripts. As a final fallback, return the bare
+// filename so it is resolved against the current working directory,
+// preserving the original behaviour for the default invocation.
 func getHistoryDBPath(historyDBPath string, autoLoad bool) string {
 	if historyDBPath != "" {
 		return historyDBPath

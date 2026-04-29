@@ -77,7 +77,7 @@ For non local backups the following logic are applied:
 
 The gpbackup_history.db file location can be set using the --history-db option.
 Can be specified only once. The full path to the file is required.
-If the --history-db option is not specified, the history database is looked for in the current directory. To resolve it from $COORDINATOR_DATA_DIRECTORY (then $MASTER_DATA_DIRECTORY) instead, pass the --auto-load-history-db flag.`,
+If the --history-db option is not specified, the history database is looked for in the current directory. To resolve it from $COORDINATOR_DATA_DIRECTORY instead, pass the --auto-load-history-db flag.`,
 	Args: cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
 		doRootFlagValidation(cmd.Flags(), checkFileExistsConst)
