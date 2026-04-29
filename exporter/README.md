@@ -40,7 +40,7 @@
 | Metric | Description |  Labels | Additional Info |
 | ----------- | ------------------ | ------------- | --------------- |
 | `gpbackup_exporter_build_info` | information about gpbackup exporter | branch, goarch, goos, goversion, revision, tags, version | |
-| `gpbackup_exporter_status` | gpbackup exporter get data status | database_name | Values description:<br> `0` - errors occurred when fetching information from history database,<br> `1` - information successfully fetched from history database. |
+| `gpbackup_exporter_status` | gpbackup exporter data collection status for a specific database | database_name | Values description:<br> `0` — exporter marked this database as not collected,<br> `1` — information successfully fetched from history database.|
 
 ## Getting Started
 Available configuration flags:
