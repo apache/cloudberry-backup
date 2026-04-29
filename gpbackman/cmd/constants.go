@@ -74,11 +74,10 @@ var (
 	// Timestamp to delete all backups after.
 	afterTimestamp string
 
-	// historyDBEnvVars lists, in priority order, the environment variables
-	// inspected when --history-db is not supplied. They are exported by the
-	// standard Cloudberry/Greenplum cluster environment scripts.
+	// historyDBEnvVars lists the environment variables inspected when
+	// --history-db is not supplied. Exported by the standard Cloudberry
+	// cluster environment scripts.
 	historyDBEnvVars = []string{
 		"COORDINATOR_DATA_DIRECTORY",
-		"MASTER_DATA_DIRECTORY",
 	}
 )

@@ -65,23 +65,11 @@ var _ = Describe("wrappers tests", func() {
 
 		It("ignores env vars by default (auto-load off)", func() {
 			os.Setenv("COORDINATOR_DATA_DIRECTORY", "/coord/data")
-			os.Setenv("MASTER_DATA_DIRECTORY", "/master/data")
 			Expect(getHistoryDBPath("", false)).To(Equal(historyDBNameConst))
 		})
 
 		It("falls back to COORDINATOR_DATA_DIRECTORY when auto-load is on", func() {
 			os.Setenv("COORDINATOR_DATA_DIRECTORY", "/coord/data")
-			Expect(getHistoryDBPath("", true)).To(Equal(filepath.Join("/coord/data", historyDBNameConst)))
-		})
-
-		It("falls back to MASTER_DATA_DIRECTORY when COORDINATOR is unset and auto-load is on", func() {
-			os.Setenv("MASTER_DATA_DIRECTORY", "/master/data")
-			Expect(getHistoryDBPath("", true)).To(Equal(filepath.Join("/master/data", historyDBNameConst)))
-		})
-
-		It("prefers COORDINATOR over MASTER when both are set and auto-load is on", func() {
-			os.Setenv("COORDINATOR_DATA_DIRECTORY", "/coord/data")
-			os.Setenv("MASTER_DATA_DIRECTORY", "/master/data")
 			Expect(getHistoryDBPath("", true)).To(Equal(filepath.Join("/coord/data", historyDBNameConst)))
 		})
 
