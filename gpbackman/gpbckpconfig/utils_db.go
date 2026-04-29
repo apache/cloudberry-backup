@@ -45,7 +45,7 @@ func OpenHistoryDB(historyDBPath string) (*sql.DB, error) {
 					"Specify the path via --history-db, run gpbackman from "+
 					"the directory that contains gpbackup_history.db, or "+
 					"pass --auto-load-history-db to resolve it from "+
-					"$COORDINATOR_DATA_DIRECTORY (or $MASTER_DATA_DIRECTORY)",
+					"$COORDINATOR_DATA_DIRECTORY",
 				historyDBPath,
 			)
 		}

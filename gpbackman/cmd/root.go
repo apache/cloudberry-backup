@@ -57,9 +57,7 @@ func init() {
 		&rootAutoLoadHistoryDB,
 		autoLoadHistoryDBFlagName,
 		false,
-		"when --history-db is unset, look up gpbackup_history.db under "+
-			"$COORDINATOR_DATA_DIRECTORY (then $MASTER_DATA_DIRECTORY) before "+
-			"falling back to the current directory",
+		"resolve gpbackup_history.db from $COORDINATOR_DATA_DIRECTORY when --history-db is unset",
 	)
 	rootCmd.PersistentFlags().StringVar(
 		&rootLogFile,

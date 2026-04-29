@@ -72,7 +72,7 @@ For non local backups the following logic are applied:
 
 The gpbackup_history.db file location can be set using the --history-db option.
 Can be specified only once. The full path to the file is required.
-If the --history-db option is not specified, the history database is looked for in the current directory. Pass `--auto-load-history-db` to resolve it from `$COORDINATOR_DATA_DIRECTORY` (then `$MASTER_DATA_DIRECTORY`) instead.
+If the --history-db option is not specified, the history database is looked for in the current directory. Pass `--auto-load-history-db` to resolve it from `$COORDINATOR_DATA_DIRECTORY` instead.
 
 Usage:
   gpbackman backup-clean [flags]
@@ -158,7 +158,7 @@ For non local backups the following logic are applied:
 
 The gpbackup_history.db file location can be set using the --history-db option.
 Can be specified only once. The full path to the file is required.
-If the --history-db option is not specified, the history database is looked for in the current directory. Pass `--auto-load-history-db` to resolve it from `$COORDINATOR_DATA_DIRECTORY` (then `$MASTER_DATA_DIRECTORY`) instead.
+If the --history-db option is not specified, the history database is looked for in the current directory. Pass `--auto-load-history-db` to resolve it from `$COORDINATOR_DATA_DIRECTORY` instead.
 
 Usage:
   gpbackman backup-delete [flags]
@@ -256,7 +256,7 @@ To display the "object filtering details" column for all backups without using -
 
 The gpbackup_history.db file location can be set using the --history-db option.
 Can be specified only once. The full path to the file is required.
-If the --history-db option is not specified, the history database is looked for in the current directory. Pass `--auto-load-history-db` to resolve it from `$COORDINATOR_DATA_DIRECTORY` (then `$MASTER_DATA_DIRECTORY`) instead.
+If the --history-db option is not specified, the history database is looked for in the current directory. Pass `--auto-load-history-db` to resolve it from `$COORDINATOR_DATA_DIRECTORY` instead.
 
 Usage:
   gpbackman backup-info [flags]
@@ -455,7 +455,7 @@ Only --older-than-days or --before-timestamp option must be specified, not both.
 
 The gpbackup_history.db file location can be set using the --history-db option.
 Can be specified only once. The full path to the file is required.
-If the --history-db option is not specified, the history database is looked for in the current directory. Pass `--auto-load-history-db` to resolve it from `$COORDINATOR_DATA_DIRECTORY` (then `$MASTER_DATA_DIRECTORY`) instead.
+If the --history-db option is not specified, the history database is looked for in the current directory. Pass `--auto-load-history-db` to resolve it from `$COORDINATOR_DATA_DIRECTORY` instead.
 
 Usage:
   gpbackman history-clean [flags]
@@ -524,7 +524,7 @@ It is not necessary to use the --plugin-report-file-path flag for the following 
 
 The gpbackup_history.db file location can be set using the --history-db option.
 Can be specified only once. The full path to the file is required.
-If the --history-db option is not specified, the history database is looked for in the current directory. Pass `--auto-load-history-db` to resolve it from `$COORDINATOR_DATA_DIRECTORY` (then `$MASTER_DATA_DIRECTORY`) instead.
+If the --history-db option is not specified, the history database is looked for in the current directory. Pass `--auto-load-history-db` to resolve it from `$COORDINATOR_DATA_DIRECTORY` instead.
 
 Usage:
   gpbackman report-info [flags]
