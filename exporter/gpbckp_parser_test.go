@@ -211,7 +211,7 @@ var _ = Describe("Parser", func() {
 			logger := slog.New(slog.NewTextHandler(out, &slog.HandlerOptions{Level: slog.LevelError}))
 			_, err := getDataFromHistoryDB("/nonexistent/path/to/db.db", false, false, logger)
 			Expect(err).To(HaveOccurred())
-			Expect(out.String()).To(ContainSubstring("Get backups from history db failed"))
+			Expect(out.String()).To(ContainSubstring("Open gpbackup history db failed"))
 		})
 		It("returns error for corrupted db with invalid backup data", func() {
 			dbFile := createCorruptedDBFile()
