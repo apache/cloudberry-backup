@@ -13,17 +13,67 @@ import (
 	"github.com/pkg/errors"
 )
 
+// FilterTablesForIncremental decides which tables need data backed up.
+//
+// Independent toggles:
+//   - AO:   default = modcount + DDL timestamp; with --ao-file-hash, use per-table aoseg content hash
+//   - Heap: default = always include (original gpbackup behavior); with --heap-file-hash, skip unchanged via file hash
 func FilterTablesForIncremental(lastBackupTOC, currentTOC *toc.TOC, tables []Table) []Table {
+	useAOHash := MustGetFlagBool(options.AO_FILE_HASH)
+	useHeapHash := MustGetFlagBool(options.HEAP_FILE_HASH)
+
 	var filteredTables []Table
 	for _, table := range tables {
-		currentAOEntry, isAOTable := currentTOC.IncrementalMetadata.AO[table.FQN()]
-		if !isAOTable {
+		fqn := table.FQN()
+
+		if currentAO, isAO := currentTOC.IncrementalMetadata.AO[fqn]; isAO {
+			if useAOHash && currentAO.FileHashMD5 != "" {
+				prevAO, hasPrev := lastBackupTOC.IncrementalMetadata.AO[fqn]
+				if !hasPrev || prevAO.FileHashMD5 == "" {
+					gplog.Debug("Filter: %s (AO/content) prev hash missing, including", fqn)
+					filteredTables = append(filteredTables, table)
+					continue
+				}
+				if prevAO.FileHashMD5 != currentAO.FileHashMD5 {
+					filteredTables = append(filteredTables, table)
+				}
+			} else {
+				prevAO := lastBackupTOC.IncrementalMetadata.AO[fqn]
+				if prevAO.Modcount != currentAO.Modcount || prevAO.LastDDLTimestamp != currentAO.LastDDLTimestamp {
+					filteredTables = append(filteredTables, table)
+				}
+			}
+			continue
+		}
+
+		if !useHeapHash {
+			// Original behavior: heap tables always included in incremental
 			filteredTables = append(filteredTables, table)
 			continue
 		}
-		previousAOEntry := lastBackupTOC.IncrementalMetadata.AO[table.FQN()]
 
-		if previousAOEntry.Modcount != currentAOEntry.Modcount || previousAOEntry.LastDDLTimestamp != currentAOEntry.LastDDLTimestamp {
+		// --heap-file-hash: skip heap tables whose file hash is unchanged
+		if currentTOC.IncrementalMetadata.Heap == nil {
+			filteredTables = append(filteredTables, table)
+			continue
+		}
+		currentHeap, isHeap := currentTOC.IncrementalMetadata.Heap[fqn]
+		if !isHeap || currentHeap.FileHashMD5 == "" {
+			gplog.Debug("Filter: %s (Heap) no current hash, including", fqn)
+			filteredTables = append(filteredTables, table)
+			continue
+		}
+		if lastBackupTOC.IncrementalMetadata.Heap == nil {
+			filteredTables = append(filteredTables, table)
+			continue
+		}
+		prevHeap, hasPrev := lastBackupTOC.IncrementalMetadata.Heap[fqn]
+		if !hasPrev || prevHeap.FileHashMD5 == "" {
+			gplog.Debug("Filter: %s (Heap) prev hash missing, including", fqn)
+			filteredTables = append(filteredTables, table)
+			continue
+		}
+		if prevHeap.FileHashMD5 != currentHeap.FileHashMD5 {
 			filteredTables = append(filteredTables, table)
 		}
 	}

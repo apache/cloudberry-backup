@@ -53,12 +53,18 @@ type SegmentDataEntry struct {
 }
 
 type IncrementalEntries struct {
-	AO map[string]AOEntry
+	AO   map[string]AOEntry
+	Heap map[string]HeapEntry `yaml:"heap,omitempty"`
 }
 
 type AOEntry struct {
 	Modcount         int64
 	LastDDLTimestamp string
+	FileHashMD5      string `yaml:"fileHashMD5,omitempty"`
+}
+
+type HeapEntry struct {
+	FileHashMD5 string `yaml:"fileHashMD5"`
 }
 
 type UniqueID struct {
