@@ -801,8 +801,8 @@ func backupIncrementalMetadata() {
 				gplog.Warn("CHECKPOINT failed (non-fatal, file hashes may be stale): %v", cpErr)
 			}
 
-			heapFQNs := getHeapTableFQNs(connectionPool)
-			heapFileHashes := getFileHashesForTables(hashConn, heapFQNs)
+			heapTables := getHeapTables(connectionPool)
+			heapFileHashes := getFileHashesForTables(hashConn, heapTables)
 			heapEntries := make(map[string]toc.HeapEntry)
 			for fqn, hash := range heapFileHashes {
 				if hash != "" {

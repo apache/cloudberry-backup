@@ -64,7 +64,7 @@ type AOEntry struct {
 }
 
 type HeapEntry struct {
-	FileHashMD5 string `yaml:"fileHashMD5"`
+	FileHashMD5 string `yaml:"fileHashMD5,omitempty"`
 }
 
 type UniqueID struct {
