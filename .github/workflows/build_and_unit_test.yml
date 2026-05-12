@@ -58,6 +58,9 @@ jobs:
         echo "=== Testing gpbackman ==="
         ${GOPATH}/bin/gpbackman --version
         ${GOPATH}/bin/gpbackman --help > /dev/null
+        echo "=== Testing gpbackup_exporter ==="
+        ${GOPATH}/bin/gpbackup_exporter --version
+        ${GOPATH}/bin/gpbackup_exporter --help > /dev/null
         echo "=== All smoke tests passed ==="
 
     - name: Unit Test

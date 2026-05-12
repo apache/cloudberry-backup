@@ -71,6 +71,7 @@ var (
 	backupDir               string
 	segmentCount            int
 	gpbackmanPath           string
+	exporterPath            string
 )
 
 const (
@@ -558,7 +559,6 @@ options:
 		oldBackupVersionStr := os.Getenv("OLD_BACKUP_VERSION")
 
 		_, restoreHelperPath, gprestorePath = buildAndInstallBinaries()
-		gpbackmanPath = fmt.Sprintf("%s/go/bin/gpbackman", operating.System.Getenv("HOME"))
 
 		// Precompiled binaries will exist when running the ci job, `backward-compatibility`
 		if _, err := os.Stat(fmt.Sprintf("/tmp/%s", oldBackupVersionStr)); err == nil {
@@ -580,6 +580,7 @@ options:
 		backupHelperPath = fmt.Sprintf("%s/gpbackup_helper", binDir)
 		restoreHelperPath = backupHelperPath
 		gpbackmanPath = fmt.Sprintf("%s/gpbackman", binDir)
+		exporterPath = fmt.Sprintf("%s/gpbackup_exporter", binDir)
 	}
 	segConfig := cluster.MustGetSegmentConfiguration(backupConn)
 	backupCluster = cluster.NewCluster(segConfig)
