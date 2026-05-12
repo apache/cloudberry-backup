@@ -89,6 +89,14 @@ gprestore --timestamp <YYYYMMDDHHMMSS>
 
 Run `--help` with either command for a complete list of options.
 
+## Additional tools
+
+This repository also includes the following tools:
+
+* [gpbackup_s3_plugin](./plugins/s3plugin/README.md) — S3 storage plugin for gpbackup and gprestore.
+* [gpBackMan](./gpbackman/README.md) — utility for managing backups created by gpbackup.
+* [gpbackup_exporter](./exporter/README.md) — Prometheus exporter for collecting metrics from gpbackup history database.
+
 ## Validation and code quality
 
 ### Test setup

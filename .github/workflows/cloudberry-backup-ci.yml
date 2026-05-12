@@ -334,6 +334,9 @@ jobs:
                 echo "=== Testing gpbackman ==="
                 ${GPHOME}/bin/gpbackman --version
                 ${GPHOME}/bin/gpbackman --help > /dev/null
+                echo "=== Testing gpbackup_exporter ==="
+                ${GPHOME}/bin/gpbackup_exporter --version
+                ${GPHOME}/bin/gpbackup_exporter --help > /dev/null
                 echo "=== All smoke tests passed ===" | tee "${TEST_LOG_ROOT}/cloudberry-backup-smoke.log"
                 ;;
               unit)
