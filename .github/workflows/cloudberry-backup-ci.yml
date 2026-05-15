@@ -513,7 +513,7 @@ jobs:
                 
                 # Test installed binaries
                 echo "=== Testing installed binaries ==="
-                for binary in gpbackup gprestore gpbackup_helper gpbackup_s3_plugin gpbackman; do
+                for binary in gpbackup gprestore gpbackup_helper gpbackup_s3_plugin gpbackman gpbackup_exporter; do
                   version_output=$("${GPHOME}/bin/${binary}" --version 2>&1)
                   if [ $? -ne 0 ]; then
                     echo "ERROR: ${binary} --version failed"
