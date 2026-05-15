@@ -198,35 +198,14 @@ package:
 	@cp NOTICE $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/
 	@cp DISCLAIMER $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/
 	@echo "Creating install script..."
-	@echo '#!/bin/bash' > $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
-	@echo 'set -e' >> $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
-	@echo '' >> $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
-	@echo '# Use GPHOME if set, otherwise use default path' >> $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
-	@echo 'if [ -n "$$GPHOME" ]; then' >> $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
-	@echo '    INSTALL_DIR="$$GPHOME"' >> $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
-	@echo 'elif [ -n "$$INSTALL_DIR" ]; then' >> $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
-	@echo '    INSTALL_DIR="$$INSTALL_DIR"' >> $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
-	@echo 'else' >> $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
-	@echo '    INSTALL_DIR="/usr/local"' >> $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
-	@echo 'fi' >> $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
-	@echo '' >> $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
-	@echo 'SCRIPT_DIR="$$(cd "$$(dirname "$${BASH_SOURCE[0]}")" && pwd)"' >> $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
-	@echo '' >> $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
-	@echo 'echo "Installing $(PACKAGE_NAME) to $$INSTALL_DIR..."' >> $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
-	@echo '' >> $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
-	@echo '# Install binary files' >> $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
-	@echo 'sudo cp "$${SCRIPT_DIR}/bin/"* "$${INSTALL_DIR}/bin/"' >> $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
-	@echo '' >> $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
-	@echo '# Set permissions' >> $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
-	@echo 'sudo chmod 755 "$${INSTALL_DIR}/bin/$(BACKUP)"' >> $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
-	@echo 'sudo chmod 755 "$${INSTALL_DIR}/bin/$(RESTORE)"' >> $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
-	@echo 'sudo chmod 755 "$${INSTALL_DIR}/bin/$(HELPER)"' >> $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
-	@echo 'sudo chmod 755 "$${INSTALL_DIR}/bin/$(S3PLUGIN)"' >> $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
-	@echo 'sudo chmod 755 "$${INSTALL_DIR}/bin/$(GPBACKMAN)"' >> $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
-	@echo 'sudo chmod 755 "$${INSTALL_DIR}/bin/$(EXPORTER)"' >> $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
-	@echo '' >> $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
-	@echo 'echo "Installation complete!"' >> $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
-	@echo 'echo "$(PACKAGE_NAME) binaries installed to $${INSTALL_DIR}/bin/"' >> $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
+	@sed -e 's/__PACKAGE_NAME__/$(PACKAGE_NAME)/g' \
+	     -e 's/__BACKUP__/$(BACKUP)/g' \
+	     -e 's/__RESTORE__/$(RESTORE)/g' \
+	     -e 's/__HELPER__/$(HELPER)/g' \
+	     -e 's/__S3PLUGIN__/$(S3PLUGIN)/g' \
+	     -e 's/__GPBACKMAN__/$(GPBACKMAN)/g' \
+	     -e 's/__EXPORTER__/$(EXPORTER)/g' \
+	     install.sh.template > $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
 	@chmod +x $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/install.sh
 	@echo "Creating tar.gz package..."
 	@cd $(BUILD_DIR) && tar -czf $(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH).tar.gz $(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/
