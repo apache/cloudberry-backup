@@ -187,7 +187,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        test_target: [smoke, unit, integration, end_to_end, s3_plugin_e2e, regression, scale]
+        test_target: [smoke, unit, integration, end_to_end, s3_plugin_e2e, regression, scale, package_install]
 
     steps:
       - name: Free Disk Space
@@ -476,6 +476,53 @@ jobs:
                 mkdir -p "${LOG_DIR}"
                 chmod +x "${CLOUDBERRY_BACKUP_SRC}/.github/workflows/scale-tests-cloudberry-ci.bash"
                 "${CLOUDBERRY_BACKUP_SRC}/.github/workflows/scale-tests-cloudberry-ci.bash" 2>&1 | tee "${TEST_LOG_ROOT}/cloudberry-backup-scale.log"
+                ;;
+              package_install)
+                set -e
+                echo "Running package and install tests..."
+                
+                # Clean up previously installed binaries
+                echo "=== Cleaning up existing installations ==="
+                for binary in gpbackup gprestore gpbackup_helper gpbackup_s3_plugin gpbackman gpbackup_exporter; do
+                  rm -f "${GPHOME}/bin/${binary}"
+                done
+                echo "Cleanup complete"
+                
+                # Create package
+                echo "=== Creating package ==="
+                make package 2>&1 | tee "${TEST_LOG_ROOT}/cloudberry-backup-package.log"
+                
+                # Find and extract package
+                package_file=$(ls -1 build/*.tar.gz 2>/dev/null | head -n 1)
+                if [ -z "${package_file}" ]; then
+                  echo "ERROR: Package file not found"
+                  exit 1
+                fi
+                echo "Package created: ${package_file}"
+                
+                tar -xzf "${package_file}"
+                extracted_dir=$(ls -1d apache-cloudberry-backup-incubating-*/ 2>/dev/null | head -n 1)
+                echo "Package extracted"
+                ls -lh "${extracted_dir}"
+                
+                # Install using install.sh
+                echo "=== Installing via install.sh ==="
+                cd "${extracted_dir}"
+                chmod +x install.sh
+                GPHOME="${GPHOME}" ./install.sh 2>&1 | tee "${TEST_LOG_ROOT}/cloudberry-backup-install.log"
+                
+                # Test installed binaries
+                echo "=== Testing installed binaries ==="
+                for binary in gpbackup gprestore gpbackup_helper gpbackup_s3_plugin gpbackman gpbackup_exporter; do
+                  version_output=$("${GPHOME}/bin/${binary}" --version 2>&1)
+                  if [ $? -ne 0 ]; then
+                    echo "ERROR: ${binary} --version failed"
+                    exit 1
+                  fi
+                  echo "${binary}: ${version_output}"
+                done
+                
+                echo "=== Package and install tests passed ==="
                 ;;
               *)
                 echo "unknown test target: ${TEST_TARGET}"
