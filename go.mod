@@ -5,9 +5,9 @@ go 1.25.0
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.0
 	github.com/alecthomas/kingpin/v2 v2.4.0
-	github.com/apache/cloudberry-go-libs v1.0.12-0.20260516112723-b2dee8a6ae54
+	github.com/apache/cloudberry-go-libs v1.0.12-0.20260624080114-3de23e29a87a
 	github.com/aws/aws-sdk-go v1.44.257
-	github.com/blang/semver v3.5.1+incompatible
+	github.com/blang/semver/v4 v4.0.0
 	github.com/blang/vfs v1.0.0
 	github.com/inhies/go-bytesize v0.0.0-20220417184213-4913239db9cf
 	github.com/jackc/pgconn v1.14.3

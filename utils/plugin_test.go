@@ -13,7 +13,7 @@ import (
 	"github.com/apache/cloudberry-go-libs/iohelper"
 	"github.com/apache/cloudberry-go-libs/operating"
 	"github.com/apache/cloudberry-go-libs/testhelper"
-	"github.com/blang/semver"
+	"github.com/blang/semver/v4"
 	"github.com/pkg/errors"
 
 	. "github.com/onsi/ginkgo/v2"
