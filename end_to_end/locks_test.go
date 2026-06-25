@@ -3,6 +3,7 @@ package end_to_end_test
 import (
 	"fmt"
 	"os/exec"
+	"sync"
 	"time"
 
 	"github.com/apache/cloudberry-backup/backup"
@@ -290,7 +291,11 @@ var _ = Describe("Deadlock handling", func() {
 		}
 		// Acquire AccessExclusiveLock on public.foo to block gpbackup when it attempts
 		// to grab AccessShareLocks before its metadata dump section.
-		backupConn.MustExec("BEGIN; LOCK TABLE public.foo IN ACCESS EXCLUSIVE MODE")
+		initialLockConn := testutils.SetupTestDbConn("testdb")
+		defer initialLockConn.Close()
+		initialLockConn.MustBegin()
+		defer func() { _ = initialLockConn.Rollback() }()
+		initialLockConn.MustExec("LOCK TABLE public.foo IN ACCESS EXCLUSIVE MODE")
 
 		args := []string{
 			"--dbname", "testdb",
@@ -298,13 +303,25 @@ var _ = Describe("Deadlock handling", func() {
 			"--jobs", "2",
 			"--verbose"}
 		cmd := exec.Command(gpbackupPath, args...)
+
+		var wg sync.WaitGroup
+		releaseTriggerLock := make(chan struct{})
+		var releaseTriggerLockOnce sync.Once
+		defer func() {
+			releaseTriggerLockOnce.Do(func() { close(releaseTriggerLock) })
+			wg.Wait()
+		}()
+
 		// Concurrently wait for gpbackup to block when it requests an AccessShareLock on public.foo. Once
 		// that happens, acquire an AccessExclusiveLock on pg_catalog.pg_trigger to block gpbackup during its
 		// trigger metadata dump. Then release the initial AccessExclusiveLock on public.foo (from the
 		// beginning of the test) to unblock gpbackup and let gpbackup move forward to the trigger metadata dump.
-		anotherConn := testutils.SetupTestDbConn("testdb")
-		defer anotherConn.Close()
+		wg.Add(1)
 		go func() {
+			defer wg.Done()
+			triggerLockConn := testutils.SetupTestDbConn("testdb")
+			defer triggerLockConn.Close()
+
 			// Query to see if gpbackup's AccessShareLock request on public.foo is blocked
 			checkLockQuery := `SELECT count(*) FROM pg_locks l, pg_class c, pg_namespace n WHERE l.relation = c.oid AND n.oid = c.relnamespace AND n.nspname = 'public' AND c.relname = 'foo' AND l.granted = 'f' AND l.mode = 'AccessShareLock'`
 
@@ -312,7 +329,7 @@ var _ = Describe("Deadlock handling", func() {
 			var gpbackupBlockedLockCount int
 			iterations := 100
 			for iterations > 0 {
-				_ = anotherConn.Get(&gpbackupBlockedLockCount, checkLockQuery)
+				_ = triggerLockConn.Get(&gpbackupBlockedLockCount, checkLockQuery)
 				if gpbackupBlockedLockCount < 1 {
 					time.Sleep(100 * time.Millisecond)
 					iterations--
@@ -325,8 +342,12 @@ var _ = Describe("Deadlock handling", func() {
 			// during the trigger metadata dump so that the test can queue a bunch of
 			// AccessExclusiveLock requests against the test tables. Afterwards, release the
 			// AccessExclusiveLock on public.foo to let gpbackup go to the trigger metadata dump.
-			anotherConn.MustExec(`BEGIN; LOCK TABLE pg_catalog.pg_trigger IN ACCESS EXCLUSIVE MODE`)
-			backupConn.MustExec("COMMIT")
+			triggerLockConn.MustBegin()
+			defer func() { _ = triggerLockConn.Rollback() }()
+			triggerLockConn.MustExec(`LOCK TABLE pg_catalog.pg_trigger IN ACCESS EXCLUSIVE MODE`)
+			initialLockConn.MustCommit()
+			<-releaseTriggerLock
+			triggerLockConn.MustCommit()
 		}()
 
 		// Concurrently wait for gpbackup to block on the trigger metadata dump section. Once we
@@ -336,7 +357,9 @@ var _ = Describe("Deadlock handling", func() {
 			"schema2.ao1", "schema2.ao2", "schema2.foo2", "schema2.foo3", "schema2.returns"}
 		lockedTables := []string{`public."FOObar"`, "public.foo"}
 		for _, lockedTable := range lockedTables {
+			wg.Add(1)
 			go func(lockedTable string) {
+				defer wg.Done()
 				accessExclusiveLockConn := testutils.SetupTestDbConn("testdb")
 				defer accessExclusiveLockConn.Close()
 
@@ -357,23 +380,32 @@ var _ = Describe("Deadlock handling", func() {
 				}
 				// Queue an AccessExclusiveLock request on a test table which will later
 				// result in a detected deadlock during the gpbackup data dump section.
-				accessExclusiveLockConn.MustExec(fmt.Sprintf(`BEGIN; LOCK TABLE %s IN ACCESS EXCLUSIVE MODE; COMMIT`, lockedTable))
+				accessExclusiveLockConn.MustBegin()
+				defer func() { _ = accessExclusiveLockConn.Rollback() }()
+				accessExclusiveLockConn.MustExec(fmt.Sprintf(`LOCK TABLE %s IN ACCESS EXCLUSIVE MODE`, lockedTable))
+				accessExclusiveLockConn.MustCommit()
 			}(lockedTable)
 		}
 
-		// Concurrently wait for all AccessExclusiveLock requests on all 10 test tables to block.
+		// Concurrently wait for all AccessExclusiveLock requests on all locked test tables to block.
 		// Once that happens, release the AccessExclusiveLock on pg_catalog.pg_trigger to unblock
 		// gpbackup and let gpbackup move forward to the data dump section.
-		var accessExclBlockedLockCount int
+		accessExclBlockedLockCountChan := make(chan int, 1)
+		wg.Add(1)
 		go func() {
+			defer wg.Done()
+			accessExclBlockedLockConn := testutils.SetupTestDbConn("testdb")
+			defer accessExclBlockedLockConn.Close()
+
 			// Query to check for ungranted AccessExclusiveLock requests on our test tables
 			checkLockQuery := `SELECT count(*) FROM pg_locks WHERE granted = 'f' AND mode = 'AccessExclusiveLock'`
 
 			// Wait up to 10 seconds
+			var accessExclBlockedLockCount int
 			iterations := 100
 			for iterations > 0 {
-				_ = backupConn.Get(&accessExclBlockedLockCount, checkLockQuery)
-				if accessExclBlockedLockCount < 9 {
+				_ = accessExclBlockedLockConn.Get(&accessExclBlockedLockCount, checkLockQuery)
+				if accessExclBlockedLockCount < len(lockedTables) {
 					time.Sleep(100 * time.Millisecond)
 					iterations--
 				} else {
@@ -382,12 +414,15 @@ var _ = Describe("Deadlock handling", func() {
 			}
 
 			// Unblock gpbackup by releasing AccessExclusiveLock on pg_catalog.pg_trigger
-			anotherConn.MustExec("COMMIT")
+			accessExclBlockedLockCountChan <- accessExclBlockedLockCount
+			releaseTriggerLockOnce.Do(func() { close(releaseTriggerLock) })
 		}()
 
 		// gpbackup has finished
-		output, _ := cmd.CombinedOutput()
+		output, err := cmd.CombinedOutput()
 		stdout := string(output)
+		accessExclBlockedLockCount := <-accessExclBlockedLockCountChan
+		Expect(err).ToNot(HaveOccurred(), "%s", stdout)
 
 		// Check that 2 deadlock traps were placed during the test
 		Expect(accessExclBlockedLockCount).To(Equal(2))
