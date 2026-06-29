@@ -29,7 +29,7 @@ import (
 	"github.com/apache/cloudberry-go-libs/operating"
 	"github.com/apache/cloudberry-go-libs/structmatcher"
 	"github.com/apache/cloudberry-go-libs/testhelper"
-	"github.com/blang/semver"
+	"github.com/blang/semver/v4"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/pkg/errors"
 	"github.com/spf13/pflag"
@@ -1993,7 +1993,16 @@ LANGUAGE plpgsql NO SQL;`)
 					Skip("This test is not needed for old backup versions")
 				}
 				// Block on pg_trigger, which gpbackup queries after gp_segment_configuration
-				backupConn.MustExec("BEGIN; LOCK TABLE pg_trigger IN ACCESS EXCLUSIVE MODE")
+				lockConn := testutils.SetupTestDbConn("testdb")
+				defer lockConn.Close()
+				lockConn.MustBegin()
+				lockReleased := false
+				defer func() {
+					if !lockReleased {
+						_ = lockConn.Rollback()
+					}
+				}()
+				lockConn.MustExec("LOCK TABLE pg_catalog.pg_trigger IN ACCESS EXCLUSIVE MODE")
 
 				args := []string{
 					"--dbname", "testdb",
@@ -2001,19 +2010,54 @@ LANGUAGE plpgsql NO SQL;`)
 					"--verbose"}
 				cmd := exec.Command(gpbackupPath, args...)
 
-				backupConn.MustExec("COMMIT")
-				anotherConn := testutils.SetupTestDbConn("testdb")
-				defer anotherConn.Close()
-				var lockCount int
+				type commandResult struct {
+					output []byte
+					err    error
+				}
+				gpbackupResultChan := make(chan commandResult, 1)
 				go func() {
-					gpSegConfigQuery := `SELECT * FROM pg_locks l, pg_class c, pg_namespace n WHERE l.relation = c.oid AND n.oid = c.relnamespace AND c.relname = 'gp_segment_configuration';`
-					_ = anotherConn.Get(&lockCount, gpSegConfigQuery)
+					output, err := cmd.CombinedOutput()
+					gpbackupResultChan <- commandResult{output: output, err: err}
 				}()
 
+				pollConn := testutils.SetupTestDbConn("testdb")
+				defer pollConn.Close()
+
+				triggerLockQuery := `SELECT count(*) FROM pg_locks l, pg_class c, pg_namespace n WHERE l.relation = c.oid AND n.oid = c.relnamespace AND n.nspname = 'pg_catalog' AND c.relname = 'pg_trigger' AND l.granted = 'f' AND l.mode = 'AccessShareLock'`
+				var gpbackupBlockedLockCount int
+				var earlyResult *commandResult
+				for iterations := 100; iterations > 0; iterations-- {
+					select {
+					case result := <-gpbackupResultChan:
+						earlyResult = &result
+					default:
+					}
+					if earlyResult != nil {
+						break
+					}
+
+					Expect(pollConn.Get(&gpbackupBlockedLockCount, triggerLockQuery)).To(Succeed())
+					if gpbackupBlockedLockCount > 0 {
+						break
+					}
+					time.Sleep(100 * time.Millisecond)
+				}
+				if earlyResult != nil {
+					Fail(fmt.Sprintf("gpbackup finished before blocking on pg_trigger: %v\n%s", earlyResult.err, string(earlyResult.output)))
+				}
+				Expect(gpbackupBlockedLockCount).To(BeNumerically(">", 0), "gpbackup did not block on pg_trigger")
+
+				var lockCount int
+				gpSegConfigQuery := `SELECT count(*) FROM pg_locks l, pg_class c, pg_namespace n WHERE l.relation = c.oid AND n.oid = c.relnamespace AND n.nspname = 'pg_catalog' AND c.relname = 'gp_segment_configuration'`
+				Expect(pollConn.Get(&lockCount, gpSegConfigQuery)).To(Succeed())
 				Expect(lockCount).To(Equal(0))
 
-				output, _ := cmd.CombinedOutput()
-				stdout := string(output)
+				lockConn.MustCommit()
+				lockReleased = true
+
+				result := <-gpbackupResultChan
+				stdout := string(result.output)
+				Expect(result.err).ToNot(HaveOccurred(), "%s", stdout)
 				Expect(stdout).To(ContainSubstring("Backup completed successfully"))
 			})
 			It("properly handles various implicit casts on pg_catalog.text", func() {

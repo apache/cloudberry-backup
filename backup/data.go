@@ -16,7 +16,7 @@ import (
 	"github.com/apache/cloudberry-backup/utils"
 	"github.com/apache/cloudberry-go-libs/dbconn"
 	"github.com/apache/cloudberry-go-libs/gplog"
-	"github.com/jackc/pgconn"
+	"github.com/jackc/pgx/v5/pgconn"
 	"gopkg.in/cheggaaa/pb.v1"
 )
 
@@ -214,13 +214,19 @@ func BackupDataForAllTables(tables []Table) []map[uint32]int64 {
 				// tables before the metadata dumping part.
 				err := LockTableNoWait(table, whichConn)
 				if err != nil {
-					if pgErr, ok := err.(*pgconn.PgError); ok && pgErr.Code != PG_LOCK_NOT_AVAILABLE {
+					lockErr := err
+					var pgErr *pgconn.PgError
+					if !errors.As(lockErr, &pgErr) || pgErr.Code != PG_LOCK_NOT_AVAILABLE {
 						isErroredBackup.Store(true)
 						err = connectionPool.Rollback(whichConn)
 						if err != nil {
 							gplog.Warn("Worker %d: %s", whichConn, err)
 						}
-						gplog.Fatal(fmt.Errorf("Unexpectedly unable to take lock on table %s, %s", table.FQN(), pgErr.Error()), "")
+						errMsg := lockErr.Error()
+						if pgErr != nil {
+							errMsg = pgErr.Error()
+						}
+						gplog.Fatal(fmt.Errorf("Unexpectedly unable to take lock on table %s, %s", table.FQN(), errMsg), "")
 					}
 					if gplog.GetVerbosity() < gplog.LOGVERBOSE {
 						// Add a newline to interrupt the progress bar so that
