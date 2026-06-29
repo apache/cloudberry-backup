@@ -2,14 +2,59 @@ package end_to_end_test
 
 import (
 	"math/rand"
+	"os"
 	"os/exec"
 	"time"
 
+	"github.com/apache/cloudberry-backup/testutils"
 	"github.com/apache/cloudberry-go-libs/testhelper"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"golang.org/x/sys/unix"
 )
+
+func gpbackupWithBlockedFoo2LockSignal(cmd *exec.Cmd, sig os.Signal, checkLockQuery string) ([]byte, int, int) {
+	lockConn := testutils.SetupTestDbConn("testdb")
+	defer lockConn.Close()
+	lockConn.MustBegin()
+	defer func() { _ = lockConn.Rollback() }()
+	lockConn.MustExec("LOCK TABLE schema2.foo2 IN ACCESS EXCLUSIVE MODE")
+
+	beforeLockCountChan := make(chan int, 1)
+	signalDone := make(chan struct{})
+	go func() {
+		defer close(signalDone)
+		lockCheckConn := testutils.SetupTestDbConn("testdb")
+		defer lockCheckConn.Close()
+
+		var beforeLockCount int
+		iterations := 50
+		for iterations > 0 {
+			_ = lockCheckConn.Get(&beforeLockCount, checkLockQuery)
+			if beforeLockCount < 1 {
+				time.Sleep(100 * time.Millisecond)
+				iterations--
+			} else {
+				break
+			}
+		}
+		beforeLockCountChan <- beforeLockCount
+		if cmd.Process != nil {
+			_ = cmd.Process.Signal(sig)
+		}
+	}()
+
+	output, _ := cmd.CombinedOutput()
+	<-signalDone
+	beforeLockCount := <-beforeLockCountChan
+
+	afterLockCountConn := testutils.SetupTestDbConn("testdb")
+	defer afterLockCountConn.Close()
+	var afterLockCount int
+	_ = afterLockCountConn.Get(&afterLockCount, checkLockQuery)
+
+	return output, beforeLockCount, afterLockCount
+}
 
 var _ = Describe("Signal handler tests", func() {
 	BeforeEach(func() {
@@ -90,8 +135,6 @@ var _ = Describe("Signal handler tests", func() {
 			// Query to see if gpbackup lock acquire on schema2.foo2 is blocked
 			checkLockQuery := `SELECT count(*) FROM pg_locks l, pg_class c, pg_namespace n WHERE l.relation = c.oid AND n.oid = c.relnamespace AND n.nspname = 'schema2' AND c.relname = 'foo2' AND l.granted = 'f'`
 
-			// Acquire AccessExclusiveLock on schema2.foo2 to prevent gpbackup from acquiring AccessShareLock
-			backupConn.MustExec("BEGIN; LOCK TABLE schema2.foo2 IN ACCESS EXCLUSIVE MODE")
 			args := []string{
 				"--dbname", "testdb",
 				"--backup-dir", backupDir,
@@ -100,29 +143,12 @@ var _ = Describe("Signal handler tests", func() {
 
 			// Wait up to 5 seconds for gpbackup to block on acquiring AccessShareLock.
 			// Once blocked, we send a SIGINT to cancel gpbackup.
-			var beforeLockCount int
-			go func() {
-				iterations := 50
-				for iterations > 0 {
-					_ = backupConn.Get(&beforeLockCount, checkLockQuery)
-					if beforeLockCount < 1 {
-						time.Sleep(100 * time.Millisecond)
-						iterations--
-					} else {
-						break
-					}
-				}
-				_ = cmd.Process.Signal(unix.SIGINT)
-			}()
-			output, _ := cmd.CombinedOutput()
+			output, beforeLockCount, afterLockCount := gpbackupWithBlockedFoo2LockSignal(cmd, unix.SIGINT, checkLockQuery)
 			Expect(beforeLockCount).To(Equal(1))
 
 			// After gpbackup has been canceled, we should no longer see a blocked SQL
 			// session trying to acquire AccessShareLock on foo2.
-			var afterLockCount int
-			_ = backupConn.Get(&afterLockCount, checkLockQuery)
 			Expect(afterLockCount).To(Equal(0))
-			backupConn.MustExec("ROLLBACK")
 
 			stdout := string(output)
 			Expect(stdout).To(ContainSubstring("Received an interrupt signal, aborting backup process"))
@@ -140,8 +166,6 @@ var _ = Describe("Signal handler tests", func() {
 			// Query to see if gpbackup lock acquire on schema2.foo2 is blocked
 			checkLockQuery := `SELECT count(*) FROM pg_locks l, pg_class c, pg_namespace n WHERE l.relation = c.oid AND n.oid = c.relnamespace AND n.nspname = 'schema2' AND c.relname = 'foo2' AND l.granted = 'f'`
 
-			// Acquire AccessExclusiveLock on schema2.foo2 to prevent gpbackup from acquiring AccessShareLock
-			backupConn.MustExec("BEGIN; LOCK TABLE schema2.foo2 IN ACCESS EXCLUSIVE MODE")
 			args := []string{
 				"--dbname", "testdb",
 				"--backup-dir", backupDir,
@@ -151,29 +175,12 @@ var _ = Describe("Signal handler tests", func() {
 
 			// Wait up to 5 seconds for gpbackup to block on acquiring AccessShareLock.
 			// Once blocked, we send a SIGINT to cancel gpbackup.
-			var beforeLockCount int
-			go func() {
-				iterations := 50
-				for iterations > 0 {
-					_ = backupConn.Get(&beforeLockCount, checkLockQuery)
-					if beforeLockCount < 1 {
-						time.Sleep(100 * time.Millisecond)
-						iterations--
-					} else {
-						break
-					}
-				}
-				_ = cmd.Process.Signal(unix.SIGINT)
-			}()
-			output, _ := cmd.CombinedOutput()
+			output, beforeLockCount, afterLockCount := gpbackupWithBlockedFoo2LockSignal(cmd, unix.SIGINT, checkLockQuery)
 			Expect(beforeLockCount).To(Equal(1))
 
 			// After gpbackup has been canceled, we should no longer see a blocked SQL
 			// session trying to acquire AccessShareLock on foo2.
-			var afterLockCount int
-			_ = backupConn.Get(&afterLockCount, checkLockQuery)
 			Expect(afterLockCount).To(Equal(0))
-			backupConn.MustExec("ROLLBACK")
 
 			stdout := string(output)
 			Expect(stdout).To(ContainSubstring("Received an interrupt signal, aborting backup process"))
@@ -319,8 +326,6 @@ var _ = Describe("Signal handler tests", func() {
 			// Query to see if gpbackup lock acquire on schema2.foo2 is blocked
 			checkLockQuery := `SELECT count(*) FROM pg_locks l, pg_class c, pg_namespace n WHERE l.relation = c.oid AND n.oid = c.relnamespace AND n.nspname = 'schema2' AND c.relname = 'foo2' AND l.granted = 'f'`
 
-			// Acquire AccessExclusiveLock on schema2.foo2 to prevent gpbackup from acquiring AccessShareLock
-			backupConn.MustExec("BEGIN; LOCK TABLE schema2.foo2 IN ACCESS EXCLUSIVE MODE")
 			args := []string{
 				"--dbname", "testdb",
 				"--backup-dir", backupDir,
@@ -329,29 +334,12 @@ var _ = Describe("Signal handler tests", func() {
 
 			// Wait up to 5 seconds for gpbackup to block on acquiring AccessShareLock.
 			// Once blocked, we send a SIGTERM to cancel gpbackup.
-			var beforeLockCount int
-			go func() {
-				iterations := 50
-				for iterations > 0 {
-					_ = backupConn.Get(&beforeLockCount, checkLockQuery)
-					if beforeLockCount < 1 {
-						time.Sleep(100 * time.Millisecond)
-						iterations--
-					} else {
-						break
-					}
-				}
-				_ = cmd.Process.Signal(unix.SIGTERM)
-			}()
-			output, _ := cmd.CombinedOutput()
+			output, beforeLockCount, afterLockCount := gpbackupWithBlockedFoo2LockSignal(cmd, unix.SIGTERM, checkLockQuery)
 			Expect(beforeLockCount).To(Equal(1))
 
 			// After gpbackup has been canceled, we should no longer see a blocked SQL
 			// session trying to acquire AccessShareLock on foo2.
-			var afterLockCount int
-			_ = backupConn.Get(&afterLockCount, checkLockQuery)
 			Expect(afterLockCount).To(Equal(0))
-			backupConn.MustExec("ROLLBACK")
 
 			stdout := string(output)
 			Expect(stdout).To(ContainSubstring("Received a termination signal, aborting backup process"))
@@ -369,8 +357,6 @@ var _ = Describe("Signal handler tests", func() {
 			// Query to see if gpbackup lock acquire on schema2.foo2 is blocked
 			checkLockQuery := `SELECT count(*) FROM pg_locks l, pg_class c, pg_namespace n WHERE l.relation = c.oid AND n.oid = c.relnamespace AND n.nspname = 'schema2' AND c.relname = 'foo2' AND l.granted = 'f'`
 
-			// Acquire AccessExclusiveLock on schema2.foo2 to prevent gpbackup from acquiring AccessShareLock
-			backupConn.MustExec("BEGIN; LOCK TABLE schema2.foo2 IN ACCESS EXCLUSIVE MODE")
 			args := []string{
 				"--dbname", "testdb",
 				"--backup-dir", backupDir,
@@ -380,29 +366,12 @@ var _ = Describe("Signal handler tests", func() {
 
 			// Wait up to 5 seconds for gpbackup to block on acquiring AccessShareLock.
 			// Once blocked, we send a SIGTERM to cancel gpbackup.
-			var beforeLockCount int
-			go func() {
-				iterations := 50
-				for iterations > 0 {
-					_ = backupConn.Get(&beforeLockCount, checkLockQuery)
-					if beforeLockCount < 1 {
-						time.Sleep(100 * time.Millisecond)
-						iterations--
-					} else {
-						break
-					}
-				}
-				_ = cmd.Process.Signal(unix.SIGTERM)
-			}()
-			output, _ := cmd.CombinedOutput()
+			output, beforeLockCount, afterLockCount := gpbackupWithBlockedFoo2LockSignal(cmd, unix.SIGTERM, checkLockQuery)
 			Expect(beforeLockCount).To(Equal(1))
 
 			// After gpbackup has been canceled, we should no longer see a blocked SQL
 			// session trying to acquire AccessShareLock on foo2.
-			var afterLockCount int
-			_ = backupConn.Get(&afterLockCount, checkLockQuery)
 			Expect(afterLockCount).To(Equal(0))
-			backupConn.MustExec("ROLLBACK")
 
 			stdout := string(output)
 			Expect(stdout).To(ContainSubstring("Received a termination signal, aborting backup process"))
