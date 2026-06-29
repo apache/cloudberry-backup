@@ -118,7 +118,7 @@ func SetupTestDBConnSegment(dbname string, port int, host string, gpVersion dbco
 		gpRoleGuc = "gp_role"
 	}
 
-	connStr := fmt.Sprintf("postgres://%s@%s:%d/%s?sslmode=disable&statement_cache_capacity=0&%s=utility", conn.User, conn.Host, conn.Port, conn.DBName, gpRoleGuc)
+	connStr := fmt.Sprintf("postgres://%s@%s:%d/%s?sslmode=disable&default_query_exec_mode=exec&%s=utility", conn.User, conn.Host, conn.Port, conn.DBName, gpRoleGuc)
 
 	segConn, err := conn.Driver.Connect("pgx", connStr)
 	if err != nil {

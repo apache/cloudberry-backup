@@ -624,7 +624,7 @@ type TableLocks struct {
 }
 
 func getTableLocks(table Table) []TableLocks {
-	conn := dbconn.NewDBConnFromEnvironment(MustGetFlagString(options.DBNAME))
+	conn := dbconn.NewDBConnFromEnvironment(connectionPool.DBName)
 	conn.MustConnect(1)
 	var query string
 	defer conn.Close()
