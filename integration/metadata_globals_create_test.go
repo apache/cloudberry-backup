@@ -416,6 +416,11 @@ var _ = Describe("backup integration create statement tests", func() {
 			defer testhelper.AssertQueryRuns(connectionPool, `DROP ROLE testuser`)
 		})
 		It("grants a role without ADMIN OPTION", func() {
+			// PG16 requires an explicit GRANTED BY <role> to actually hold
+			// ADMIN OPTION on the target role; superuser status alone no
+			// longer suffices. Give testrole that standing before replaying
+			// the GRANTED BY statement below.
+			testhelper.AssertQueryRuns(connectionPool, "GRANT usergroup TO testrole WITH ADMIN OPTION")
 			numRoleMembers := len(backup.GetRoleMembers(connectionPool))
 			expectedRoleMember := backup.RoleMember{Role: "usergroup", Member: "testuser", Grantor: "testrole", IsAdmin: false}
 			backup.PrintRoleMembershipStatements(backupfile, tocfile, []backup.RoleMember{expectedRoleMember})
@@ -424,8 +429,10 @@ var _ = Describe("backup integration create statement tests", func() {
 
 			resultRoleMembers := backup.GetRoleMembers(connectionPool)
 			Expect(resultRoleMembers).To(HaveLen(numRoleMembers + 1))
+			// The setup grant above also makes testrole itself a member of
+			// usergroup, so match on Member too, not just Role.
 			for _, roleMember := range resultRoleMembers {
-				if roleMember.Role == "usergroup" {
+				if roleMember.Role == "usergroup" && roleMember.Member == "testuser" {
 					structmatcher.ExpectStructsToMatch(&expectedRoleMember, &roleMember)
 					return
 				}
@@ -433,6 +440,9 @@ var _ = Describe("backup integration create statement tests", func() {
 			Fail("Role 'testuser' is not a member of role 'usergroup'")
 		})
 		It("grants a role WITH ADMIN OPTION", func() {
+			// See the "without ADMIN OPTION" case above for why this is needed
+			// under PG16's stricter GRANTED BY semantics.
+			testhelper.AssertQueryRuns(connectionPool, "GRANT usergroup TO testrole WITH ADMIN OPTION")
 			numRoleMembers := len(backup.GetRoleMembers(connectionPool))
 			expectedRoleMember := backup.RoleMember{Role: "usergroup", Member: "testuser", Grantor: "testrole", IsAdmin: true}
 			backup.PrintRoleMembershipStatements(backupfile, tocfile, []backup.RoleMember{expectedRoleMember})
@@ -441,8 +451,10 @@ var _ = Describe("backup integration create statement tests", func() {
 
 			resultRoleMembers := backup.GetRoleMembers(connectionPool)
 			Expect(resultRoleMembers).To(HaveLen(numRoleMembers + 1))
+			// The setup grant above also makes testrole itself a member of
+			// usergroup, so match on Member too, not just Role.
 			for _, roleMember := range resultRoleMembers {
-				if roleMember.Role == "usergroup" {
+				if roleMember.Role == "usergroup" && roleMember.Member == "testuser" {
 					structmatcher.ExpectStructsToMatch(&expectedRoleMember, &roleMember)
 					return
 				}
