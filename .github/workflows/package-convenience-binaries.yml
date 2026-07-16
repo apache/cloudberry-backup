@@ -1,0 +1,922 @@
+# --------------------------------------------------------------------
+#
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements. See the NOTICE file distributed
+# with this work for additional information regarding copyright
+# ownership. The ASF licenses this file to You under the Apache
+# License, Version 2.0 (the "License"); you may not use this file
+# except in compliance with the License. You may obtain a copy of the
+# License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+# implied. See the License for the specific language governing
+# permissions and limitations under the License.
+#
+# --------------------------------------------------------------------
+# GitHub Actions Workflow: Apache Cloudberry-backup Convenience Package Build
+# --------------------------------------------------------------------
+# Description:
+#
+#   This workflow manually builds convenience portable tarball packages
+#   from an ASF-approved Apache Cloudberry-backup source release tarball,
+#   and tests them against Apache Cloudberry built from its official
+#   source release tarball.
+#
+# Workflow Overview:
+#
+#   1. verify-cloudberry-backup-source
+#      Validates inputs, downloads cloudberry-backup source tarball
+#      + .asc + .sha512, verifies GPG signature and checksum, uploads
+#      verified source as a workflow artifact.
+#
+#   2. verify-cloudberry-source
+#      Same as above, but for the Cloudberry source release tarball.
+#
+#   3. build-backup-packages (matrix: amd64 / arm64)
+#      Downloads the verified cloudberry-backup source artifact, runs
+#      `make package` on Rocky 8 (glibc 2.28) for maximum run-time
+#      compatibility, generates .sha512 checksums, uploads per-arch
+#      portable tar.gz packages.
+#
+#   4. build-cloudberry (matrix: 5 platforms × amd64 / arm64 = 10)
+#      Extracts Cloudberry source, runs configure + build inside the
+#      official Cloudberry build container (~8 min per platform).
+#      After the build, Cloudberry is already installed at
+#      /usr/local/cloudberry-db.  The job then downloads the matching
+#      cloudberry-backup package, installs it, creates a gpdemo demo
+#      cluster, and runs a functional backup + restore smoke test —
+#      all inside the same container, no separate test job needed.
+#      Platforms: rocky8, rocky9, rocky10, ubuntu22.04, ubuntu24.04.
+#
+# Scope:
+# - Intended for official Apache Cloudberry-backup source releases
+#   managed by the release manager.
+# - Produces convenience binaries only; detached .asc signatures remain a
+#   release manager local step.
+# --------------------------------------------------------------------
+
+name: Apache Cloudberry-backup Convenience Package Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      # ================================================================
+      # cloudberry-backup source release inputs
+      # ================================================================
+      version:
+        description: '[cloudberry-backup] Release version, e.g. 2.2.0-incubating'
+        required: true
+        type: string
+      source_url:
+        description: '[cloudberry-backup] Apache source tarball URL from downloads.apache.org'
+        required: true
+        type: string
+      source_asc_url:
+        description: '[cloudberry-backup] Detached GPG signature URL for the source tarball (.asc)'
+        required: true
+        type: string
+      source_sha512_url:
+        description: '[cloudberry-backup] SHA-512 checksum URL for the source tarball (.sha512)'
+        required: true
+        type: string
+
+      # ================================================================
+      # Cloudberry source release inputs (for the test environment)
+      # ================================================================
+      cloudberry_version:
+        description: '[Cloudberry] Release version, e.g. 2.2.0-incubating'
+        required: true
+        type: string
+      cloudberry_source_url:
+        description: '[Cloudberry] Apache source tarball URL from downloads.apache.org'
+        required: true
+        type: string
+      cloudberry_source_asc_url:
+        description: '[Cloudberry] Detached GPG signature URL for the source tarball (.asc)'
+        required: true
+        type: string
+      cloudberry_source_sha512_url:
+        description: '[Cloudberry] SHA-512 checksum URL for the source tarball (.sha512)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backup-package-build-${{ github.ref }}-${{ inputs.version }}
+  cancel-in-progress: true
+
+env:
+  LOG_RETENTION_DAYS: 14
+  KEYS_URL: https://downloads.apache.org/incubator/cloudberry/KEYS
+
+jobs:
+  # ====================================================================
+  # Job 1: Verify the Apache Cloudberry-backup source release
+  # ====================================================================
+  verify-cloudberry-backup-source:
+    name: Verify cloudberry-backup source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      source_tarball_name: ${{ steps.validate.outputs.source_tarball_name }}
+      artifact_name: ${{ steps.validate.outputs.artifact_name }}
+      packaging_version: ${{ steps.validate.outputs.packaging_version }}
+    steps:
+      - name: Validate manual inputs
+        id: validate
+        shell: bash
+        env:
+          VERSION: ${{ github.event.inputs.version }}
+          SOURCE_URL: ${{ github.event.inputs.source_url }}
+          SOURCE_ASC_URL: ${{ github.event.inputs.source_asc_url }}
+          SOURCE_SHA512_URL: ${{ github.event.inputs.source_sha512_url }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${VERSION}" ]]; then
+            echo "::error::version must not be empty"
+            exit 1
+          fi
+
+          source_tarball_name="apache-cloudberry-backup-${VERSION}-src.tar.gz"
+          artifact_name="verified-source-release-cbbackup-${VERSION}"
+          packaging_version="${VERSION%-incubating}"
+
+          if [[ -z "${packaging_version}" ]]; then
+            echo "::error::Unable to derive packaging version from version=${VERSION}"
+            exit 1
+          fi
+
+          validate_apache_url() {
+            local value="$1"
+            local label="$2"
+            local prefix="https://downloads.apache.org/incubator/cloudberry/"
+            if [[ -z "${value}" ]]; then
+              echo "::error::${label} must not be empty"
+              exit 1
+            fi
+            if [[ "${value}" != "${prefix}"* ]]; then
+              echo "::error::${label} must use downloads.apache.org (got: ${value})"
+              exit 1
+            fi
+          }
+
+          validate_apache_url "${SOURCE_URL}" "source_url"
+          validate_apache_url "${SOURCE_ASC_URL}" "source_asc_url"
+          validate_apache_url "${SOURCE_SHA512_URL}" "source_sha512_url"
+
+          if [[ "${SOURCE_URL}" != */"${source_tarball_name}" ]]; then
+            echo "::error::source_url must end with /${source_tarball_name}"
+            exit 1
+          fi
+          if [[ "${SOURCE_ASC_URL}" != */"${source_tarball_name}.asc" ]]; then
+            echo "::error::source_asc_url must end with /${source_tarball_name}.asc"
+            exit 1
+          fi
+          if [[ "${SOURCE_SHA512_URL}" != */"${source_tarball_name}.sha512" ]]; then
+            echo "::error::source_sha512_url must end with /${source_tarball_name}.sha512"
+            exit 1
+          fi
+
+          echo "source_tarball_name=${source_tarball_name}" >> "${GITHUB_OUTPUT}"
+          echo "artifact_name=${artifact_name}" >> "${GITHUB_OUTPUT}"
+          echo "packaging_version=${packaging_version}" >> "${GITHUB_OUTPUT}"
+
+      - name: Download source release and verification files
+        shell: bash
+        env:
+          SOURCE_URL: ${{ github.event.inputs.source_url }}
+          SOURCE_ASC_URL: ${{ github.event.inputs.source_asc_url }}
+          SOURCE_SHA512_URL: ${{ github.event.inputs.source_sha512_url }}
+          SOURCE_TARBALL_NAME: ${{ steps.validate.outputs.source_tarball_name }}
+        run: |
+          set -euo pipefail
+          mkdir -p verified-source
+
+          echo "=== Downloading source tarball... ==="
+          curl --fail --location --silent --show-error \
+            --output "verified-source/${SOURCE_TARBALL_NAME}" \
+            "${SOURCE_URL}"
+
+          echo "=== Downloading signature... ==="
+          curl --fail --location --silent --show-error \
+            --output "verified-source/${SOURCE_TARBALL_NAME}.asc" \
+            "${SOURCE_ASC_URL}"
+
+          echo "=== Downloading checksum... ==="
+          curl --fail --location --silent --show-error \
+            --output "verified-source/${SOURCE_TARBALL_NAME}.sha512" \
+            "${SOURCE_SHA512_URL}"
+
+          echo "=== Downloading KEYS... ==="
+          curl --fail --location --silent --show-error \
+            --output "verified-source/KEYS" \
+            "${KEYS_URL}"
+
+          echo "=== All files downloaded successfully. ==="
+          ls -la verified-source/
+
+      - name: Verify source release signature and checksum
+        shell: bash
+        env:
+          SOURCE_TARBALL_NAME: ${{ steps.validate.outputs.source_tarball_name }}
+        run: |
+          set -euo pipefail
+
+          export GNUPGHOME="${RUNNER_TEMP}/gnupg"
+          mkdir -p "${GNUPGHOME}"
+          chmod 700 "${GNUPGHOME}"
+
+          echo "=== Importing project KEYS... ==="
+          gpg --import verified-source/KEYS
+
+          echo "=== Verifying GPG signature... ==="
+          gpg --verify \
+            "verified-source/${SOURCE_TARBALL_NAME}.asc" \
+            "verified-source/${SOURCE_TARBALL_NAME}"
+
+          echo "=== Verifying SHA-512 checksum... ==="
+          (
+            cd verified-source
+            sha512sum -c "${SOURCE_TARBALL_NAME}.sha512"
+          )
+
+          echo "=== Verifying tarball integrity (listing contents)... ==="
+          tar -tzf "verified-source/${SOURCE_TARBALL_NAME}" >/dev/null
+          echo "=== cloudberry-backup source release verification passed. ==="
+
+      - name: Summarize verified source release
+        shell: bash
+        env:
+          VERSION: ${{ github.event.inputs.version }}
+          SOURCE_URL: ${{ github.event.inputs.source_url }}
+          SOURCE_ASC_URL: ${{ github.event.inputs.source_asc_url }}
+          SOURCE_SHA512_URL: ${{ github.event.inputs.source_sha512_url }}
+        run: |
+          {
+            echo "# Verified cloudberry-backup source release"
+            echo "- Version: ${VERSION}"
+            echo "- Packaging version: ${{ steps.validate.outputs.packaging_version }}"
+            echo "- Source URL: ${SOURCE_URL}"
+            echo "- Signature URL: ${SOURCE_ASC_URL}"
+            echo "- Checksum URL: ${SOURCE_SHA512_URL}"
+            echo "- KEYS URL: ${KEYS_URL}"
+            echo "- GPG verification: PASS"
+            echo "- SHA-512 verification: PASS"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Upload verified source release
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.validate.outputs.artifact_name }}
+          retention-days: ${{ env.LOG_RETENTION_DAYS }}
+          if-no-files-found: error
+          path: verified-source/*
+
+  # ====================================================================
+  # Job 2: Verify the Apache Cloudberry source release
+  # ====================================================================
+  verify-cloudberry-source:
+    name: Verify Cloudberry source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      source_tarball_name: ${{ steps.validate.outputs.source_tarball_name }}
+      artifact_name: ${{ steps.validate.outputs.artifact_name }}
+    steps:
+      - name: Validate manual inputs
+        id: validate
+        shell: bash
+        env:
+          VERSION: ${{ github.event.inputs.cloudberry_version }}
+          SOURCE_URL: ${{ github.event.inputs.cloudberry_source_url }}
+          SOURCE_ASC_URL: ${{ github.event.inputs.cloudberry_source_asc_url }}
+          SOURCE_SHA512_URL: ${{ github.event.inputs.cloudberry_source_sha512_url }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${VERSION}" ]]; then
+            echo "::error::cloudberry_version must not be empty"
+            exit 1
+          fi
+
+          source_tarball_name="apache-cloudberry-${VERSION}-src.tar.gz"
+          artifact_name="verified-source-release-cloudberry-${VERSION}"
+
+          validate_apache_url() {
+            local value="$1"
+            local label="$2"
+            local prefix="https://downloads.apache.org/incubator/cloudberry/"
+            if [[ -z "${value}" ]]; then
+              echo "::error::${label} must not be empty"
+              exit 1
+            fi
+            if [[ "${value}" != "${prefix}"* ]]; then
+              echo "::error::${label} must use downloads.apache.org (got: ${value})"
+              exit 1
+            fi
+          }
+
+          validate_apache_url "${SOURCE_URL}" "cloudberry_source_url"
+          validate_apache_url "${SOURCE_ASC_URL}" "cloudberry_source_asc_url"
+          validate_apache_url "${SOURCE_SHA512_URL}" "cloudberry_source_sha512_url"
+
+          if [[ "${SOURCE_URL}" != */"${source_tarball_name}" ]]; then
+            echo "::error::cloudberry_source_url must end with /${source_tarball_name}"
+            exit 1
+          fi
+          if [[ "${SOURCE_ASC_URL}" != */"${source_tarball_name}.asc" ]]; then
+            echo "::error::cloudberry_source_asc_url must end with /${source_tarball_name}.asc"
+            exit 1
+          fi
+          if [[ "${SOURCE_SHA512_URL}" != */"${source_tarball_name}.sha512" ]]; then
+            echo "::error::cloudberry_source_sha512_url must end with /${source_tarball_name}.sha512"
+            exit 1
+          fi
+
+          echo "source_tarball_name=${source_tarball_name}" >> "${GITHUB_OUTPUT}"
+          echo "artifact_name=${artifact_name}" >> "${GITHUB_OUTPUT}"
+
+      - name: Download source release and verification files
+        shell: bash
+        env:
+          SOURCE_URL: ${{ github.event.inputs.cloudberry_source_url }}
+          SOURCE_ASC_URL: ${{ github.event.inputs.cloudberry_source_asc_url }}
+          SOURCE_SHA512_URL: ${{ github.event.inputs.cloudberry_source_sha512_url }}
+          SOURCE_TARBALL_NAME: ${{ steps.validate.outputs.source_tarball_name }}
+        run: |
+          set -euo pipefail
+          mkdir -p verified-source
+
+          echo "=== Downloading Cloudberry source tarball... ==="
+          curl --fail --location --silent --show-error \
+            --output "verified-source/${SOURCE_TARBALL_NAME}" \
+            "${SOURCE_URL}"
+
+          echo "=== Downloading signature... ==="
+          curl --fail --location --silent --show-error \
+            --output "verified-source/${SOURCE_TARBALL_NAME}.asc" \
+            "${SOURCE_ASC_URL}"
+
+          echo "=== Downloading checksum... ==="
+          curl --fail --location --silent --show-error \
+            --output "verified-source/${SOURCE_TARBALL_NAME}.sha512" \
+            "${SOURCE_SHA512_URL}"
+
+          echo "=== Downloading KEYS... ==="
+          curl --fail --location --silent --show-error \
+            --output "verified-source/KEYS" \
+            "${KEYS_URL}"
+
+          ls -la verified-source/
+
+      - name: Verify source release signature and checksum
+        shell: bash
+        env:
+          SOURCE_TARBALL_NAME: ${{ steps.validate.outputs.source_tarball_name }}
+        run: |
+          set -euo pipefail
+
+          export GNUPGHOME="${RUNNER_TEMP}/gnupg"
+          mkdir -p "${GNUPGHOME}"
+          chmod 700 "${GNUPGHOME}"
+
+          echo "=== Importing project KEYS... ==="
+          gpg --import verified-source/KEYS
+
+          echo "=== Verifying GPG signature... ==="
+          gpg --verify \
+            "verified-source/${SOURCE_TARBALL_NAME}.asc" \
+            "verified-source/${SOURCE_TARBALL_NAME}"
+
+          echo "=== Verifying SHA-512 checksum... ==="
+          (
+            cd verified-source
+            sha512sum -c "${SOURCE_TARBALL_NAME}.sha512"
+          )
+
+          tar -tzf "verified-source/${SOURCE_TARBALL_NAME}" >/dev/null
+          echo "=== Cloudberry source release verification passed. ==="
+
+      - name: Summarize verified source release
+        shell: bash
+        env:
+          VERSION: ${{ github.event.inputs.cloudberry_version }}
+          SOURCE_URL: ${{ github.event.inputs.cloudberry_source_url }}
+          SOURCE_ASC_URL: ${{ github.event.inputs.cloudberry_source_asc_url }}
+          SOURCE_SHA512_URL: ${{ github.event.inputs.cloudberry_source_sha512_url }}
+        run: |
+          {
+            echo "# Verified Cloudberry source release"
+            echo "- Version: ${VERSION}"
+            echo "- Source URL: ${SOURCE_URL}"
+            echo "- Signature URL: ${SOURCE_ASC_URL}"
+            echo "- Checksum URL: ${SOURCE_SHA512_URL}"
+            echo "- KEYS URL: ${KEYS_URL}"
+            echo "- GPG verification: PASS"
+            echo "- SHA-512 verification: PASS"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Upload verified source release
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.validate.outputs.artifact_name }}
+          retention-days: ${{ env.LOG_RETENTION_DAYS }}
+          if-no-files-found: error
+          path: verified-source/*
+
+  # ====================================================================
+  # Job 3: Build cloudberry-backup portable tarball packages.
+  #
+  # Runs BEFORE build-cloudberry so the backup package is ready when
+  # Cloudberry finishes building.  Built on Rocky 8 (glibc 2.28) for
+  # maximum run-time compatibility across Linux distributions.
+  # ====================================================================
+  build-backup-packages:
+    name: Build backup ${{ matrix.arch }}
+    needs: verify-cloudberry-backup-source
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    container:
+      image: ${{ matrix.build_container_image }}
+      options: >-
+        --user root
+        --hostname cdw
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: linux-amd64
+            runner: ubuntu-24.04
+            goarch: amd64
+            build_container_image: apache/incubator-cloudberry:cbdb-build-rocky8-latest
+          - arch: linux-arm64
+            runner: ubuntu-24.04-arm
+            goarch: arm64
+            build_container_image: apache/incubator-cloudberry:cbdb-build-rocky8-latest
+
+    steps:
+      - name: Initialize build container
+        shell: bash
+        run: |
+          set -euo pipefail
+          su - gpadmin -c "/tmp/init_system.sh"
+
+      - name: Verify build environment
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "Build host: $(uname -m)"
+          su - gpadmin -c "
+            echo \"Go version: \$(go version)\"
+            echo \"GCC version: \$(gcc --version | head -1 || true)\"
+            echo \"glibc version: \$(ldd --version 2>&1 | head -1 || true)\"
+          "
+
+      - name: Download verified cloudberry-backup source
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.verify-cloudberry-backup-source.outputs.artifact_name }}
+          path: ${{ github.workspace }}/verified-source
+
+      - name: Extract source release
+        id: extract
+        shell: bash
+        env:
+          SOURCE_TARBALL_NAME: ${{ needs.verify-cloudberry-backup-source.outputs.source_tarball_name }}
+        run: |
+          set -euo pipefail
+          tarball_path="${GITHUB_WORKSPACE}/verified-source/${SOURCE_TARBALL_NAME}"
+          source_root_name="$(tar -tzf "${tarball_path}" | head -1 | cut -d/ -f1 || true)"
+
+          echo "Extracting source: ${source_root_name}"
+          tar -xzf "${tarball_path}" -C "${GITHUB_WORKSPACE}"
+          source_dir="${GITHUB_WORKSPACE}/${source_root_name}"
+          echo "source_dir=${source_dir}" >> "${GITHUB_OUTPUT}"
+          echo "Source extracted to: ${source_dir}"
+          ls -la "${source_dir}"
+
+      - name: Build convenience package
+        id: build
+        shell: bash
+        env:
+          SOURCE_DIR: ${{ steps.extract.outputs.source_dir }}
+          VERSION: ${{ github.event.inputs.version }}
+        run: |
+          set -euo pipefail
+
+          # Give gpadmin ownership so make package can write build/ artifacts
+          chown -R gpadmin:gpadmin "${SOURCE_DIR}"
+
+          echo "Building package natively on $(uname -m)..."
+          su - gpadmin -c "
+            set -euo pipefail
+            export GOPATH=\$HOME/go
+            export PATH=\$PATH:/usr/local/go/bin:\$GOPATH/bin
+            cd '${SOURCE_DIR}'
+            make package 2>&1
+          "
+
+          build_dir="${SOURCE_DIR}/build"
+          package_file=$(ls -1 "${build_dir}"/*.tar.gz 2>/dev/null | head -1 || true)
+          if [[ -z "${package_file}" || ! -f "${package_file}" ]]; then
+            echo "::error::Package file not found in ${build_dir}"
+            ls -la "${build_dir}" || true
+            exit 1
+          fi
+          echo "Package built: ${package_file}"
+          echo "package_file=${package_file}" >> "${GITHUB_OUTPUT}"
+          echo "Package contents:"
+          tar -tzf "${package_file}"
+
+      - name: Generate SHA512 checksum
+        shell: bash
+        env:
+          BUILD_DIR: ${{ steps.extract.outputs.source_dir }}/build
+        run: |
+          set -euo pipefail
+          artifact_dir="${GITHUB_WORKSPACE}/package-artifacts"
+          mkdir -p "${artifact_dir}"
+          cp "${BUILD_DIR}"/*.tar.gz "${artifact_dir}/"
+          (
+            cd "${artifact_dir}"
+            for pkg in *.tar.gz; do
+              sha512sum "${pkg}" > "${pkg}.sha512"
+              echo "Generated: ${pkg}.sha512"
+              cat "${pkg}.sha512"
+            done
+          )
+
+      - name: Summarize build
+        shell: bash
+        env:
+          VERSION: ${{ github.event.inputs.version }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          artifact_dir="${GITHUB_WORKSPACE}/package-artifacts"
+          {
+            echo "# Build: ${ARCH}"
+            echo "- Release version: ${VERSION}"
+            echo "- Architecture: ${ARCH}"
+            echo "- Runner: ${{ matrix.runner }}"
+            echo "- Build container: ${{ matrix.build_container_image }}"
+            echo "- glibc baseline: Rocky 8 (glibc 2.28) for max compatibility"
+            echo "- Packages and checksums:"
+            (
+              cd "${artifact_dir}"
+              for pkg in *.tar.gz; do
+                echo "  - ${pkg}"
+                echo "  - ${pkg}.sha512"
+              done
+            )
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Upload package artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: packages-${{ matrix.arch }}
+          retention-days: ${{ env.LOG_RETENTION_DAYS }}
+          if-no-files-found: error
+          path: package-artifacts/
+
+  # ====================================================================
+  # Job 4: Build Apache Cloudberry from verified source (~8 min),
+  #        then test the cloudberry-backup package against it.
+  #
+  # Cloudberry is built and installed inside the build container at
+  # /usr/local/cloudberry-db.  After the build, we download the
+  # cloudberry-backup package artifact, install it, spin up gpdemo,
+  # and run a functional backup + restore smoke test — all in one job.
+  # ====================================================================
+  build-cloudberry:
+    name: Build & test ${{ matrix.target_os }}-${{ matrix.arch }}
+    needs:
+      - verify-cloudberry-source
+      - build-backup-packages
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 75
+    container:
+      image: ${{ matrix.build_container_image }}
+      options: >-
+        --user root
+        --hostname cdw
+        --shm-size=2gb
+        -v /usr/share:/host_usr_share
+        -v /usr/local:/host_usr_local
+        -v /opt:/host_opt
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Rocky 8
+          - {target_os: rocky8, arch: amd64, backup_arch: linux-amd64, runner: ubuntu-24.04, build_container_image: apache/incubator-cloudberry:cbdb-build-rocky8-latest}
+          - {target_os: rocky8, arch: arm64, backup_arch: linux-arm64, runner: ubuntu-24.04-arm, build_container_image: apache/incubator-cloudberry:cbdb-build-rocky8-latest}
+          # Rocky 9
+          - {target_os: rocky9, arch: amd64, backup_arch: linux-amd64, runner: ubuntu-24.04, build_container_image: apache/incubator-cloudberry:cbdb-build-rocky9-latest}
+          - {target_os: rocky9, arch: arm64, backup_arch: linux-arm64, runner: ubuntu-24.04-arm, build_container_image: apache/incubator-cloudberry:cbdb-build-rocky9-latest}
+          # Rocky 10
+          - {target_os: rocky10, arch: amd64, backup_arch: linux-amd64, runner: ubuntu-24.04, build_container_image: apache/incubator-cloudberry:cbdb-build-rocky10-latest}
+          - {target_os: rocky10, arch: arm64, backup_arch: linux-arm64, runner: ubuntu-24.04-arm, build_container_image: apache/incubator-cloudberry:cbdb-build-rocky10-latest}
+          # Ubuntu 22.04
+          - {target_os: ubuntu22.04, arch: amd64, backup_arch: linux-amd64, runner: ubuntu-24.04, build_container_image: apache/incubator-cloudberry:cbdb-build-ubuntu22.04-latest}
+          - {target_os: ubuntu22.04, arch: arm64, backup_arch: linux-arm64, runner: ubuntu-24.04-arm, build_container_image: apache/incubator-cloudberry:cbdb-build-ubuntu22.04-latest}
+          # Ubuntu 24.04
+          - {target_os: ubuntu24.04, arch: amd64, backup_arch: linux-amd64, runner: ubuntu-24.04, build_container_image: apache/incubator-cloudberry:cbdb-build-ubuntu24.04-latest}
+          - {target_os: ubuntu24.04, arch: arm64, backup_arch: linux-arm64, runner: ubuntu-24.04-arm, build_container_image: apache/incubator-cloudberry:cbdb-build-ubuntu24.04-latest}
+
+    steps:
+      # ----------------------------------------------------------------
+      # Phase A: Build Cloudberry from verified source
+      # ----------------------------------------------------------------
+
+      - name: Free disk space
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /host_opt/hostedtoolcache || true
+          rm -rf /host_usr_local/lib/android || true
+          rm -rf /host_usr_share/dotnet || true
+          rm -rf /host_opt/ghc || true
+          rm -rf /host_usr_local/.ghcup || true
+          rm -rf /host_usr_share/swift || true
+          rm -rf /host_usr_local/share/powershell || true
+          rm -rf /host_usr_local/share/chromium || true
+          rm -rf /host_usr_share/miniconda || true
+          rm -rf /host_opt/az || true
+          rm -rf /host_usr_share/sbt || true
+          df -h /
+
+      - name: Initialize build container
+        shell: bash
+        run: |
+          set -euo pipefail
+          su - gpadmin -c "/tmp/init_system.sh"
+
+      - name: Download verified Cloudberry source
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.verify-cloudberry-source.outputs.artifact_name }}
+          path: ${{ github.workspace }}/verified-source
+
+      - name: Extract Cloudberry source
+        id: extract
+        shell: bash
+        env:
+          SOURCE_TARBALL_NAME: ${{ needs.verify-cloudberry-source.outputs.source_tarball_name }}
+        run: |
+          set -euo pipefail
+          tarball_path="${GITHUB_WORKSPACE}/verified-source/${SOURCE_TARBALL_NAME}"
+          source_root_name="$(tar -tzf "${tarball_path}" | head -1 | cut -d/ -f1 || true)"
+
+          tar -xzf "${tarball_path}" -C "${GITHUB_WORKSPACE}"
+          mkdir -p "${GITHUB_WORKSPACE}/cloudberry"
+          mv "${GITHUB_WORKSPACE}/${source_root_name}"/* "${GITHUB_WORKSPACE}/cloudberry/"
+          mv "${GITHUB_WORKSPACE}/${source_root_name}"/.[!.]* "${GITHUB_WORKSPACE}/cloudberry/" 2>/dev/null || true
+          rmdir "${GITHUB_WORKSPACE}/${source_root_name}"
+
+          source_dir="${GITHUB_WORKSPACE}/cloudberry"
+          chown -R gpadmin:gpadmin "${GITHUB_WORKSPACE}"
+          echo "source_dir=${source_dir}" >> "${GITHUB_OUTPUT}"
+          echo "Cloudberry source extracted to: ${source_dir}"
+
+      - name: Configure Cloudberry
+        shell: bash
+        env:
+          SOURCE_DIR: ${{ steps.extract.outputs.source_dir }}
+        run: |
+          set -euo pipefail
+          export BUILD_DESTINATION="/usr/local/cloudberry-db"
+
+          mkdir -p "${SOURCE_DIR}/build-logs"
+          chown -R gpadmin:gpadmin "${SOURCE_DIR}/build-logs"
+          chmod +x "${SOURCE_DIR}"/devops/build/automation/cloudberry/scripts/configure-cloudberry.sh
+
+          echo "=== Configuring Cloudberry... ==="
+          if ! su - gpadmin -c "cd ${SOURCE_DIR} && SRC_DIR=${SOURCE_DIR} BUILD_USER=github-actions BUILD_DESTINATION=${BUILD_DESTINATION} ${SOURCE_DIR}/devops/build/automation/cloudberry/scripts/configure-cloudberry.sh"; then
+            echo "::error::Cloudberry configure script failed"
+            exit 1
+          fi
+          echo "=== Cloudberry configuration complete. ==="
+
+      - name: Build Cloudberry
+        shell: bash
+        env:
+          SOURCE_DIR: ${{ steps.extract.outputs.source_dir }}
+        run: |
+          set -euo pipefail
+          export BUILD_DESTINATION="/usr/local/cloudberry-db"
+
+          chmod +x "${SOURCE_DIR}"/devops/build/automation/cloudberry/scripts/build-cloudberry.sh
+
+          echo "=== Building Cloudberry... ==="
+          if ! su - gpadmin -c "cd ${SOURCE_DIR} && SRC_DIR=${SOURCE_DIR} BUILD_DESTINATION=${BUILD_DESTINATION} ${SOURCE_DIR}/devops/build/automation/cloudberry/scripts/build-cloudberry.sh"; then
+            echo "::error::Cloudberry build script failed"
+            exit 1
+          fi
+          echo "=== Cloudberry build complete. ==="
+
+      - name: Verify Cloudberry installation
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Verifying Cloudberry installation..."
+          if [[ ! -f /usr/local/cloudberry-db/cloudberry-env.sh ]]; then
+            echo "::error::Cloudberry installation not found at /usr/local/cloudberry-db"
+            exit 1
+          fi
+          ls -la /usr/local/cloudberry-db/bin/
+          echo "Cloudberry installation verified."
+
+      # ----------------------------------------------------------------
+      # Phase B: Download & test the cloudberry-backup package
+      # ----------------------------------------------------------------
+
+      - name: Download backup package
+        uses: actions/download-artifact@v4
+        with:
+          name: packages-${{ matrix.backup_arch }}
+          path: ${{ github.workspace }}/package-artifacts
+
+      - name: Verify backup package checksum
+        id: verify-package
+        shell: bash
+        run: |
+          set -euo pipefail
+          artifact_dir="${GITHUB_WORKSPACE}/package-artifacts"
+
+          package_file=$(ls "${artifact_dir}"/*.tar.gz 2>/dev/null | head -1 || true)
+          if [[ -z "${package_file}" || ! -f "${package_file}" ]]; then
+            echo "::error::No tar.gz package found in ${artifact_dir}"
+            ls -la "${artifact_dir}" || true
+            exit 1
+          fi
+
+          checksum_file="${package_file}.sha512"
+          if [[ ! -f "${checksum_file}" ]]; then
+            echo "::error::Checksum file not found: ${checksum_file}"
+            exit 1
+          fi
+
+          ( cd "${artifact_dir}" && sha512sum -c "$(basename "${checksum_file}")" )
+          echo "package_file=${package_file}" >> "${GITHUB_OUTPUT}"
+          echo "Checksum verification passed."
+
+      - name: Extract and install package
+        shell: bash
+        env:
+          PACKAGE_FILE: ${{ steps.verify-package.outputs.package_file }}
+        run: |
+          set -euo pipefail
+
+          work_dir="${GITHUB_WORKSPACE}/pkg-test"
+          mkdir -p "${work_dir}"
+
+          echo "=== Extracting package ==="
+          tar -xzf "${PACKAGE_FILE}" -C "${work_dir}"
+
+          extracted_dir=$(ls -1d "${work_dir}"/apache-cloudberry-backup-incubating-*/ 2>/dev/null | head -1 || true)
+          if [[ -z "${extracted_dir}" ]]; then
+            echo "::error::Extracted package directory not found"
+            ls -la "${work_dir}"
+            exit 1
+          fi
+
+          echo "Package extracted to: ${extracted_dir}"
+          echo "Extracted contents:"
+          ls -lhR "${extracted_dir}"
+
+          echo "=== Installing via install.sh ==="
+          chmod +x "${extracted_dir}/install.sh"
+          sed -i 's/sudo //g' "${extracted_dir}/install.sh"
+          export GPHOME="/usr/local/cloudberry-db"
+          "${extracted_dir}/install.sh" 2>&1
+          echo "Installation complete."
+
+      - name: Verify installed commands
+        shell: bash
+        run: |
+          set -euo pipefail
+          GPHOME="/usr/local/cloudberry-db"
+          expected="gpbackup gprestore gpbackup_helper gpbackup_s3_plugin gpbackman gpbackup_exporter"
+
+          echo "=== Verifying installed binaries ==="
+          for binary in ${expected}; do
+            bin_path="${GPHOME}/bin/${binary}"
+            if [[ ! -f "${bin_path}" ]]; then
+              echo "::warning::${binary} not found — may be absent in older releases"
+              continue
+            fi
+            version_output=$("${bin_path}" --version 2>&1) || {
+              echo "::warning::${binary} --version failed"
+              continue
+            }
+            echo "  ${binary}: ${version_output}"
+          done
+          echo "Command verification complete."
+
+      - name: Run backup/restore functional test
+        shell: bash
+        env:
+          TARGET_OS: ${{ matrix.target_os }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+
+          work_dir="${GITHUB_WORKSPACE}/functional-test"
+          mkdir -p "${work_dir}"
+          chown -R gpadmin:gpadmin "${GITHUB_WORKSPACE}"
+
+          cat <<'SCRIPT' > /tmp/run_backup_restore_test.sh
+          #!/bin/bash
+          set -euo pipefail
+
+          GPHOME="/usr/local/cloudberry-db"
+
+          source "${GPHOME}/cloudberry-env.sh"
+
+          echo "=== Creating demo cluster ==="
+          cd "${HOME}"
+          gpdemo
+          source "${HOME}/gpdemo-env.sh"
+
+          echo "=== Verifying cluster is running ==="
+          psql -d postgres -c "SELECT 1 AS cluster_ok;"
+          psql -d postgres -c "SELECT version();"
+
+          echo "=== Preparing test database ==="
+          test_db="package_test_db"
+          psql -d postgres -c "DROP DATABASE IF EXISTS ${test_db}"
+          createdb "${test_db}"
+          psql -d "${test_db}" -c "CREATE TABLE test_tbl (id int, name text) DISTRIBUTED RANDOMLY;"
+          psql -d "${test_db}" -c "INSERT INTO test_tbl VALUES (1, 'hello'), (2, 'world');"
+          psql -d "${test_db}" -c "SELECT count(*) AS row_count FROM test_tbl;"
+
+          echo "=== Running gpbackup ==="
+          backup_dir="/tmp/backup_restore_test"
+          rm -rf "${backup_dir}"
+          mkdir -p "${backup_dir}"
+
+          backup_log="${backup_dir}/gpbackup_output.log"
+          gpbackup --dbname "${test_db}" --backup-dir "${backup_dir}" 2>&1 | tee "${backup_log}"
+
+          timestamp=$(grep -E "Backup Timestamp[[:space:]]*=" "${backup_log}" | grep -Eo "[[:digit:]]{14}" | head -1 || true)
+
+          if [[ -z "${timestamp}" ]]; then
+            latest_gpbackup_log=$(ls -1t "${HOME}/gpAdminLogs"/gpbackup_*.log 2>/dev/null | head -1 || true)
+            if [[ -n "${latest_gpbackup_log}" ]]; then
+              timestamp=$(grep -E "Backup Timestamp[[:space:]]*=" "${latest_gpbackup_log}" | grep -Eo "[[:digit:]]{14}" | head -1 || true)
+            fi
+          fi
+
+          if [[ -z "${timestamp}" ]]; then
+            echo "ERROR: Could not parse backup timestamp from gpbackup logs"
+            echo "=== Backup log ==="
+            cat "${backup_log}" || true
+            echo "=== Backup directory contents ==="
+            find "${backup_dir}" -type f | sort
+            exit 1
+          fi
+
+          echo "Backup timestamp: ${timestamp}"
+
+          echo "=== Dropping test database ==="
+          dropdb "${test_db}"
+
+          echo "=== Running gprestore ==="
+          gprestore --timestamp "${timestamp}" --backup-dir "${backup_dir}" --create-db --on-error-continue 2>&1
+
+          echo "=== Verification: connecting to restored database ==="
+          row_count=$(psql -d "${test_db}" -t -c "SELECT count(*) FROM test_tbl" | xargs)
+          if [[ "${row_count}" != "2" ]]; then
+            echo "ERROR: Expected 2 rows in restored test_tbl, got ${row_count}"
+            exit 1
+          fi
+          echo "Restore verified: ${row_count} rows in test_tbl"
+
+          echo "=== All functional tests passed ==="
+          SCRIPT
+
+          chmod +x /tmp/run_backup_restore_test.sh
+
+          su - gpadmin -c "/tmp/run_backup_restore_test.sh"
+          test_status=$?
+
+          {
+            echo "## Cloudberry-backup package functional test"
+            echo "- Target: ${{ matrix.target_os }}/${{ matrix.arch }}"
+            echo "- Package: ${{ steps.verify-package.outputs.package_file }}"
+            if [[ ${test_status} -eq 0 ]]; then
+              echo "- Result: PASS"
+            else
+              echo "- Result: FAIL"
+            fi
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+          exit ${test_status}
