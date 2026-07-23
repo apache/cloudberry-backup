@@ -905,8 +905,10 @@ jobs:
 
           chmod +x /tmp/run_backup_restore_test.sh
 
+          set +e
           su - gpadmin -c "/tmp/run_backup_restore_test.sh"
           test_status=$?
+          set -e
 
           {
             echo "## Cloudberry-backup package functional test"
