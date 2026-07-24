@@ -54,7 +54,7 @@
 #
 # Scope:
 # - Intended for official Apache Cloudberry-backup source releases
-#   managed by the release manager.
+#   managed by the release manager. It's designed for 2.2+ release.
 # - Produces convenience binaries only; detached .asc signatures remain a
 #   release manager local step.
 # --------------------------------------------------------------------
