@@ -34,13 +34,14 @@ import (
 
 // Flags for the gpbackman backup-clean command (backupCleanCmd)
 var (
-	backupCleanBeforeTimestamp   string
-	backupCleanAfterTimestamp    string
-	backupCleanPluginConfigFile  string
-	backupCleanBackupDir         string
-	backupCleanOlderThanDays     uint
-	backupCleanParallelProcesses int
-	backupCleanCascade           bool
+	backupCleanBeforeTimestamp      string
+	backupCleanAfterTimestamp       string
+	backupCleanPluginConfigFile     string
+	backupCleanBackupDir            string
+	backupCleanOlderThanDays        uint
+	backupCleanParallelProcesses    int
+	backupCleanCascade              bool
+	backupCleanNoHistorySyncStandby bool
 )
 
 var backupCleanCmd = &cobra.Command{
@@ -130,6 +131,12 @@ func init() {
 		1,
 		"the number of parallel processes to delete local backups",
 	)
+	backupCleanCmd.Flags().BoolVar(
+		&backupCleanNoHistorySyncStandby,
+		noHistorySyncStandbyFlagName,
+		false,
+		"skip automatic gpbackup_history.db sync to standby coordinator after this command",
+	)
 	backupCleanCmd.MarkFlagsMutuallyExclusive(beforeTimestampFlagName, olderThanDaysFlagName, afterTimestampFlagName)
 }
 
@@ -198,10 +205,7 @@ func doCleanBackupFlagValidation(flags *pflag.FlagSet) {
 
 func doCleanBackup() {
 	logHeadersDebug()
-	err := cleanBackup()
-	if err != nil {
-		execOSExit(exitErrorCode)
-	}
+	runHistoryMutationWithStandbySync(cleanBackup, backupCleanNoHistorySyncStandby)
 }
 
 func cleanBackup() error {

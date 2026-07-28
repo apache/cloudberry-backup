@@ -131,7 +131,7 @@ func formatBackupDuration(value float64) string {
 	return fmt.Sprintf("%02d:%02d:%02d", hours, minutes, seconds)
 }
 
-func runHistoryMutationWithStandbySync(work func() error, disabled bool) {
+var runHistoryMutationWithStandbySync = func(work func() error, disabled bool) {
 	if err := work(); err != nil {
 		execOSExit(exitErrorCode)
 		return

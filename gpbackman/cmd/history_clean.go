@@ -32,8 +32,9 @@ import (
 
 // Flags for the gpbackman history-clean command (historyCleanCmd)
 var (
-	historyCleanBeforeTimestamp string
-	historyCleanOlderThanDays   uint
+	historyCleanBeforeTimestamp      string
+	historyCleanOlderThanDays        uint
+	historyCleanNoHistorySyncStandby bool
 )
 
 var historyCleanCmd = &cobra.Command{
@@ -73,6 +74,12 @@ func init() {
 		"",
 		"delete information about backups older than the given timestamp",
 	)
+	historyCleanCmd.Flags().BoolVar(
+		&historyCleanNoHistorySyncStandby,
+		noHistorySyncStandbyFlagName,
+		false,
+		"skip automatic gpbackup_history.db sync to standby coordinator after this command",
+	)
 	historyCleanCmd.MarkFlagsMutuallyExclusive(beforeTimestampFlagName, olderThanDaysFlagName)
 }
 
@@ -99,10 +106,7 @@ func doCleanHistoryFlagValidation(flags *pflag.FlagSet) {
 
 func doCleanHistory() {
 	logHeadersDebug()
-	err := cleanHistory()
-	if err != nil {
-		execOSExit(exitErrorCode)
-	}
+	runHistoryMutationWithStandbySync(cleanHistory, historyCleanNoHistorySyncStandby)
 }
 
 func cleanHistory() error {

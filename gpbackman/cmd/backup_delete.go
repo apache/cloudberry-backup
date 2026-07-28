@@ -41,13 +41,14 @@ import (
 
 // Flags for the gpbackman backup-delete command (backupDeleteCmd)
 var (
-	backupDeleteTimestamp         []string
-	backupDeletePluginConfigFile  string
-	backupDeleteBackupDir         string
-	backupDeleteCascade           bool
-	backupDeleteForce             bool
-	backupDeleteIgnoreErrors      bool
-	backupDeleteParallelProcesses int
+	backupDeleteTimestamp            []string
+	backupDeletePluginConfigFile     string
+	backupDeleteBackupDir            string
+	backupDeleteCascade              bool
+	backupDeleteForce                bool
+	backupDeleteIgnoreErrors         bool
+	backupDeleteNoHistorySyncStandby bool
+	backupDeleteParallelProcesses    int
 )
 var backupDeleteCmd = &cobra.Command{
 	Use:   "backup-delete",
@@ -139,6 +140,12 @@ func init() {
 		false,
 		"ignore errors when deleting backups",
 	)
+	backupDeleteCmd.Flags().BoolVar(
+		&backupDeleteNoHistorySyncStandby,
+		noHistorySyncStandbyFlagName,
+		false,
+		"skip automatic gpbackup_history.db sync to standby coordinator after this command",
+	)
 	_ = backupDeleteCmd.MarkPersistentFlagRequired(timestampFlagName)
 }
 
@@ -198,10 +205,7 @@ func doDeleteBackupFlagValidation(flags *pflag.FlagSet) {
 
 func doDeleteBackup() {
 	logHeadersDebug()
-	err := deleteBackup()
-	if err != nil {
-		execOSExit(exitErrorCode)
-	}
+	runHistoryMutationWithStandbySync(deleteBackup, backupDeleteNoHistorySyncStandby)
 }
 
 func deleteBackup() error {

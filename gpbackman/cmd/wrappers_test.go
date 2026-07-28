@@ -132,6 +132,24 @@ var _ = Describe("wrappers tests", func() {
 			Expect(calls).To(Equal([]string{"work", "sync"}))
 		})
 
+		It("runs standby sync after deferred work cleanup completes", func() {
+			calls := make([]string, 0)
+			historyStandbySync = func() historyStandbySyncResult {
+				calls = append(calls, "sync")
+				return historyStandbySyncResult{}
+			}
+
+			runHistoryMutationWithStandbySync(func() error {
+				calls = append(calls, "work")
+				defer func() {
+					calls = append(calls, "close")
+				}()
+				return nil
+			}, false)
+
+			Expect(calls).To(Equal([]string{"work", "close", "sync"}))
+		})
+
 		It("does not run standby sync after work errors", func() {
 			syncCalls := 0
 			exitCalls := 0
@@ -150,6 +168,22 @@ var _ = Describe("wrappers tests", func() {
 
 			Expect(syncCalls).To(Equal(0))
 			Expect(exitCalls).To(Equal(1))
+		})
+
+		It("keeps the command exit code successful when automatic sync fails", func() {
+			exitCalls := 0
+			historyStandbySync = func() historyStandbySyncResult {
+				return historyStandbySyncResult{err: errors.New("transport failed")}
+			}
+			execOSExit = func(code int) {
+				exitCalls++
+			}
+
+			runHistoryMutationWithStandbySync(func() error {
+				return nil
+			}, false)
+
+			Expect(exitCalls).To(Equal(0))
 		})
 
 		It("honors the disabled automatic policy after successful work", func() {

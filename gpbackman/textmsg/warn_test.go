@@ -20,6 +20,8 @@ under the License.
 package textmsg
 
 import (
+	"errors"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -38,6 +40,16 @@ var _ = Describe("warn tests", func() {
 			for _, tt := range tests {
 				Expect(tt.function(tt.value)).To(Equal(tt.want), tt.name)
 			}
+		})
+	})
+
+	Describe("warn text functions with error only", func() {
+		It("returns correct warn text without environment values", func() {
+			text := WarnTextHistoryStandbySyncFailed(errors.New("transport failed"))
+
+			Expect(text).To(Equal("History db sync to standby coordinator failed; standby history may be stale: transport failed"))
+			Expect(text).ToNot(ContainSubstring("PGPASSWORD"))
+			Expect(text).ToNot(ContainSubstring("secret"))
 		})
 	})
 })

@@ -56,6 +56,7 @@ const (
 	backupDirFlagName            = "backup-dir"
 	parallelProcessesFlagName    = "parallel-processes"
 	ignoreErrorsFlagName         = "ignore-errors"
+	noHistorySyncStandbyFlagName = "no-history-sync-standby"
 	detailFlagName               = "detail"
 
 	exitErrorCode = 1

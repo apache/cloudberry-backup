@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"github.com/apache/cloudberry-backup/gpbackman/gpbckpconfig"
+	"github.com/apache/cloudberry-backup/gpbackman/textmsg"
 	"github.com/apache/cloudberry-go-libs/gplog"
 	"github.com/apache/cloudberry-go-libs/operating"
 	"github.com/jmoiron/sqlx"
@@ -38,7 +39,6 @@ import (
 )
 
 const (
-	noHistorySyncStandbyFlagName     = "no-history-sync-standby"
 	historyStandbySyncSSHOptions     = "ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30"
 	historyStandbySyncTempDirPattern = "gpbackman-history-standby-sync-%s-%d-*"
 )
@@ -76,17 +76,17 @@ var (
 func syncHistoryStandbyBestEffort(disabled bool) historyStandbySyncResult {
 	if disabled {
 		result := historyStandbySyncResult{skipReason: "disabled by --" + noHistorySyncStandbyFlagName}
-		gplog.Info("Skipping history db sync to standby coordinator: %s", result.skipReason)
+		gplog.Info("%s", textmsg.InfoTextHistoryStandbySyncSkip(result.skipReason))
 		return result
 	}
 
 	result := historyStandbySync()
 	if result.err != nil {
-		gplog.Warn("History db sync to standby coordinator failed; standby history may be stale: %v", result.err)
+		gplog.Warn("%s", textmsg.WarnTextHistoryStandbySyncFailed(result.err))
 		return result
 	}
 	if result.skipReason != "" {
-		gplog.Debug("Skipping history db sync to standby coordinator: %s", result.skipReason)
+		gplog.Debug("%s", textmsg.InfoTextHistoryStandbySyncSkip(result.skipReason))
 	}
 	return result
 }
@@ -97,7 +97,7 @@ func syncHistoryStandbyStrict() error {
 		return result.err
 	}
 	if result.skipReason != "" {
-		return fmt.Errorf("history db sync to standby coordinator skipped: %s", result.skipReason)
+		return textmsg.ErrorHistoryStandbySyncSkippedError(result.skipReason)
 	}
 	return nil
 }
@@ -121,7 +121,7 @@ func syncHistoryStandby() historyStandbySyncResult {
 		return historyStandbySyncResult{err: fmt.Errorf("resolve current OS user for standby history sync: %w", err)}
 	}
 
-	gplog.Info("Sync history db to standby coordinator: %s", target.sourceDBPath)
+	gplog.Info("%s", textmsg.InfoTextHistoryStandbySyncStart(target.sourceDBPath))
 	err = withHistoryStandbySyncLock(target.sourceDBPath, func() error {
 		return withHistoryStandbySyncSnapshot(target.sourceDBPath, target.sourceMode, func(snapshotPath string) error {
 			return syncHistoryStandbySnapshotToStandby(target, userName, snapshotPath)
@@ -130,7 +130,7 @@ func syncHistoryStandby() historyStandbySyncResult {
 	if err != nil {
 		return historyStandbySyncResult{err: err}
 	}
-	gplog.Info("History db sync to standby coordinator succeeded: %s:%s", target.standbyHost, target.standbyHistoryDBPath)
+	gplog.Info("%s", textmsg.InfoTextHistoryStandbySyncSuccess(target.standbyHost, target.standbyHistoryDBPath))
 	return historyStandbySyncResult{}
 }
 
