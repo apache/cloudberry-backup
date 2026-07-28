@@ -57,5 +57,24 @@ var _ = Describe("utils/flag tests", func() {
 				Expect(result).To(Equal([]string{"-s", "some_argument"}))
 			})
 		})
+		Context("SetBackupFlagDefaults", func() {
+			It("registers no-history-sync-standby for gpbackup with a false default", func() {
+				flagSet := pflag.NewFlagSet("gpbackup", pflag.ContinueOnError)
+				options.SetBackupFlagDefaults(flagSet)
+
+				flag := flagSet.Lookup(options.NO_HISTORY_SYNC_STANDBY)
+				Expect(flag).ToNot(BeNil())
+				value, err := flagSet.GetBool(options.NO_HISTORY_SYNC_STANDBY)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(value).To(BeFalse())
+			})
+
+			It("does not register no-history-sync-standby for gprestore", func() {
+				flagSet := pflag.NewFlagSet("gprestore", pflag.ContinueOnError)
+				options.SetRestoreFlagDefaults(flagSet)
+
+				Expect(flagSet.Lookup(options.NO_HISTORY_SYNC_STANDBY)).To(BeNil())
+			})
+		})
 	})
 })

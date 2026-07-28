@@ -509,6 +509,7 @@ func DoCleanup(backupFailed bool) {
 	// failure; in either case, update the end time to the actual value. Between our signal handler and recovering
 	// panics, there should be no way for gpbackup to exit that leaves the entry in the initial status.
 
+	historyUpdated := false
 	if !MustGetFlagBool(options.NO_HISTORY) {
 		var statusString string
 		if backupFailed {
@@ -525,9 +526,12 @@ func DoCleanup(backupFailed bool) {
 			historyDB.Close()
 			if err != nil {
 				gplog.Error("Unable to update history database. Error: %v", err)
+			} else {
+				historyUpdated = true
 			}
 		}
 	}
+	syncBackupHistoryToStandbyAfterCleanup(backupFailed, historyUpdated)
 
 	err := backupLockFile.Unlock()
 	if err != nil && backupLockFile != "" {
