@@ -23,6 +23,7 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -35,6 +36,14 @@ import (
 )
 
 var execOSExit = os.Exit
+
+type combinedOutputCommand interface {
+	CombinedOutput() ([]byte, error)
+}
+
+var execCombinedOutputCommand = func(name string, args ...string) combinedOutputCommand {
+	return exec.Command(name, args...)
+}
 
 func logHeadersDebug() {
 	gplog.Debug("Start %s version %s", commandName, getVersion())
@@ -120,6 +129,14 @@ func formatBackupDuration(value float64) string {
 	minutes := (int(value) % 3600) / 60
 	seconds := int(value) % 60
 	return fmt.Sprintf("%02d:%02d:%02d", hours, minutes, seconds)
+}
+
+func runHistoryMutationWithStandbySync(work func() error, disabled bool) {
+	if err := work(); err != nil {
+		execOSExit(exitErrorCode)
+		return
+	}
+	_ = syncHistoryStandbyBestEffort(disabled)
 }
 
 // The backup can be used in one of the cases for local and plugin backups:
