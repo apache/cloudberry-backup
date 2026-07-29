@@ -31,17 +31,38 @@
   - [Examples](#examples-3)
     - [Delete information about deleted backups from history database older than n days](#delete-information-about-deleted-backups-from-history-database-older-than-n-days)
     - [Delete information about deleted backups from history database older than timestamp](#delete-information-about-deleted-backups-from-history-database-older-than-timestamp)
-- [Display the report for a specific backup (`report-info`)](#display-the-report-for-a-specific-backup-report-info)
+- [Sync the history database to the standby coordinator (`history-sync`)](#sync-the-history-database-to-the-standby-coordinator-history-sync)
   - [Examples](#examples-4)
+- [Display the report for a specific backup (`report-info`)](#display-the-report-for-a-specific-backup-report-info)
+  - [Examples](#examples-5)
     - [Display the backup report from local storage](#display-the-backup-report-from-local-storage)
     - [Display the backup report using storage plugin](#display-the-backup-report-using-storage-plugin)
+
+`backup-clean`, `backup-delete`, and `history-clean` automatically attempt to
+synchronize the cluster `gpbackup_history.db` to an up standby after a
+successful command, including a successful no-op. This is best effort: skips
+and failures do not change an otherwise successful command exit status.
+For `backup-delete --ignore-errors`, synchronization still runs when the
+command returns its existing successful result after recording deletion
+errors.
+Add `--no-history-sync-standby` to any of these three commands to disable the
+attempt. Read-only commands do not synchronize history.
+
+Automatic synchronization requires the history database to resolve to
+`<primary-coordinator-data-directory>/gpbackup_history.db`. Use
+`--auto-load-history-db` to resolve that path from
+`$COORDINATOR_DATA_DIRECTORY`, or pass the cluster database explicitly with
+`--history-db`. A symlink is accepted when its canonical target is the cluster
+database; custom and default working-directory databases are not synchronized.
+See [`history-sync`](#sync-the-history-database-to-the-standby-coordinator-history-sync)
+for strict behavior and operational requirements.
 
 # Delete all existing backups older than the specified time condition (`backup-clean`)
 
 Available options for `backup-clean` command and their description:
 ```bash
 ./gpbackman backup-clean -h
-elete all existing backups older than the specified time condition.
+Delete all existing backups older than the specified time condition.
 
 To delete backup sets older than the given timestamp, use the --before-timestamp option. 
 To delete backup sets older than the given number of days, use the --older-than-day option.
@@ -72,7 +93,7 @@ For non local backups the following logic are applied:
 
 The gpbackup_history.db file location can be set using the --history-db option.
 Can be specified only once. The full path to the file is required.
-If the --history-db option is not specified, the history database is looked for in the current directory. Pass `--auto-load-history-db` to resolve it from `$COORDINATOR_DATA_DIRECTORY` instead.
+If the --history-db option is not specified, the history database is looked for in the current directory. To resolve it from $COORDINATOR_DATA_DIRECTORY instead, pass the --auto-load-history-db flag.
 
 Usage:
   gpbackman backup-clean [flags]
@@ -83,11 +104,13 @@ Flags:
       --before-timestamp string   delete backup sets older than the given timestamp
       --cascade                   delete all dependent backups
   -h, --help                      help for backup-clean
+      --no-history-sync-standby   skip automatic gpbackup_history.db sync to standby coordinator after this command
       --older-than-days uint      delete backup sets older than the given number of days
       --parallel-processes int    the number of parallel processes to delete local backups (default 1)
       --plugin-config string      the full path to plugin config file
 
 Global Flags:
+      --auto-load-history-db       resolve gpbackup_history.db from $COORDINATOR_DATA_DIRECTORY when --history-db is unset
       --history-db string          full path to the gpbackup_history.db file
       --log-file string            full path to log file directory, if not specified, the log file will be created in the $HOME/gpAdminLogs directory
       --log-level-console string   level for console logging (error, info, debug, verbose) (default "info")
@@ -97,16 +120,16 @@ Global Flags:
 ## Examples
 ### Delete all backups from local storage older than the specified time condition
 
-Delete specific backup :
+Delete backups older than a timestamp:
 ```bash
 ./gpbackman backup-clean \
   --before-timestamp 20240701100000 \
   --cascade
 ```
 
-Delete specific backup with specifying the number of parallel processes:
+Delete backups older than a number of days with multiple parallel processes:
 ```bash
-./gpbackman backup-delete \
+./gpbackman backup-clean \
   --older-than-days 7 \
   --parallel-processes 5
 ```
@@ -158,7 +181,7 @@ For non local backups the following logic are applied:
 
 The gpbackup_history.db file location can be set using the --history-db option.
 Can be specified only once. The full path to the file is required.
-If the --history-db option is not specified, the history database is looked for in the current directory. Pass `--auto-load-history-db` to resolve it from `$COORDINATOR_DATA_DIRECTORY` instead.
+If the --history-db option is not specified, the history database is looked for in the current directory. To resolve it from $COORDINATOR_DATA_DIRECTORY instead, pass the --auto-load-history-db flag.
 
 Usage:
   gpbackman backup-delete [flags]
@@ -169,11 +192,13 @@ Flags:
       --force                    try to delete, even if the backup already mark as deleted
   -h, --help                     help for backup-delete
       --ignore-errors            ignore errors when deleting backups
+      --no-history-sync-standby   skip automatic gpbackup_history.db sync to standby coordinator after this command
       --parallel-processes int   the number of parallel processes to delete local backups (default 1)
       --plugin-config string     the full path to plugin config file
       --timestamp stringArray    the backup timestamp for deleting, could be specified multiple times
 
 Global Flags:
+      --auto-load-history-db       resolve gpbackup_history.db from $COORDINATOR_DATA_DIRECTORY when --history-db is unset
       --history-db string          full path to the gpbackup_history.db file
       --log-file string            full path to log file directory, if not specified, the log file will be created in the $HOME/gpAdminLogs directory
       --log-level-console string   level for console logging (error, info, debug, verbose) (default "info")
@@ -256,7 +281,7 @@ To display the "object filtering details" column for all backups without using -
 
 The gpbackup_history.db file location can be set using the --history-db option.
 Can be specified only once. The full path to the file is required.
-If the --history-db option is not specified, the history database is looked for in the current directory. Pass `--auto-load-history-db` to resolve it from `$COORDINATOR_DATA_DIRECTORY` instead.
+If the --history-db option is not specified, the history database is looked for in the current directory. To resolve it from $COORDINATOR_DATA_DIRECTORY instead, pass the --auto-load-history-db flag.
 
 Usage:
   gpbackman backup-info [flags]
@@ -273,6 +298,7 @@ Flags:
       --type string        backup type filter (full, incremental, data-only, metadata-only)
 
 Global Flags:
+      --auto-load-history-db       resolve gpbackup_history.db from $COORDINATOR_DATA_DIRECTORY when --history-db is unset
       --history-db string          full path to the gpbackup_history.db file
       --log-file string            full path to log file directory, if not specified, the log file will be created in the $HOME/gpAdminLogs directory
       --log-level-console string   level for console logging (error, info, debug, verbose) (default "info")
@@ -455,7 +481,7 @@ Only --older-than-days or --before-timestamp option must be specified, not both.
 
 The gpbackup_history.db file location can be set using the --history-db option.
 Can be specified only once. The full path to the file is required.
-If the --history-db option is not specified, the history database is looked for in the current directory. Pass `--auto-load-history-db` to resolve it from `$COORDINATOR_DATA_DIRECTORY` instead.
+If the --history-db option is not specified, the history database is looked for in the current directory. To resolve it from $COORDINATOR_DATA_DIRECTORY instead, pass the --auto-load-history-db flag.
 
 Usage:
   gpbackman history-clean [flags]
@@ -463,9 +489,11 @@ Usage:
 Flags:
       --before-timestamp string   delete information about backups older than the given timestamp
   -h, --help                      help for history-clean
+      --no-history-sync-standby   skip automatic gpbackup_history.db sync to standby coordinator after this command
       --older-than-days uint      delete information about backups older than the given number of days
 
 Global Flags:
+      --auto-load-history-db       resolve gpbackup_history.db from $COORDINATOR_DATA_DIRECTORY when --history-db is unset
       --history-db string          full path to the gpbackup_history.db file
       --log-file string            full path to log file directory, if not specified, the log file will be created in the $HOME/gpAdminLogs directory
       --log-level-console string   level for console logging (error, info, debug, verbose) (default "info")
@@ -477,14 +505,87 @@ Global Flags:
 Delete information about deleted backups from history database older than 7 days:
 ```bash
 ./gpbackman history-clean \
-  --older-than-days 7 \
+  --older-than-days 7
 ```
 
 ### Delete information about deleted backups from history database older than timestamp
 Delete information about deleted backups from history database older than timestamp `20240101100000`:
 ```bash
 ./gpbackman history-clean \
-  --before-timestamp 20240101100000 \
+  --before-timestamp 20240101100000
+```
+
+# Sync the history database to the standby coordinator (`history-sync`)
+
+`history-sync` performs a strict, explicit synchronization. It returns exit
+status 0 only after a verified SQLite snapshot has been atomically installed
+as `gpbackup_history.db` on an up standby coordinator. Unlike automatic
+synchronization, a normal skip is an error: no up standby, an ineligible
+source, an unresolved auto-loaded source, or a busy sync lock causes exit
+status 1, as does any discovery, snapshot, transfer, or installation failure.
+
+The source must canonically resolve to
+`<primary-coordinator-data-directory>/gpbackup_history.db`. A symlink to that
+file is accepted. A custom `--history-db` path and the default
+working-directory database are rejected. Use `--auto-load-history-db` to
+resolve the source from `$COORDINATOR_DATA_DIRECTORY`, or pass the cluster
+database explicitly with `--history-db`.
+
+The command uses the current OS user for SSH. The primary host must have
+`ssh` and `rsync`; the user must have non-interactive access to the standby,
+permission to create the source `.sync.lock`, and permission to write the
+standby data directory and preserve the existing destination owner, group, and
+mode. An up standby must be visible in `gp_segment_configuration`.
+
+The source is locked without waiting. gpBackMan creates a consistent snapshot
+with SQLite `VACUUM INTO`, preserves its mode, and requires a single `ok`
+result from `PRAGMA quick_check`. It transfers that snapshot with `rsync -p`
+to a unique temporary path, copies the existing destination metadata when
+present, and atomically renames the snapshot into place. Failed transfers and
+installs remove only their own temporary file.
+
+Atomic replacement prevents a partial database from becoming visible, but it
+does not coordinate a concurrent failover. A coordinator role change can race
+with discovery and installation. A process with the previous database already
+open continues reading the old inode until it closes and reopens the file.
+
+Available options for `history-sync` command and their description:
+
+```bash
+./gpbackman history-sync -h
+Sync the gpbackup_history.db file to the standby coordinator.
+
+The command uses the cluster history database from --history-db, or from
+$COORDINATOR_DATA_DIRECTORY when --auto-load-history-db is set. It succeeds
+only after the standby file is replaced atomically with a verified snapshot.
+
+Usage:
+  gpbackman history-sync [flags]
+
+Flags:
+  -h, --help   help for history-sync
+
+Global Flags:
+      --auto-load-history-db       resolve gpbackup_history.db from $COORDINATOR_DATA_DIRECTORY when --history-db is unset
+      --history-db string          full path to the gpbackup_history.db file
+      --log-file string            full path to log file directory, if not specified, the log file will be created in the $HOME/gpAdminLogs directory
+      --log-level-console string   level for console logging (error, info, debug, verbose) (default "info")
+      --log-level-file string      level for file logging (error, info, debug, verbose) (default "info")
+```
+
+## Examples
+
+Resolve the cluster history database from the coordinator environment:
+
+```bash
+./gpbackman history-sync --auto-load-history-db
+```
+
+Synchronize an explicitly selected cluster history database:
+
+```bash
+./gpbackman history-sync \
+  --history-db "$COORDINATOR_DATA_DIRECTORY/gpbackup_history.db"
 ```
 
 # Display the report for a specific backup (`report-info`)
@@ -492,7 +593,7 @@ Delete information about deleted backups from history database older than timest
 Available options for `report-info` command and their description:
 
 ```bash
-./gpbackman.go report-info -h
+./gpbackman report-info -h
 Display the report for a specific backup.
 
 The --timestamp option must be specified.
@@ -524,7 +625,7 @@ It is not necessary to use the --plugin-report-file-path flag for the following 
 
 The gpbackup_history.db file location can be set using the --history-db option.
 Can be specified only once. The full path to the file is required.
-If the --history-db option is not specified, the history database is looked for in the current directory. Pass `--auto-load-history-db` to resolve it from `$COORDINATOR_DATA_DIRECTORY` instead.
+If the --history-db option is not specified, the history database is looked for in the current directory. To resolve it from $COORDINATOR_DATA_DIRECTORY instead, pass the --auto-load-history-db flag.
 
 Usage:
   gpbackman report-info [flags]
@@ -537,6 +638,7 @@ Flags:
       --timestamp string                 the backup timestamp for report displaying
 
 Global Flags:
+      --auto-load-history-db       resolve gpbackup_history.db from $COORDINATOR_DATA_DIRECTORY when --history-db is unset
       --history-db string          full path to the gpbackup_history.db file
       --log-file string            full path to log file directory, if not specified, the log file will be created in the $HOME/gpAdminLogs directory
       --log-level-console string   level for console logging (error, info, debug, verbose) (default "info")
@@ -546,10 +648,10 @@ Global Flags:
 ## Examples
 ### Display the backup report from local storage
 
-With specifying backup directory path:
+Without specifying a backup directory path:
 ```bash
 ./gpbackman report-info \
-  --timestamp 20230809232817 \
+  --timestamp 20230809232817
   --backup-dir /some/path
 ```
 
@@ -570,7 +672,7 @@ For `gpbackup_s3_plugin`:
 
 For other plugins:
 ```bash
-./gpbackman report-infodoc \
+./gpbackman report-info \
   --timestamp 20230725101959 \
   --plugin-config /tmp/gpbackup_plugin_config.yaml \
   --plugin-report-file-path /some/path/to/report

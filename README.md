@@ -89,6 +89,51 @@ gprestore --timestamp <YYYYMMDDHHMMSS>
 
 Run `--help` with either command for a complete list of options.
 
+### Standby history database synchronization
+
+After a successful backup, `gpbackup` automatically copies a consistent
+snapshot of the coordinator's `gpbackup_history.db` to an up standby
+coordinator. Synchronization starts only after the final `Success` history row
+has been written and the local SQLite connection has been closed.
+
+This synchronization is best effort. If no up standby exists, synchronization
+is skipped. If discovery, snapshot creation, transfer, or installation fails,
+`gpbackup` logs a warning but keeps the successful backup exit status. A
+failed or terminated backup is not synchronized. Synchronization also does not
+run when `--no-history` is used or when the final history update fails. Use
+`--no-history-sync-standby` to keep writing local history while disabling
+standby synchronization for one backup:
+
+```bash
+gpbackup --dbname <your_db_name> --no-history-sync-standby
+```
+
+The synchronization process:
+
+1. Takes a non-waiting lock next to the canonical source database.
+2. Creates a consistent SQLite snapshot with `VACUUM INTO` and accepts it only
+   when `PRAGMA quick_check` returns `ok`.
+3. Transfers the snapshot with `rsync -p` to a unique temporary file in the
+   standby coordinator data directory.
+4. Preserves the existing standby file's owner, group, and mode when it
+   exists, then atomically renames the temporary file to
+   `gpbackup_history.db`.
+
+The host running `gpbackup` must have `ssh` and `rsync`, and the current OS
+user must have non-interactive SSH access to the standby host. That user must
+be able to create files in the standby coordinator data directory and preserve
+the destination file's ownership and permissions. The cluster must expose an
+up standby in `gp_segment_configuration`.
+
+The atomic rename prevents readers from observing a partially copied database,
+but it is not a failover coordination mechanism. A coordinator role change
+during synchronization can race with discovery and installation. Processes
+that already have the old standby database open continue reading that old
+inode until they close and reopen it.
+
+For automatic synchronization after history maintenance and for the strict
+manual command, see [gpBackMan history synchronization](./gpbackman/README.md#standby-history-database-synchronization).
+
 ## Additional tools
 
 This repository also includes the following tools:
