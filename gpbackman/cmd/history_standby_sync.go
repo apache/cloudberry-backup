@@ -150,7 +150,9 @@ func discoverHistoryStandbySyncTarget(sourceDBPath string) (*historyStandbySyncT
 	if err != nil {
 		return nil, "", fmt.Errorf("connect to local cluster for standby history sync discovery: %w", err)
 	}
-	defer db.Close()
+	defer func() {
+		_ = db.Close()
+	}()
 
 	primaryDataDir, err := queryHistoryStandbySyncPrimaryDataDir(db)
 	if err != nil {
@@ -293,7 +295,9 @@ func vacuumHistoryStandbySyncSnapshot(sourceDBPath, snapshotPath string) error {
 	if err != nil {
 		return fmt.Errorf("open source history db for standby sync snapshot: %w", err)
 	}
-	defer sourceDB.Close()
+	defer func() {
+		_ = sourceDB.Close()
+	}()
 
 	if _, err := sourceDB.Exec("VACUUM main INTO ?", snapshotPath); err != nil {
 		return fmt.Errorf("create standby history sync snapshot with VACUUM INTO: %w", err)
@@ -317,13 +321,17 @@ func runHistoryStandbySyncQuickCheck(snapshotPath string) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open standby history sync snapshot read-only: %w", err)
 	}
-	defer snapshotDB.Close()
+	defer func() {
+		_ = snapshotDB.Close()
+	}()
 
 	rows, err := snapshotDB.Query("PRAGMA quick_check")
 	if err != nil {
 		return nil, fmt.Errorf("run PRAGMA quick_check on standby history sync snapshot: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		_ = rows.Close()
+	}()
 
 	results := make([]string, 0)
 	for rows.Next() {

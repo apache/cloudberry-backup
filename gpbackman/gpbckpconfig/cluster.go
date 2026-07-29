@@ -87,7 +87,9 @@ func GetPrimaryCoordinatorDataDir() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer db.Close()
+	defer func() {
+		_ = db.Close()
+	}()
 	return QueryPrimaryCoordinatorDataDir(db)
 }
 
@@ -102,7 +104,9 @@ func GetUpStandbyCoordinator() (StandbyCoordinator, error) {
 	if err != nil {
 		return StandbyCoordinator{}, err
 	}
-	defer db.Close()
+	defer func() {
+		_ = db.Close()
+	}()
 	return QueryUpStandbyCoordinator(db)
 }
 

@@ -147,6 +147,14 @@ var _ = Describe("backup history standby sync", func() {
 		Expect(backupHistoryStandbySyncLockPath(canonicalSourcePath)).To(Equal(realSourcePath + ".sync.lock"))
 	})
 
+	It("rejects a non-regular source", func() {
+		sourcePath := GinkgoT().TempDir()
+
+		_, _, err := canonicalBackupHistoryStandbySyncSource(sourcePath)
+
+		Expect(err).To(MatchError(ContainSubstring("is not a regular file")))
+	})
+
 	It("skips when no up standby coordinator exists", func() {
 		tmpDir := GinkgoT().TempDir()
 		sourcePath := filepath.Join(tmpDir, backupHistoryDBName)

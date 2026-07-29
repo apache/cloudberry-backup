@@ -242,7 +242,9 @@ func vacuumBackupHistoryStandbySyncSnapshot(sourceDBPath, snapshotPath string) e
 	if err != nil {
 		return fmt.Errorf("open source history db for standby sync snapshot: %w", err)
 	}
-	defer sourceDB.Close()
+	defer func() {
+		_ = sourceDB.Close()
+	}()
 
 	if _, err := sourceDB.Exec("VACUUM main INTO ?", snapshotPath); err != nil {
 		return fmt.Errorf("create standby history sync snapshot with VACUUM INTO: %w", err)
@@ -266,13 +268,17 @@ func runBackupHistoryStandbySyncQuickCheck(snapshotPath string) ([]string, error
 	if err != nil {
 		return nil, fmt.Errorf("open standby history sync snapshot read-only: %w", err)
 	}
-	defer snapshotDB.Close()
+	defer func() {
+		_ = snapshotDB.Close()
+	}()
 
 	rows, err := snapshotDB.Query("PRAGMA quick_check")
 	if err != nil {
 		return nil, fmt.Errorf("run PRAGMA quick_check on standby history sync snapshot: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		_ = rows.Close()
+	}()
 
 	results := make([]string, 0)
 	for rows.Next() {
