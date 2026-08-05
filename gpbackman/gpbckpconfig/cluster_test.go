@@ -195,33 +195,6 @@ var _ = Describe("cluster tests", func() {
 		})
 	})
 
-	Describe("GetPrimaryCoordinatorDataDir", func() {
-		It("returns connection errors", func() {
-			connectErr := errors.New("connection failed")
-			connectLocalCluster = func(driverName, dataSourceName string) (*sqlx.DB, error) {
-				return nil, connectErr
-			}
-
-			dataDir, err := GetPrimaryCoordinatorDataDir()
-
-			Expect(dataDir).To(BeEmpty())
-			Expect(err).To(MatchError(connectErr))
-		})
-	})
-
-	Describe("GetUpStandbyCoordinator", func() {
-		It("returns connection errors", func() {
-			connectErr := errors.New("connection failed")
-			connectLocalCluster = func(driverName, dataSourceName string) (*sqlx.DB, error) {
-				return nil, connectErr
-			}
-
-			standbyCoordinator, err := GetUpStandbyCoordinator()
-
-			Expect(standbyCoordinator).To(Equal(StandbyCoordinator{}))
-			Expect(err).To(MatchError(connectErr))
-		})
-	})
 })
 
 func newClusterSQLMock() (*sqlx.DB, sqlmock.Sqlmock) {

@@ -59,6 +59,7 @@ type historyStandbySyncTarget struct {
 var (
 	historyStandbySync                = syncHistoryStandby
 	historyStandbySyncOpenClusterConn = gpbckpconfig.NewClusterLocalClusterDefaultConn
+	historyStandbySyncOpenSQLite      = sql.Open
 	historyStandbySyncMkdirTemp       = os.MkdirTemp
 	historyStandbySyncRemoveAll       = os.RemoveAll
 	historyStandbySyncNow             = time.Now
@@ -145,14 +146,14 @@ func getHistoryStandbySyncSourceDBPath() (string, string) {
 	return sourceDBPath, ""
 }
 
-func discoverHistoryStandbySyncTarget(sourceDBPath string) (*historyStandbySyncTarget, string, error) {
+func discoverHistoryStandbySyncTarget(sourceDBPath string) (target *historyStandbySyncTarget, skipReason string, retErr error) {
 	db, err := historyStandbySyncOpenClusterConn()
 	if err != nil {
 		return nil, "", fmt.Errorf("connect to local cluster for standby history sync discovery: %w", err)
 	}
 	defer func() {
 		if closeErr := db.Close(); closeErr != nil {
-			gplog.Error("Unable to close local cluster connection for standby history sync discovery: %v", closeErr)
+			retErr = errors.Join(retErr, fmt.Errorf("close local cluster connection for standby history sync discovery: %w", closeErr))
 		}
 	}()
 
@@ -181,7 +182,7 @@ func discoverHistoryStandbySyncTarget(sourceDBPath string) (*historyStandbySyncT
 		return nil, "", fmt.Errorf("query up standby coordinator for standby history sync discovery: %w", err)
 	}
 
-	target := &historyStandbySyncTarget{
+	target = &historyStandbySyncTarget{
 		sourceDBPath:         canonicalSourceDBPath,
 		sourceMode:           sourceInfo.Mode().Perm(),
 		standbyHost:          standbyConfig.Hostname,
@@ -255,10 +256,12 @@ func historyStandbySyncLockPath(sourceDBPath string) string {
 	return sourceDBPath + ".sync.lock"
 }
 
-func withHistoryStandbySyncSnapshot(sourceDBPath string, sourceMode os.FileMode, syncFn func(string) error) error {
+func withHistoryStandbySyncSnapshot(sourceDBPath string, sourceMode os.FileMode, syncFn func(string) error) (retErr error) {
 	snapshotPath, tempDir, err := createHistoryStandbySyncSnapshot(sourceDBPath, sourceMode)
 	if tempDir != "" {
-		defer cleanupHistoryStandbySyncTempDir(tempDir)
+		defer func() {
+			retErr = errors.Join(retErr, cleanupHistoryStandbySyncTempDir(tempDir))
+		}()
 	}
 	if err != nil {
 		return err
@@ -278,28 +281,28 @@ func createHistoryStandbySyncSnapshot(sourceDBPath string, sourceMode os.FileMod
 	}
 	snapshotPath := filepath.Join(tempDir, historyDBNameConst)
 	if err := vacuumHistoryStandbySyncSnapshot(sourceDBPath, snapshotPath); err != nil {
-		cleanupHistoryStandbySyncTempDir(tempDir)
-		return "", "", err
+		return "", "", errors.Join(err, cleanupHistoryStandbySyncTempDir(tempDir))
 	}
 	if err := os.Chmod(snapshotPath, sourceMode); err != nil {
-		cleanupHistoryStandbySyncTempDir(tempDir)
-		return "", "", fmt.Errorf("set standby history sync snapshot permissions from source history db: %w", err)
+		return "", "", errors.Join(
+			fmt.Errorf("set standby history sync snapshot permissions from source history db: %w", err),
+			cleanupHistoryStandbySyncTempDir(tempDir),
+		)
 	}
 	if err := validateHistoryStandbySyncSnapshot(snapshotPath); err != nil {
-		cleanupHistoryStandbySyncTempDir(tempDir)
-		return "", "", err
+		return "", "", errors.Join(err, cleanupHistoryStandbySyncTempDir(tempDir))
 	}
 	return snapshotPath, tempDir, nil
 }
 
-func vacuumHistoryStandbySyncSnapshot(sourceDBPath, snapshotPath string) error {
-	sourceDB, err := sql.Open("sqlite3", historyStandbySyncSQLiteURI(sourceDBPath, "ro"))
+func vacuumHistoryStandbySyncSnapshot(sourceDBPath, snapshotPath string) (retErr error) {
+	sourceDB, err := historyStandbySyncOpenSQLite("sqlite3", historyStandbySyncSQLiteURI(sourceDBPath, "ro"))
 	if err != nil {
 		return fmt.Errorf("open source history db for standby sync snapshot: %w", err)
 	}
 	defer func() {
 		if closeErr := sourceDB.Close(); closeErr != nil {
-			gplog.Error("Unable to close source history db for standby sync snapshot: %v", closeErr)
+			retErr = errors.Join(retErr, fmt.Errorf("close source history db for standby sync snapshot: %w", closeErr))
 		}
 	}()
 
@@ -320,14 +323,14 @@ func validateHistoryStandbySyncSnapshot(snapshotPath string) error {
 	return nil
 }
 
-func runHistoryStandbySyncQuickCheck(snapshotPath string) ([]string, error) {
-	snapshotDB, err := sql.Open("sqlite3", historyStandbySyncSQLiteURI(snapshotPath, "ro"))
+func runHistoryStandbySyncQuickCheck(snapshotPath string) (results []string, retErr error) {
+	snapshotDB, err := historyStandbySyncOpenSQLite("sqlite3", historyStandbySyncSQLiteURI(snapshotPath, "ro"))
 	if err != nil {
 		return nil, fmt.Errorf("open standby history sync snapshot read-only: %w", err)
 	}
 	defer func() {
 		if closeErr := snapshotDB.Close(); closeErr != nil {
-			gplog.Error("Unable to close standby history sync snapshot: %v", closeErr)
+			retErr = errors.Join(retErr, fmt.Errorf("close standby history sync snapshot: %w", closeErr))
 		}
 	}()
 
@@ -337,11 +340,11 @@ func runHistoryStandbySyncQuickCheck(snapshotPath string) ([]string, error) {
 	}
 	defer func() {
 		if closeErr := rows.Close(); closeErr != nil {
-			gplog.Error("Unable to close standby history sync quick_check rows: %v", closeErr)
+			retErr = errors.Join(retErr, fmt.Errorf("close standby history sync quick_check rows: %w", closeErr))
 		}
 	}()
 
-	results := make([]string, 0)
+	results = make([]string, 0)
 	for rows.Next() {
 		var result string
 		if err := rows.Scan(&result); err != nil {
@@ -355,10 +358,11 @@ func runHistoryStandbySyncQuickCheck(snapshotPath string) ([]string, error) {
 	return results, nil
 }
 
-func cleanupHistoryStandbySyncTempDir(tempDir string) {
+func cleanupHistoryStandbySyncTempDir(tempDir string) error {
 	if err := historyStandbySyncRemoveAll(tempDir); err != nil && !errors.Is(err, os.ErrNotExist) {
-		gplog.Debug("Unable to remove local standby history sync temp directory %s: %v", tempDir, err)
+		return fmt.Errorf("remove local standby history sync temp directory %s: %w", tempDir, err)
 	}
+	return nil
 }
 
 func syncHistoryStandbySnapshotToStandby(target *historyStandbySyncTarget, userName, snapshotPath string) error {

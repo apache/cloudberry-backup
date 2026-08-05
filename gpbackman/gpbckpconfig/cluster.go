@@ -24,7 +24,6 @@ import (
 	"strconv"
 
 	"github.com/apache/cloudberry-backup/gpbackman/textmsg"
-	"github.com/apache/cloudberry-go-libs/gplog"
 	"github.com/apache/cloudberry-go-libs/operating"
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
@@ -82,37 +81,9 @@ func NewClusterLocalClusterDefaultConn() (*sqlx.DB, error) {
 	return NewClusterLocalClusterConn(dbName)
 }
 
-// GetPrimaryCoordinatorDataDir returns the up primary coordinator data directory.
-func GetPrimaryCoordinatorDataDir() (string, error) {
-	db, err := NewClusterLocalClusterDefaultConn()
-	if err != nil {
-		return "", err
-	}
-	defer func() {
-		if closeErr := db.Close(); closeErr != nil {
-			gplog.Error("Unable to close local cluster connection: %v", closeErr)
-		}
-	}()
-	return QueryPrimaryCoordinatorDataDir(db)
-}
-
 // QueryPrimaryCoordinatorDataDir queries the up primary coordinator data directory.
 func QueryPrimaryCoordinatorDataDir(conn *sqlx.DB) (string, error) {
 	return ExecuteQueryLocalClusterConn[string](conn, primaryCoordinatorDataDirSQL)
-}
-
-// GetUpStandbyCoordinator returns the up standby coordinator from the local cluster catalog.
-func GetUpStandbyCoordinator() (StandbyCoordinator, error) {
-	db, err := NewClusterLocalClusterDefaultConn()
-	if err != nil {
-		return StandbyCoordinator{}, err
-	}
-	defer func() {
-		if closeErr := db.Close(); closeErr != nil {
-			gplog.Error("Unable to close local cluster connection: %v", closeErr)
-		}
-	}()
-	return QueryUpStandbyCoordinator(db)
 }
 
 // QueryUpStandbyCoordinator queries the up standby coordinator from the local cluster catalog.

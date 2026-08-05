@@ -31,6 +31,7 @@ import (
 	backupfilepath "github.com/apache/cloudberry-backup/filepath"
 	"github.com/apache/cloudberry-backup/options"
 	"github.com/apache/cloudberry-go-libs/dbconn"
+	"github.com/apache/cloudberry-go-libs/gplog"
 	"github.com/apache/cloudberry-go-libs/testhelper"
 	"github.com/jmoiron/sqlx"
 	"github.com/nightlyone/lockfile"
@@ -60,7 +61,10 @@ func (c backupHistoryStandbySyncFakeCommand) CombinedOutput() ([]byte, error) {
 }
 
 var _ = Describe("backup history standby sync", func() {
-	var originalSync func() (string, error)
+	var (
+		originalSync       func() (string, error)
+		originalOpenSQLite func(string, string) (*sql.DB, error)
+	)
 
 	BeforeEach(func() {
 		testhelper.SetupTestLogger()
@@ -69,7 +73,9 @@ var _ = Describe("backup history standby sync", func() {
 		globalFPInfo = backupfilepath.FilePathInfo{}
 		connectionPool = nil
 		originalSync = backupHistoryStandbySync
+		originalOpenSQLite = backupHistoryStandbySyncOpenSQLite
 		backupHistoryStandbySync = syncBackupHistoryToStandby
+		backupHistoryStandbySyncOpenSQLite = sql.Open
 		backupHistoryStandbySyncCommandExec = func(name string, args ...string) backupHistoryStandbySyncCommand {
 			return backupHistoryStandbySyncFakeCommand{}
 		}
@@ -82,6 +88,7 @@ var _ = Describe("backup history standby sync", func() {
 
 	AfterEach(func() {
 		backupHistoryStandbySync = originalSync
+		backupHistoryStandbySyncOpenSQLite = originalOpenSQLite
 		backupHistoryStandbySyncCommandExec = func(name string, args ...string) backupHistoryStandbySyncCommand {
 			return backupHistoryStandbySyncFakeCommand{}
 		}
@@ -128,6 +135,69 @@ var _ = Describe("backup history standby sync", func() {
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("VACUUM INTO"))
 		Expect(tempDir).To(BeEmpty())
+	})
+
+	It("returns SQLite close errors without changing the gpbackup error code", func() {
+		sqlDB, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
+		Expect(err).ToNot(HaveOccurred())
+		closeErr := errors.New("close failed")
+		mock.ExpectExec("VACUUM main INTO ?").
+			WithArgs("/tmp/snapshot.db").
+			WillReturnResult(sqlmock.NewResult(0, 0))
+		mock.ExpectClose().WillReturnError(closeErr)
+		backupHistoryStandbySyncOpenSQLite = func(driverName, dataSourceName string) (*sql.DB, error) {
+			Expect(driverName).To(Equal("sqlite3"))
+			return sqlDB, nil
+		}
+		originalErrorCode := gplog.GetErrorCode()
+		DeferCleanup(gplog.SetErrorCode, originalErrorCode)
+		gplog.SetErrorCode(0)
+
+		err = vacuumBackupHistoryStandbySyncSnapshot("/tmp/source.db", "/tmp/snapshot.db")
+
+		Expect(errors.Is(err, closeErr)).To(BeTrue())
+		Expect(err.Error()).To(ContainSubstring("close source history db for standby sync snapshot"))
+		Expect(gplog.GetErrorCode()).To(Equal(0))
+		Expect(mock.ExpectationsWereMet()).To(Succeed())
+	})
+
+	It("returns local cleanup errors after success and joins them with sync errors", func() {
+		sourcePath := filepath.Join(GinkgoT().TempDir(), backupHistoryDBName)
+		createBackupHistoryStandbySyncSQLiteDB(sourcePath)
+		cleanupErr := errors.New("cleanup failed")
+		backupHistoryStandbySyncMkdirTemp = func(dir, pattern string) (string, error) {
+			return GinkgoT().TempDir(), nil
+		}
+		backupHistoryStandbySyncRemoveAll = func(path string) error {
+			return cleanupErr
+		}
+
+		err := withBackupHistoryStandbySyncSnapshot(sourcePath, 0o600, func(string) error {
+			return nil
+		})
+		Expect(errors.Is(err, cleanupErr)).To(BeTrue())
+
+		syncErr := errors.New("sync failed")
+		err = withBackupHistoryStandbySyncSnapshot(sourcePath, 0o600, func(string) error {
+			return syncErr
+		})
+		Expect(errors.Is(err, syncErr)).To(BeTrue())
+		Expect(errors.Is(err, cleanupErr)).To(BeTrue())
+	})
+
+	It("joins snapshot creation and local cleanup errors", func() {
+		sourcePath := filepath.Join(GinkgoT().TempDir(), backupHistoryDBName)
+		Expect(os.WriteFile(sourcePath, []byte("not sqlite"), 0o600)).To(Succeed())
+		cleanupErr := errors.New("cleanup failed")
+		backupHistoryStandbySyncRemoveAll = func(path string) error {
+			return cleanupErr
+		}
+
+		_, tempDir, err := createBackupHistoryStandbySyncSnapshot(sourcePath, 0o600)
+
+		Expect(tempDir).To(BeEmpty())
+		Expect(err.Error()).To(ContainSubstring("VACUUM INTO"))
+		Expect(errors.Is(err, cleanupErr)).To(BeTrue())
 	})
 
 	It("canonicalizes symlink sources and builds the shared lock path from the canonical source", func() {
@@ -323,6 +393,9 @@ var _ = Describe("backup history standby sync", func() {
 
 	It("warns automatic sync failures without exiting", func() {
 		stdout, _, _ := testhelper.SetupTestLogger()
+		originalErrorCode := gplog.GetErrorCode()
+		DeferCleanup(gplog.SetErrorCode, originalErrorCode)
+		gplog.SetErrorCode(0)
 		backupHistoryStandbySync = func() (string, error) {
 			return "", errors.New("transport failed")
 		}
@@ -331,6 +404,7 @@ var _ = Describe("backup history standby sync", func() {
 
 		Expect(err).To(HaveOccurred())
 		Expect(string(stdout.Contents())).To(ContainSubstring("History db sync to standby coordinator failed; standby history may be stale: transport failed"))
+		Expect(gplog.GetErrorCode()).To(Equal(0))
 	})
 
 	It("runs automatic sync only after successful cleanup history update for successful backups", func() {

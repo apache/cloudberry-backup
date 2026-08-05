@@ -65,6 +65,7 @@ var _ = Describe("history standby sync", func() {
 	var (
 		originalHistoryStandbySync                func() historyStandbySyncResult
 		originalOpenClusterConn                   func() (*sqlx.DB, error)
+		originalOpenSQLite                        func(string, string) (*sql.DB, error)
 		originalMkdirTemp                         func(string, string) (string, error)
 		originalRemoveAll                         func(string) error
 		originalNow                               func() time.Time
@@ -82,6 +83,7 @@ var _ = Describe("history standby sync", func() {
 		testhelper.SetupTestLogger()
 		originalHistoryStandbySync = historyStandbySync
 		originalOpenClusterConn = historyStandbySyncOpenClusterConn
+		originalOpenSQLite = historyStandbySyncOpenSQLite
 		originalMkdirTemp = historyStandbySyncMkdirTemp
 		originalRemoveAll = historyStandbySyncRemoveAll
 		originalNow = historyStandbySyncNow
@@ -106,6 +108,7 @@ var _ = Describe("history standby sync", func() {
 		historyStandbySyncOpenClusterConn = func() (*sqlx.DB, error) {
 			return nil, errors.New("cluster connection was not expected")
 		}
+		historyStandbySyncOpenSQLite = sql.Open
 		historyStandbySyncMkdirTemp = os.MkdirTemp
 		historyStandbySyncRemoveAll = os.RemoveAll
 		historyStandbySyncNow = func() time.Time {
@@ -126,6 +129,7 @@ var _ = Describe("history standby sync", func() {
 	AfterEach(func() {
 		historyStandbySync = originalHistoryStandbySync
 		historyStandbySyncOpenClusterConn = originalOpenClusterConn
+		historyStandbySyncOpenSQLite = originalOpenSQLite
 		historyStandbySyncMkdirTemp = originalMkdirTemp
 		historyStandbySyncRemoveAll = originalRemoveAll
 		historyStandbySyncNow = originalNow
@@ -206,6 +210,90 @@ var _ = Describe("history standby sync", func() {
 		Expect(tempDir).To(BeEmpty())
 		_, statErr := os.Stat(snapshotDir)
 		Expect(errors.Is(statErr, os.ErrNotExist)).To(BeTrue())
+	})
+
+	It("returns SQLite close errors from snapshot validation", func() {
+		sqlDB, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
+		Expect(err).ToNot(HaveOccurred())
+		closeErr := errors.New("close failed")
+		mock.ExpectQuery("PRAGMA quick_check").
+			WillReturnRows(sqlmock.NewRows([]string{"quick_check"}).AddRow("ok"))
+		mock.ExpectClose().WillReturnError(closeErr)
+		historyStandbySyncOpenSQLite = func(driverName, dataSourceName string) (*sql.DB, error) {
+			Expect(driverName).To(Equal("sqlite3"))
+			return sqlDB, nil
+		}
+
+		results, err := runHistoryStandbySyncQuickCheck("/tmp/snapshot.db")
+
+		Expect(results).To(Equal([]string{"ok"}))
+		Expect(errors.Is(err, closeErr)).To(BeTrue())
+		Expect(err.Error()).To(ContainSubstring("close standby history sync snapshot"))
+		Expect(mock.ExpectationsWereMet()).To(Succeed())
+	})
+
+	It("returns local cleanup errors after success and joins them with sync errors", func() {
+		sourceDBPath := filepath.Join(GinkgoT().TempDir(), historyDBNameConst)
+		createHistoryStandbySyncSQLiteDB(sourceDBPath)
+		cleanupErr := errors.New("cleanup failed")
+		historyStandbySyncMkdirTemp = func(dir, pattern string) (string, error) {
+			return GinkgoT().TempDir(), nil
+		}
+		historyStandbySyncRemoveAll = func(path string) error {
+			return cleanupErr
+		}
+
+		err := withHistoryStandbySyncSnapshot(sourceDBPath, 0o600, func(string) error {
+			return nil
+		})
+		Expect(errors.Is(err, cleanupErr)).To(BeTrue())
+
+		syncErr := errors.New("sync failed")
+		err = withHistoryStandbySyncSnapshot(sourceDBPath, 0o600, func(string) error {
+			return syncErr
+		})
+		Expect(errors.Is(err, syncErr)).To(BeTrue())
+		Expect(errors.Is(err, cleanupErr)).To(BeTrue())
+	})
+
+	It("joins snapshot creation and local cleanup errors", func() {
+		sourceDBPath := filepath.Join(GinkgoT().TempDir(), historyDBNameConst)
+		Expect(os.WriteFile(sourceDBPath, []byte("not sqlite"), 0o600)).To(Succeed())
+		cleanupErr := errors.New("cleanup failed")
+		historyStandbySyncRemoveAll = func(path string) error {
+			return cleanupErr
+		}
+
+		_, tempDir, err := createHistoryStandbySyncSnapshot(sourceDBPath, 0o600)
+
+		Expect(tempDir).To(BeEmpty())
+		Expect(err.Error()).To(ContainSubstring("VACUUM INTO"))
+		Expect(errors.Is(err, cleanupErr)).To(BeTrue())
+	})
+
+	It("returns discovery connection close errors", func() {
+		primaryDataDir := GinkgoT().TempDir()
+		sourceDBPath := filepath.Join(primaryDataDir, historyDBNameConst)
+		createHistoryStandbySyncSQLiteDB(sourceDBPath)
+		sqlDB, mock, err := sqlmock.New()
+		Expect(err).ToNot(HaveOccurred())
+		mock.ExpectQuery(regexp.QuoteMeta(historyStandbySyncPrimarySQL)).
+			WillReturnRows(sqlmock.NewRows([]string{"datadir"}).AddRow(primaryDataDir))
+		mock.ExpectQuery(regexp.QuoteMeta(historyStandbySyncStandbySQL)).
+			WillReturnRows(sqlmock.NewRows([]string{"hostname", "datadir"}).AddRow("sdw-standby", "/data/standby"))
+		closeErr := errors.New("close failed")
+		mock.ExpectClose().WillReturnError(closeErr)
+		historyStandbySyncOpenClusterConn = func() (*sqlx.DB, error) {
+			return sqlx.NewDb(sqlDB, "sqlmock"), nil
+		}
+
+		target, skipReason, err := discoverHistoryStandbySyncTarget(sourceDBPath)
+
+		Expect(target).ToNot(BeNil())
+		Expect(skipReason).To(BeEmpty())
+		Expect(errors.Is(err, closeErr)).To(BeTrue())
+		Expect(err.Error()).To(ContainSubstring("close local cluster connection for standby history sync discovery"))
+		Expect(mock.ExpectationsWereMet()).To(Succeed())
 	})
 
 	It("canonicalizes symlink sources and uses the shared lock path suffix", func() {
@@ -460,20 +548,24 @@ var _ = Describe("history standby sync", func() {
 	It("keeps automatic sync best-effort while strict sync treats skips as errors", func() {
 		stdout, _, _ := testhelper.SetupTestLogger()
 		syncCalls := 0
+		cleanupErr := errors.New("remove local standby history sync temp directory: cleanup failed")
 		historyStandbySync = func() historyStandbySyncResult {
 			syncCalls++
-			return historyStandbySyncResult{err: errors.New("transport failed")}
+			return historyStandbySyncResult{err: cleanupErr}
 		}
 
 		result := syncHistoryStandbyBestEffort(false)
-		Expect(result.err).To(HaveOccurred())
+		Expect(errors.Is(result.err, cleanupErr)).To(BeTrue())
 		Expect(syncCalls).To(Equal(1))
-		Expect(string(stdout.Contents())).To(ContainSubstring("History db sync to standby coordinator failed; standby history may be stale: transport failed"))
+		Expect(string(stdout.Contents())).To(ContainSubstring("History db sync to standby coordinator failed; standby history may be stale: remove local standby history sync temp directory: cleanup failed"))
+
+		err := syncHistoryStandbyStrict()
+		Expect(errors.Is(err, cleanupErr)).To(BeTrue())
 
 		historyStandbySync = func() historyStandbySyncResult {
 			return historyStandbySyncResult{skipReason: "no up standby coordinator found"}
 		}
-		err := syncHistoryStandbyStrict()
+		err = syncHistoryStandbyStrict()
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("history db sync to standby coordinator skipped: no up standby coordinator found"))
 	})
