@@ -612,13 +612,13 @@ Without specifying a backup directory path:
 ```bash
 ./gpbackman report-info \
   --timestamp 20230809232817
-  --backup-dir /some/path
 ```
 
 With specifying backup directory path:
 ```bash
 ./gpbackman report-info \
   --timestamp 20230809232817 \
+  --backup-dir /some/path
 ```
 
 ### Display the backup report using storage plugin
