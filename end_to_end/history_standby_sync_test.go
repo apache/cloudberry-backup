@@ -28,6 +28,7 @@ import (
 	"os/exec"
 	stdpath "path/filepath"
 	"strings"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -95,6 +96,61 @@ func copyStandbyHistoryDB(target standbyCoordinatorTarget) string {
 	return localPath
 }
 
+func preserveStandbyHistoryDB(target standbyCoordinatorTarget) {
+	remotePath := stdpath.Join(target.DataDir, "gpbackup_history.db")
+	savedPath := fmt.Sprintf("%s.end-to-end-%d-%d", remotePath, os.Getpid(), time.Now().UnixNano())
+	quotedRemotePath := quoteRemoteShellPath(remotePath)
+	quotedSavedPath := quoteRemoteShellPath(savedPath)
+	saveCommand := fmt.Sprintf(
+		"if test -f %s; then test ! -e %s && test ! -L %s && cp -p -- %s %s && printf present; elif test ! -e %s && test ! -L %s; then printf absent; else exit 1; fi",
+		quotedRemotePath,
+		quotedSavedPath,
+		quotedSavedPath,
+		quotedRemotePath,
+		quotedSavedPath,
+		quotedRemotePath,
+		quotedRemotePath,
+	)
+	state := strings.TrimSpace(string(runStandbyHistorySSHCommand(target, saveCommand)))
+	Expect(state).To(Or(Equal("present"), Equal("absent")))
+
+	DeferCleanup(func() {
+		var restoreCommand string
+		if state == "present" {
+			restoreCommand = fmt.Sprintf(
+				"test -f %s && test ! -d %s && mv -f -- %s %s",
+				quotedSavedPath,
+				quotedRemotePath,
+				quotedSavedPath,
+				quotedRemotePath,
+			)
+		} else {
+			restoreCommand = fmt.Sprintf(
+				"test ! -d %s && rm -f -- %s %s",
+				quotedRemotePath,
+				quotedRemotePath,
+				quotedSavedPath,
+			)
+		}
+		runStandbyHistorySSHCommand(target, restoreCommand)
+	})
+}
+
+func runStandbyHistorySSHCommand(target standbyCoordinatorTarget, remoteCommand string) []byte {
+	command := exec.Command(
+		"ssh",
+		"-o", "StrictHostKeyChecking=no",
+		"-o", "ConnectTimeout=30",
+		target.Hostname,
+		remoteCommand,
+	)
+	var stderr bytes.Buffer
+	command.Stderr = &stderr
+	output, err := command.Output()
+	Expect(err).ToNot(HaveOccurred(), "run standby history command on %s: %s", target.Hostname, strings.TrimSpace(stderr.String()))
+	return output
+}
+
 func readHistoryLogicalRows(historyDBPath string) []historyLogicalRow {
 	dsn := (&url.URL{Scheme: "file", Path: historyDBPath}).String() + "?mode=ro"
 	db, err := sql.Open("sqlite3", dsn)
@@ -145,6 +201,7 @@ var _ = Describe("history database standby sync", func() {
 		}
 		end_to_end_setup()
 		standbyTarget = discoverUpStandbyCoordinator()
+		preserveStandbyHistoryDB(standbyTarget)
 		primaryHistoryDB = getHistoryDBPathForCluster()
 	})
 
@@ -153,7 +210,7 @@ var _ = Describe("history database standby sync", func() {
 	})
 
 	It("keeps standby history logically consistent across automatic, disabled, explicit, and mutation sync", func() {
-		baselineOutput := gpbackup(
+		baselineOutput := gpbackupWithHistoryStandbySync(
 			gpbackupPath,
 			backupHelperPath,
 			"--backup-dir", backupDir,
@@ -196,7 +253,7 @@ var _ = Describe("history database standby sync", func() {
 		Expect(standbyAfterExplicitSync).To(Equal(primaryAfterExplicitSync))
 		Expect(findHistoryLogicalRow(standbyAfterExplicitSync, disabledTimestamp).Status).To(Equal("Success"))
 
-		gpbackman(
+		gpbackmanWithHistoryStandbySync(
 			"backup-delete",
 			"--history-db", primaryHistoryDB,
 			"--timestamp", baselineTimestamp,
