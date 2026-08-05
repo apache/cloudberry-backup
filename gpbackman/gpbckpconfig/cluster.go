@@ -24,6 +24,7 @@ import (
 	"strconv"
 
 	"github.com/apache/cloudberry-backup/gpbackman/textmsg"
+	"github.com/apache/cloudberry-go-libs/gplog"
 	"github.com/apache/cloudberry-go-libs/operating"
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
@@ -88,7 +89,9 @@ func GetPrimaryCoordinatorDataDir() (string, error) {
 		return "", err
 	}
 	defer func() {
-		_ = db.Close()
+		if closeErr := db.Close(); closeErr != nil {
+			gplog.Error("Unable to close local cluster connection: %v", closeErr)
+		}
 	}()
 	return QueryPrimaryCoordinatorDataDir(db)
 }
@@ -105,7 +108,9 @@ func GetUpStandbyCoordinator() (StandbyCoordinator, error) {
 		return StandbyCoordinator{}, err
 	}
 	defer func() {
-		_ = db.Close()
+		if closeErr := db.Close(); closeErr != nil {
+			gplog.Error("Unable to close local cluster connection: %v", closeErr)
+		}
 	}()
 	return QueryUpStandbyCoordinator(db)
 }
