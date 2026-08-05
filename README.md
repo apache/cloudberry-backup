@@ -132,7 +132,7 @@ that already have the old standby database open continue reading that old
 inode until they close and reopen it.
 
 For automatic synchronization after history maintenance and for the strict
-manual command, see [gpBackMan history synchronization](./gpbackman/README.md#standby-history-database-synchronization).
+manual command, see [gpBackMan history synchronization](./gpbackman/README.md#standby-history-db-sync).
 
 ## Additional tools
 
