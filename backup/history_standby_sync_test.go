@@ -206,6 +206,11 @@ var _ = Describe("backup history standby sync", func() {
 		linkDir := filepath.Join(tmpDir, "link")
 		Expect(os.Mkdir(realDir, 0o700)).To(Succeed())
 		Expect(os.Mkdir(linkDir, 0o700)).To(Succeed())
+		// Resolve any symlinks in the OS temp dir itself (e.g. macOS /var -> /private/var)
+		// so the expected path matches the canonicalization performed by the code under test.
+		canonicalRealDir, err := filepath.EvalSymlinks(realDir)
+		Expect(err).ToNot(HaveOccurred())
+		realDir = canonicalRealDir
 		realSourcePath := filepath.Join(realDir, backupHistoryDBName)
 		createBackupHistoryStandbySyncSQLiteDB(realSourcePath)
 		linkSourcePath := filepath.Join(linkDir, backupHistoryDBName)

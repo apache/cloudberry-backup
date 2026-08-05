@@ -300,6 +300,11 @@ var _ = Describe("history standby sync", func() {
 		tmpDir := GinkgoT().TempDir()
 		primaryDataDir := filepath.Join(tmpDir, "primary")
 		Expect(os.Mkdir(primaryDataDir, 0o700)).To(Succeed())
+		// Resolve any symlinks in the OS temp dir itself (e.g. macOS /var -> /private/var)
+		// so the expected path matches the canonicalization performed by the code under test.
+		canonicalPrimaryDataDir, err := filepath.EvalSymlinks(primaryDataDir)
+		Expect(err).ToNot(HaveOccurred())
+		primaryDataDir = canonicalPrimaryDataDir
 		realSourceDBPath := filepath.Join(primaryDataDir, historyDBNameConst)
 		createHistoryStandbySyncSQLiteDB(realSourceDBPath)
 		linkSourceDBPath := filepath.Join(tmpDir, "history-link.db")
