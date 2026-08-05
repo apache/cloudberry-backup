@@ -17,6 +17,7 @@
   under the License.
 -->
 
+- [Standby history DB sync](#standby-history-db-sync)
 - [Delete all existing backups older than the specified time condition (`backup-clean`)](#delete-all-existing-backups-older-than-the-specified-time-condition-backup-clean)
   - [Examples](#examples)
     - [Delete all backups from local storage older than the specified time condition](#delete-all-backups-from-local-storage-older-than-the-specified-time-condition)
@@ -38,24 +39,15 @@
     - [Display the backup report from local storage](#display-the-backup-report-from-local-storage)
     - [Display the backup report using storage plugin](#display-the-backup-report-using-storage-plugin)
 
-`backup-clean`, `backup-delete`, and `history-clean` automatically attempt to
-synchronize the cluster `gpbackup_history.db` to an up standby after a
-successful command, including a successful no-op. This is best effort: skips
-and failures do not change an otherwise successful command exit status.
-For `backup-delete --ignore-errors`, synchronization still runs when the
-command returns its existing successful result after recording deletion
-errors.
-Add `--no-history-sync-standby` to any of these three commands to disable the
-attempt. Read-only commands do not synchronize history.
+# Standby history DB sync
 
-Automatic synchronization requires the history database to resolve to
-`<primary-coordinator-data-directory>/gpbackup_history.db`. Use
-`--auto-load-history-db` to resolve that path from
-`$COORDINATOR_DATA_DIRECTORY`, or pass the cluster database explicitly with
-`--history-db`. A symlink is accepted when its canonical target is the cluster
-database; custom and default working-directory databases are not synchronized.
-See [`history-sync`](#sync-the-history-database-to-the-standby-coordinator-history-sync)
-for strict behavior and operational requirements.
+The explicit `history-sync` command synchronizes the cluster `gpbackup_history.db` to an up standby coordinator. It does not have successful skips: an unavailable standby, an ineligible source, or a discovery, snapshot, validation, SSH, rsync, or cleanup error is reported as an error and returns a non-zero exit status.
+
+The source must resolve to the cluster history database at `<primary coordinator data directory>/gpbackup_history.db`. Select it with `--history-db`, or use `--auto-load-history-db` when `$COORDINATOR_DATA_DIRECTORY` points to the primary coordinator data directory. Custom history databases and the default working-directory database are not eligible for explicit synchronization.
+
+After a successful `backup-delete`, `backup-clean`, or `history-clean`, gpBackMan also attempts this synchronization automatically. Automatic sync is best-effort: `--no-history-sync-standby` produces an info-level skip, while no up standby and ineligible sources are debug-only skips; sync failures are warnings and do not change the successful primary command result. Read-only commands do not trigger automatic sync.
+
+Only `gpbackup_history.db` is synchronized. Report files, backup data, and other backup artifacts are not synchronized.
 
 # Delete all existing backups older than the specified time condition (`backup-clean`)
 
@@ -517,38 +509,6 @@ Delete information about deleted backups from history database older than timest
 
 # Sync the history database to the standby coordinator (`history-sync`)
 
-`history-sync` performs a strict, explicit synchronization. It returns exit
-status 0 only after a verified SQLite snapshot has been atomically installed
-as `gpbackup_history.db` on an up standby coordinator. Unlike automatic
-synchronization, a normal skip is an error: no up standby, an ineligible
-source, an unresolved auto-loaded source, or a busy sync lock causes exit
-status 1, as does any discovery, snapshot, transfer, or installation failure.
-
-The source must canonically resolve to
-`<primary-coordinator-data-directory>/gpbackup_history.db`. A symlink to that
-file is accepted. A custom `--history-db` path and the default
-working-directory database are rejected. Use `--auto-load-history-db` to
-resolve the source from `$COORDINATOR_DATA_DIRECTORY`, or pass the cluster
-database explicitly with `--history-db`.
-
-The command uses the current OS user for SSH. The primary host must have
-`ssh` and `rsync`; the user must have non-interactive access to the standby,
-permission to create the source `.sync.lock`, and permission to write the
-standby data directory and preserve the existing destination owner, group, and
-mode. An up standby must be visible in `gp_segment_configuration`.
-
-The source is locked without waiting. gpBackMan creates a consistent snapshot
-with SQLite `VACUUM INTO`, preserves its mode, and requires a single `ok`
-result from `PRAGMA quick_check`. It transfers that snapshot with `rsync -p`
-to a unique temporary path, copies the existing destination metadata when
-present, and atomically renames the snapshot into place. Failed transfers and
-installs remove only their own temporary file.
-
-Atomic replacement prevents a partial database from becoming visible, but it
-does not coordinate a concurrent failover. A coordinator role change can race
-with discovery and installation. A process with the previous database already
-open continues reading the old inode until it closes and reopens the file.
-
 Available options for `history-sync` command and their description:
 
 ```bash
@@ -575,17 +535,17 @@ Global Flags:
 
 ## Examples
 
-Resolve the cluster history database from the coordinator environment:
-
-```bash
-./gpbackman history-sync --auto-load-history-db
-```
-
 Synchronize an explicitly selected cluster history database:
 
 ```bash
 ./gpbackman history-sync \
   --history-db "$COORDINATOR_DATA_DIRECTORY/gpbackup_history.db"
+```
+
+Resolve the cluster history database from the coordinator environment and synchronize it:
+
+```bash
+./gpbackman history-sync --auto-load-history-db
 ```
 
 # Display the report for a specific backup (`report-info`)

@@ -29,7 +29,8 @@ The utility works with `gpbackup_history.db` SQLite history database format.
 * delete existing backups from local storage or using storage plugins;
 * delete all existing backups from local storage or using storage plugins older than the specified time condition;
 * clean deleted backups from the history database;
-* synchronize the cluster history database to the standby coordinator.
+* manually synchronize the cluster `gpbackup_history.db` to the standby coordinator;
+* automatically synchronize the cluster `gpbackup_history.db` after successful backup deletion and history cleanup.
 
 ## Commands
 ### Introduction
@@ -65,6 +66,20 @@ Flags:
 Use "gpbackman [command] --help" for more information about a command.
 ```
 
+### Standby history DB sync
+
+Run `history-sync` to explicitly synchronize the cluster `gpbackup_history.db` to an up standby coordinator. The source must resolve to `<primary coordinator data directory>/gpbackup_history.db`; a custom database or the default working-directory database is not eligible. Explicit sync treats every non-sync outcome as an error and exits non-zero.
+
+For the usual cluster setup, resolve the source from the coordinator data directory:
+
+```bash
+./gpbackman history-sync --auto-load-history-db
+```
+
+After a successful `backup-delete`, `backup-clean`, or `history-clean`, gpBackMan also attempts the same synchronization automatically. Automatic sync is best-effort: ineligible source paths and no standby are debug-only skips, while sync failures are warnings and do not change the successful primary command result. Pass `--no-history-sync-standby` to those mutation commands to disable automatic sync.
+
+Only `gpbackup_history.db` is synchronized. Report files, backup data, and other backup artifacts are not synchronized.
+
 ### Detail info about commands
 
 Description of each command:
@@ -74,56 +89,6 @@ Description of each command:
 * [Clean deleted backups from the history database (`history-clean`)](./COMMANDS.md#clean-deleted-backups-from-the-history-database-history-clean)
 * [Sync the history database to the standby coordinator (`history-sync`)](./COMMANDS.md#sync-the-history-database-to-the-standby-coordinator-history-sync)
 * [Display the report for a specific backup (`report-info`)](./COMMANDS.md#display-the-report-for-a-specific-backup-report-info)
-
-## Standby history database synchronization
-
-`backup-delete`, `backup-clean`, and `history-clean` automatically attempt to
-synchronize `gpbackup_history.db` after the command has successfully finished
-and closed the database. Successful no-op commands also attempt
-synchronization. For `backup-delete --ignore-errors`, synchronization runs
-when the command completes with its existing successful result, including when
-individual deletion errors were recorded.
-
-Automatic synchronization is best effort. A normal skip, such as no up
-standby or an ineligible history database, does not fail the mutation command.
-A discovery, snapshot, transfer, or installation error is logged as a warning
-without changing an otherwise successful exit status. Use the command-local
-`--no-history-sync-standby` flag to disable the attempt for one of these three
-commands. The flag is not available on read-only commands or `history-sync`.
-
-`history-sync` provides strict synchronization:
-
-```bash
-./gpbackman history-sync --auto-load-history-db
-```
-
-It exits successfully only after a verified snapshot has been installed
-atomically on an up standby. An ineligible source, no up standby, a busy sync
-lock, or any discovery, snapshot, transfer, or installation error causes a
-nonzero exit.
-
-The source must resolve to
-`<primary-coordinator-data-directory>/gpbackup_history.db`. An explicit
-`--history-db` path is accepted only when its canonical path is that cluster
-database; a symlink to that file is accepted. A custom database is not
-synchronized. With `--auto-load-history-db`, gpBackMan resolves the file from
-`$COORDINATOR_DATA_DIRECTORY`. Without either option, gpBackMan uses the
-working-directory database for normal command behavior, but standby
-synchronization skips it; therefore a strict `history-sync` call fails.
-`--history-db` takes precedence when both global options are present.
-
-Synchronization requires an up standby coordinator, `ssh` and `rsync` on the
-host running gpBackMan, and non-interactive SSH access for the current OS user.
-The user must be able to read the primary history database, create its adjacent
-`.sync.lock`, write temporary files in the standby coordinator data directory,
-and preserve the existing standby file's owner, group, and mode.
-
-gpBackMan creates and validates a consistent SQLite snapshot before transfer,
-copies it to a unique standby temporary path, and atomically renames it into
-place. Readers never see a partial copy. This does not coordinate a concurrent
-coordinator failover: a role change can race with discovery and installation,
-and a process that already has the old database open continues using that old
-inode until it reopens the file.
 
 ## About
 
