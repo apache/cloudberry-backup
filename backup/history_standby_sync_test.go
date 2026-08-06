@@ -344,7 +344,7 @@ var _ = Describe("backup history standby sync", func() {
 		Expect(mock.ExpectationsWereMet()).To(Succeed())
 	})
 
-	It("quotes remote shell paths in rsync, install, and cleanup commands", func() {
+	It("passes rsync paths as arguments and quotes remote shell paths", func() {
 		remoteTempPath := "/data dir/standby's/.gpbackup_history.db.tmp"
 		destPath := "/data dir/standby's/gpbackup_history.db"
 
@@ -354,7 +354,7 @@ var _ = Describe("backup history standby sync", func() {
 			backupHistoryStandbySyncSSHOptions,
 			"--",
 			"/tmp/snapshot",
-			"gpadmin@sdw-standby:" + shellQuoteBackupHistoryStandbySyncPath(remoteTempPath),
+			"gpadmin@sdw-standby:" + remoteTempPath,
 		}))
 		installCommand := buildBackupHistoryStandbySyncRemoteInstallCommand(remoteTempPath, destPath)
 		Expect(installCommand).To(ContainSubstring("test -f " + shellQuoteBackupHistoryStandbySyncPath(remoteTempPath)))

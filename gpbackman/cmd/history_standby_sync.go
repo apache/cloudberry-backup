@@ -397,7 +397,7 @@ func buildHistoryStandbySyncRsyncArgs(snapshotPath, standbyHost, userName, remot
 		historyStandbySyncSSHOptions,
 		"--",
 		snapshotPath,
-		fmt.Sprintf("%s@%s:%s", userName, standbyHost, shellQuoteHistoryStandbySyncPath(remoteTempPath)),
+		fmt.Sprintf("%s@%s:%s", userName, standbyHost, remoteTempPath),
 	}
 }
 
