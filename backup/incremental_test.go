@@ -61,7 +61,12 @@ var _ = Describe("backup/incremental tests", func() {
 			tblAOUnchanged,
 		}
 
-		filteredTables := backup.FilterTablesForIncremental(&prevTOC, &currTOC, tables)
+		// FilterTablesForIncremental reads --ao-file-hash / --heap-file-hash flags via MustGetFlagBool,
+		// so the call must happen after BeforeSuite initializes cmdFlags — i.e. inside a leaf node.
+		var filteredTables []backup.Table
+		JustBeforeEach(func() {
+			filteredTables = backup.FilterTablesForIncremental(&prevTOC, &currTOC, tables)
+		})
 
 		It("Should include the heap table in the filtered list", func() {
 			Expect(filteredTables).To(ContainElement(tblHeap))

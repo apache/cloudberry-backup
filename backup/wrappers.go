@@ -760,8 +760,64 @@ func backupTableStatistics(statisticsFile *utils.FileWithByteCount, tables []Tab
 }
 
 func backupIncrementalMetadata() {
+	// Always collect AO metadata via modcount + DDL timestamp.
 	aoTableEntries := GetAOIncrementalMetadata(connectionPool)
 	globalTOC.IncrementalMetadata.AO = aoTableEntries
+
+	useHeapHash := MustGetFlagBool(options.HEAP_FILE_HASH)
+	useAOHash := MustGetFlagBool(options.AO_FILE_HASH)
+
+	if !useHeapHash && !useAOHash {
+		gplog.Info("Collected incremental metadata: %d AO tables", len(aoTableEntries))
+		return
+	}
+
+	aoContentHashCount := 0
+	if useAOHash {
+		gplog.Info("Collecting AO aoseg content hashes (--ao-file-hash)")
+		aoContentHashes := GetAOContentHashes(connectionPool)
+		aoContentHashCount = len(aoContentHashes)
+		for fqn, hash := range aoContentHashes {
+			if existing, ok := aoTableEntries[fqn]; ok {
+				existing.FileHashMD5 = hash
+				aoTableEntries[fqn] = existing
+			}
+		}
+		globalTOC.IncrementalMetadata.AO = aoTableEntries
+	}
+
+	heapHashCount := 0
+	if useHeapHash {
+		if !ensureFileStatFunction(connectionPool) {
+			gplog.Warn("File hash setup incomplete, skipping heap file hash collection")
+		} else {
+			hashConn := dbconn.NewDBConnFromEnvironment(connectionPool.DBName)
+			hashConn.MustConnect(1)
+			defer hashConn.Close()
+
+			// CHECKPOINT flushes dirty pages so pg_stat_file sees up-to-date mtime/size.
+			gplog.Verbose("Executing CHECKPOINT before heap file hash collection")
+			if _, cpErr := hashConn.Exec("CHECKPOINT;", 0); cpErr != nil {
+				gplog.Warn("CHECKPOINT failed (non-fatal, file hashes may be stale): %v", cpErr)
+			}
+
+			heapTables := getHeapTables(connectionPool)
+			heapFileHashes := getFileHashesForTables(hashConn, heapTables)
+			heapEntries := make(map[string]toc.HeapEntry)
+			for fqn, hash := range heapFileHashes {
+				if hash != "" {
+					heapEntries[fqn] = toc.HeapEntry{FileHashMD5: hash}
+				}
+			}
+			if len(heapEntries) > 0 {
+				globalTOC.IncrementalMetadata.Heap = heapEntries
+			}
+			heapHashCount = len(heapEntries)
+		}
+	}
+
+	gplog.Info("Collected incremental metadata: %d AO tables (%d with content hash), %d heap tables",
+		len(aoTableEntries), aoContentHashCount, heapHashCount)
 }
 
 func backupStorageServers(metadataFile *utils.FileWithByteCount) {

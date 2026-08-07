@@ -54,6 +54,8 @@ const (
 	RESIZE_CLUSTER        = "resize-cluster"
 	NO_INHERITS           = "no-inherits"
 	REPORT_DIR            = "report-dir"
+	HEAP_FILE_HASH        = "heap-file-hash"
+	AO_FILE_HASH          = "ao-file-hash"
 )
 
 func SetBackupFlagDefaults(flagSet *pflag.FlagSet) {
@@ -89,6 +91,8 @@ func SetBackupFlagDefaults(flagSet *pflag.FlagSet) {
 	flagSet.Bool(WITH_STATS, false, "Back up query plan statistics")
 	flagSet.Bool(WITHOUT_GLOBALS, false, "Skip backup of global metadata")
 	flagSet.Bool(NO_INHERITS, false, "For a filtered backup, don't back up all tables that inherit included tables")
+	flagSet.Bool(HEAP_FILE_HASH, false, "Use file timestamp hash (CHECKPOINT + pg_stat_file) to detect heap table changes for incremental backup")
+	flagSet.Bool(AO_FILE_HASH, false, "Use aoseg content hash (eof+tupcount) for per-partition AO table change detection; avoids GP5 modcount cross-partition propagation")
 }
 
 func SetRestoreFlagDefaults(flagSet *pflag.FlagSet) {
