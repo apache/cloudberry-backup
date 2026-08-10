@@ -108,6 +108,14 @@ standby synchronization for one backup:
 gpbackup --dbname <your_db_name> --no-history-sync-standby
 ```
 
+Configure the sync timeout with `--history-sync-standby-timeout SECONDS`. The
+default is 300 seconds; the supported range is 1 to 86400 seconds. The timeout
+is one shared budget for `rsync` and remote install. It starts after snapshot
+validation. Standby discovery and SQLite snapshot creation and validation
+(`VACUUM INTO` and `PRAGMA quick_check`) are outside this budget. If a
+transport step fails, remote cleanup of the temporary file uses its own fixed
+120-second timeout, independent of `--history-sync-standby-timeout`.
+
 The synchronization process:
 
 1. Takes a non-waiting lock next to the canonical source database.

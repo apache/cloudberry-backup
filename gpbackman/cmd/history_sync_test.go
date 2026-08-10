@@ -21,7 +21,9 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"errors"
+	"fmt"
 	"os"
 
 	"github.com/apache/cloudberry-go-libs/testhelper"
@@ -70,10 +72,53 @@ var _ = Describe("history sync command", func() {
 			Expect(rootCmd.PersistentFlags().Lookup(noHistorySyncStandbyFlagName)).To(BeNil())
 		})
 
-		It("keeps history-sync strict with inherited global flags and no local flags", func() {
+		It("registers history-sync-standby-timeout only on sync-capable commands", func() {
+			syncCommands := map[string]bool{
+				"history-sync":  true,
+				"backup-delete": true,
+				"backup-clean":  true,
+				"history-clean": true,
+			}
+
+			for _, command := range rootCmd.Commands() {
+				flag := command.Flags().Lookup(historySyncStandbyTimeoutFlagName)
+				if syncCommands[command.Name()] {
+					Expect(flag).ToNot(BeNil(), command.Name())
+					Expect(flag.DefValue).To(Equal("300"), command.Name())
+					continue
+				}
+				Expect(flag).To(BeNil(), command.Name())
+			}
+			Expect(rootCmd.PersistentFlags().Lookup(historySyncStandbyTimeoutFlagName)).To(BeNil())
+		})
+
+		DescribeTable("rejects non-integer timeout values",
+			func(value string) {
+				flag := historySyncCmd.Flags().Lookup(historySyncStandbyTimeoutFlagName)
+				Expect(flag).ToNot(BeNil())
+				Expect(flag.Value.Set(value)).ToNot(Succeed())
+			},
+			Entry("fractional", "1.5"),
+			Entry("duration", "5m"),
+		)
+
+		It("accepts a custom timeout in seconds", func() {
+			originalTimeout := historyStandbySyncTimeoutSeconds
+			flag := historySyncCmd.Flags().Lookup(historySyncStandbyTimeoutFlagName)
+			originalChanged := flag.Changed
+			DeferCleanup(func() {
+				historyStandbySyncTimeoutSeconds = originalTimeout
+				flag.Changed = originalChanged
+			})
+
+			Expect(historySyncCmd.Flags().Set(historySyncStandbyTimeoutFlagName, "600")).To(Succeed())
+			Expect(historyStandbySyncTimeoutSeconds).To(Equal(600))
+		})
+
+		It("keeps history-sync strict with inherited global flags and its timeout flag", func() {
 			Expect(commandByName("history-sync")).To(Equal(historySyncCmd))
 			Expect(historySyncCmd.Args(historySyncCmd, []string{"unexpected"})).To(HaveOccurred())
-			Expect(flagNames(historySyncCmd.LocalFlags())).To(BeEmpty())
+			Expect(flagNames(historySyncCmd.LocalFlags())).To(Equal([]string{historySyncStandbyTimeoutFlagName}))
 			Expect(historySyncCmd.Flags().Lookup(noHistorySyncStandbyFlagName)).To(BeNil())
 			for _, flagName := range []string{
 				historyDBFlagName,
@@ -136,6 +181,22 @@ var _ = Describe("history sync command", func() {
 			Expect(exitCodes).To(BeEmpty())
 		})
 
+		DescribeTable("rejects a standby history sync timeout outside the supported range", func(timeoutSeconds int) {
+			originalTimeout := historyStandbySyncTimeoutSeconds
+			DeferCleanup(func() {
+				historyStandbySyncTimeoutSeconds = originalTimeout
+			})
+			historyStandbySyncTimeoutSeconds = timeoutSeconds
+
+			doRootFlagValidation(historySyncCmd.Flags(), false)
+
+			Expect(exitCodes).To(Equal([]int{exitErrorCode}))
+		},
+			Entry("zero", 0),
+			Entry("negative", -1),
+			Entry("more than one day", 86401),
+		)
+
 		It("treats the default working-directory source as a strict error", func() {
 			stdout, stderr, _ := testhelper.SetupTestLogger()
 			historyStandbySync = syncHistoryStandby
@@ -174,6 +235,11 @@ var _ = Describe("history sync command", func() {
 					name:   "stage error",
 					result: historyStandbySyncResult{err: errors.New("validate standby history sync snapshot quick_check failed")},
 					want:   "validate standby history sync snapshot quick_check failed",
+				},
+				{
+					name:   "transport timeout",
+					result: historyStandbySyncResult{err: fmt.Errorf("rsync standby history snapshot timed out after 300 seconds: %w", context.DeadlineExceeded)},
+					want:   "rsync standby history snapshot timed out after 300 seconds",
 				},
 			}
 

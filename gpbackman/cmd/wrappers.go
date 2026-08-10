@@ -20,6 +20,7 @@ under the License.
 package cmd
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"os"
@@ -41,8 +42,8 @@ type combinedOutputCommand interface {
 	CombinedOutput() ([]byte, error)
 }
 
-var execCombinedOutputCommand = func(name string, args ...string) combinedOutputCommand {
-	return exec.Command(name, args...)
+var execCombinedOutputCommand = func(ctx context.Context, name string, args ...string) combinedOutputCommand {
+	return exec.CommandContext(ctx, name, args...)
 }
 
 func logHeadersDebug() {

@@ -34,35 +34,37 @@ const (
 	historyDBNameConst       = historyFileNameBaseConst + historyFileDBSuffixConst
 
 	// Flags.
-	historyDBFlagName            = "history-db"
-	autoLoadHistoryDBFlagName    = "auto-load-history-db"
-	logFileFlagName              = "log-file"
-	logLevelConsoleFlagName      = "log-level-console"
-	logLevelFileFlagName         = "log-level-file"
-	timestampFlagName            = "timestamp"
-	pluginConfigFileFlagName     = "plugin-config"
-	reportFilePluginPathFlagName = "plugin-report-file-path"
-	deletedFlagName              = "deleted"
-	failedFlagName               = "failed"
-	cascadeFlagName              = "cascade"
-	forceFlagName                = "force"
-	olderThanDaysFlagName        = "older-than-days"
-	beforeTimestampFlagName      = "before-timestamp"
-	afterTimestampFlagName       = "after-timestamp"
-	typeFlagName                 = "type"
-	tableFlagName                = "table"
-	schemaFlagName               = "schema"
-	excludeFlagName              = "exclude"
-	backupDirFlagName            = "backup-dir"
-	parallelProcessesFlagName    = "parallel-processes"
-	ignoreErrorsFlagName         = "ignore-errors"
-	noHistorySyncStandbyFlagName = "no-history-sync-standby"
-	detailFlagName               = "detail"
+	historyDBFlagName                 = "history-db"
+	autoLoadHistoryDBFlagName         = "auto-load-history-db"
+	logFileFlagName                   = "log-file"
+	logLevelConsoleFlagName           = "log-level-console"
+	logLevelFileFlagName              = "log-level-file"
+	timestampFlagName                 = "timestamp"
+	pluginConfigFileFlagName          = "plugin-config"
+	reportFilePluginPathFlagName      = "plugin-report-file-path"
+	deletedFlagName                   = "deleted"
+	failedFlagName                    = "failed"
+	cascadeFlagName                   = "cascade"
+	forceFlagName                     = "force"
+	olderThanDaysFlagName             = "older-than-days"
+	beforeTimestampFlagName           = "before-timestamp"
+	afterTimestampFlagName            = "after-timestamp"
+	typeFlagName                      = "type"
+	tableFlagName                     = "table"
+	schemaFlagName                    = "schema"
+	excludeFlagName                   = "exclude"
+	backupDirFlagName                 = "backup-dir"
+	parallelProcessesFlagName         = "parallel-processes"
+	ignoreErrorsFlagName              = "ignore-errors"
+	noHistorySyncStandbyFlagName      = "no-history-sync-standby"
+	historySyncStandbyTimeoutFlagName = "history-sync-standby-timeout"
+	detailFlagName                    = "detail"
 
 	exitErrorCode = 1
 
 	// Default for checking the existence of the file.
-	checkFileExistsConst = true
+	checkFileExistsConst             = true
+	historySyncStandbyTimeoutDefault = 300
 
 	// Batch size for deleting from sqlite3.
 	// This is to prevent problem with sqlite3.

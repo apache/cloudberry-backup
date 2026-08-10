@@ -20,12 +20,14 @@ under the License.
 package backup
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
+	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	backupfilepath "github.com/apache/cloudberry-backup/filepath"
@@ -42,8 +44,12 @@ import (
 )
 
 type backupHistoryStandbySyncCommandCall struct {
-	name string
-	args []string
+	ctx         context.Context
+	ctxErr      error
+	deadline    time.Time
+	hasDeadline bool
+	name        string
+	args        []string
 }
 
 type backupHistoryStandbySyncCommandResponse struct {
@@ -62,8 +68,9 @@ func (c backupHistoryStandbySyncFakeCommand) CombinedOutput() ([]byte, error) {
 
 var _ = Describe("backup history standby sync", func() {
 	var (
-		originalSync       func() (string, error)
-		originalOpenSQLite func(string, string) (*sql.DB, error)
+		originalSync               func() (string, error)
+		originalOpenSQLite         func(string, string) (*sql.DB, error)
+		originalContextWithTimeout func(context.Context, time.Duration) (context.Context, context.CancelFunc)
 	)
 
 	BeforeEach(func() {
@@ -74,9 +81,11 @@ var _ = Describe("backup history standby sync", func() {
 		connectionPool = nil
 		originalSync = backupHistoryStandbySync
 		originalOpenSQLite = backupHistoryStandbySyncOpenSQLite
+		originalContextWithTimeout = backupHistoryStandbySyncContextWithTimeout
 		backupHistoryStandbySync = syncBackupHistoryToStandby
 		backupHistoryStandbySyncOpenSQLite = sql.Open
-		backupHistoryStandbySyncCommandExec = func(name string, args ...string) backupHistoryStandbySyncCommand {
+		backupHistoryStandbySyncContextWithTimeout = context.WithTimeout
+		backupHistoryStandbySyncCommandExec = func(ctx context.Context, name string, args ...string) backupHistoryStandbySyncCommand {
 			return backupHistoryStandbySyncFakeCommand{}
 		}
 		backupHistoryStandbySyncMkdirTemp = os.MkdirTemp
@@ -89,7 +98,8 @@ var _ = Describe("backup history standby sync", func() {
 	AfterEach(func() {
 		backupHistoryStandbySync = originalSync
 		backupHistoryStandbySyncOpenSQLite = originalOpenSQLite
-		backupHistoryStandbySyncCommandExec = func(name string, args ...string) backupHistoryStandbySyncCommand {
+		backupHistoryStandbySyncContextWithTimeout = originalContextWithTimeout
+		backupHistoryStandbySyncCommandExec = func(ctx context.Context, name string, args ...string) backupHistoryStandbySyncCommand {
 			return backupHistoryStandbySyncFakeCommand{}
 		}
 		backupHistoryStandbySyncMkdirTemp = os.MkdirTemp
@@ -267,7 +277,10 @@ var _ = Describe("backup history standby sync", func() {
 		}
 
 		commandCalls := setBackupHistoryStandbySyncCommands([]backupHistoryStandbySyncCommandResponse{{}, {}})
+		start := time.Now()
+		Expect(cmdFlags.Set(options.HISTORY_SYNC_STANDBY_TIMEOUT, "600")).To(Succeed())
 		skipReason, err := syncBackupHistoryToStandby()
+		finished := time.Now()
 
 		Expect(err).ToNot(HaveOccurred())
 		Expect(skipReason).To(BeEmpty())
@@ -278,7 +291,14 @@ var _ = Describe("backup history standby sync", func() {
 		Expect((*commandCalls)[0].name).To(Equal("rsync"))
 		Expect((*commandCalls)[0].args).To(Equal(buildBackupHistoryStandbySyncRsyncArgs(snapshotPath, "sdw-standby", "gpadmin", remoteTempPath)))
 		Expect((*commandCalls)[1].name).To(Equal("ssh"))
+		Expect((*commandCalls)[1].ctx).To(BeIdenticalTo((*commandCalls)[0].ctx))
+		deadline, ok := (*commandCalls)[0].ctx.Deadline()
+		Expect(ok).To(BeTrue())
+		Expect(deadline).To(BeTemporally(">=", start.Add(600*time.Second)))
+		Expect(deadline).To(BeTemporally("<=", finished.Add(600*time.Second)))
 		Expect((*commandCalls)[1].args).To(Equal([]string{
+			"-o",
+			"BatchMode=yes",
 			"-o",
 			"StrictHostKeyChecking=no",
 			"-o",
@@ -288,6 +308,41 @@ var _ = Describe("backup history standby sync", func() {
 		}))
 		_, err = os.Stat(snapshotDir)
 		Expect(errors.Is(err, os.ErrNotExist)).To(BeTrue())
+	})
+
+	It("returns the rsync stage, configured seconds, and DeadlineExceeded without waiting", func() {
+		tmpDir := GinkgoT().TempDir()
+		primaryDataDir := filepath.Join(tmpDir, "primary")
+		standbyDataDir := filepath.Join(tmpDir, "standby")
+		Expect(os.Mkdir(primaryDataDir, 0o700)).To(Succeed())
+		sourcePath := filepath.Join(primaryDataDir, backupHistoryDBName)
+		createBackupHistoryStandbySyncSQLiteDB(sourcePath)
+		globalFPInfo = backupfilepath.FilePathInfo{SegDirMap: map[int]string{-1: primaryDataDir}}
+		mock := setupBackupHistoryStandbySyncConnection()
+		expectBackupHistoryStandbySyncStandby(mock, "sdw-standby", standbyDataDir)
+		Expect(cmdFlags.Set(options.HISTORY_SYNC_STANDBY_TIMEOUT, "600")).To(Succeed())
+		backupHistoryStandbySyncContextWithTimeout = func(parent context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
+			Expect(timeout).To(Equal(600 * time.Second))
+			return context.WithDeadline(parent, time.Now().Add(-time.Second))
+		}
+		commandCalls := setBackupHistoryStandbySyncCommands([]backupHistoryStandbySyncCommandResponse{{}, {}})
+		start := time.Now()
+
+		_, err := syncBackupHistoryToStandby()
+		finished := time.Now()
+
+		Expect(err).To(HaveOccurred())
+		Expect(errors.Is(err, context.DeadlineExceeded)).To(BeTrue())
+		Expect(err.Error()).To(ContainSubstring("rsync standby history snapshot"))
+		Expect(err.Error()).To(ContainSubstring("timed out after 600 seconds"))
+		Expect(*commandCalls).To(HaveLen(2))
+		Expect((*commandCalls)[0].ctxErr).To(Equal(context.DeadlineExceeded))
+		Expect((*commandCalls)[1].ctx).ToNot(BeIdenticalTo((*commandCalls)[0].ctx))
+		Expect((*commandCalls)[1].ctxErr).ToNot(HaveOccurred())
+		Expect((*commandCalls)[1].hasDeadline).To(BeTrue())
+		Expect((*commandCalls)[1].deadline).To(BeTemporally(">=", start.Add(backupHistoryStandbySyncCleanupTimeout)))
+		Expect((*commandCalls)[1].deadline).To(BeTemporally("<=", finished.Add(backupHistoryStandbySyncCleanupTimeout)))
+		Expect(mock.ExpectationsWereMet()).To(Succeed())
 	})
 
 	It("releases the source lock after transport errors", func() {
@@ -347,6 +402,7 @@ var _ = Describe("backup history standby sync", func() {
 	It("passes rsync paths as arguments and quotes remote shell paths", func() {
 		remoteTempPath := "/data dir/standby's/.gpbackup_history.db.tmp"
 		destPath := "/data dir/standby's/gpbackup_history.db"
+		Expect(backupHistoryStandbySyncSSHOptions).To(ContainSubstring("BatchMode=yes"))
 
 		Expect(buildBackupHistoryStandbySyncRsyncArgs("/tmp/snapshot", "sdw-standby", "gpadmin", remoteTempPath)).To(Equal([]string{
 			"-p",
@@ -365,19 +421,29 @@ var _ = Describe("backup history standby sync", func() {
 	})
 
 	It("chains remote cleanup errors onto the primary transport error", func() {
+		cleanupCommandErr := fmt.Errorf("cleanup timeout: %w", context.DeadlineExceeded)
 		commandCalls := setBackupHistoryStandbySyncCommands([]backupHistoryStandbySyncCommandResponse{
-			{output: []byte("cleanup failed"), err: errors.New("exit status 255")},
+			{output: []byte("cleanup failed"), err: cleanupCommandErr},
 		})
 		primaryErr := errors.New("install failed")
+		start := time.Now()
 
 		err := cleanupBackupHistoryStandbySyncRemoteTempAfterError(primaryErr, "sdw-standby", "gpadmin", "/standby/.tmp")
+		finished := time.Now()
 
 		Expect(err).To(HaveOccurred())
+		Expect(errors.Is(err, primaryErr)).To(BeTrue())
+		Expect(errors.Is(err, cleanupCommandErr)).To(BeTrue())
+		Expect(errors.Is(err, context.DeadlineExceeded)).To(BeTrue())
 		Expect(err.Error()).To(ContainSubstring("install failed"))
 		Expect(err.Error()).To(ContainSubstring("additionally failed to clean up remote temp file"))
 		Expect(err.Error()).To(ContainSubstring("cleanup failed"))
 		Expect(*commandCalls).To(HaveLen(1))
 		Expect((*commandCalls)[0].name).To(Equal("ssh"))
+		Expect((*commandCalls)[0].ctxErr).ToNot(HaveOccurred())
+		Expect((*commandCalls)[0].hasDeadline).To(BeTrue())
+		Expect((*commandCalls)[0].deadline).To(BeTemporally(">=", start.Add(backupHistoryStandbySyncCleanupTimeout)))
+		Expect((*commandCalls)[0].deadline).To(BeTemporally("<=", finished.Add(backupHistoryStandbySyncCleanupTimeout)))
 	})
 
 	It("logs disabled automatic sync without invoking discovery", func() {
@@ -402,13 +468,14 @@ var _ = Describe("backup history standby sync", func() {
 		DeferCleanup(gplog.SetErrorCode, originalErrorCode)
 		gplog.SetErrorCode(0)
 		backupHistoryStandbySync = func() (string, error) {
-			return "", errors.New("transport failed")
+			return "", fmt.Errorf("standby history sync transport timed out after 300 seconds: %w", context.DeadlineExceeded)
 		}
 
 		_, err := syncBackupHistoryToStandbyBestEffort(false)
 
 		Expect(err).To(HaveOccurred())
-		Expect(string(stdout.Contents())).To(ContainSubstring("History db sync to standby coordinator failed; standby history may be stale: transport failed"))
+		Expect(errors.Is(err, context.DeadlineExceeded)).To(BeTrue())
+		Expect(string(stdout.Contents())).To(ContainSubstring("History db sync to standby coordinator failed; standby history may be stale: standby history sync transport timed out after 300 seconds"))
 		Expect(gplog.GetErrorCode()).To(Equal(0))
 	})
 
@@ -423,7 +490,7 @@ var _ = Describe("backup history standby sync", func() {
 		defer func() {
 			backupHistoryStandbySync = originalBestEffort
 		}()
-		backupHistoryStandbySyncCommandExec = func(name string, args ...string) backupHistoryStandbySyncCommand {
+		backupHistoryStandbySyncCommandExec = func(ctx context.Context, name string, args ...string) backupHistoryStandbySyncCommand {
 			return backupHistoryStandbySyncFakeCommand{}
 		}
 
@@ -478,8 +545,16 @@ func expectBackupHistoryStandbySyncStandby(mock sqlmock.Sqlmock, host, dataDir s
 
 func setBackupHistoryStandbySyncCommands(responses []backupHistoryStandbySyncCommandResponse) *[]backupHistoryStandbySyncCommandCall {
 	calls := make([]backupHistoryStandbySyncCommandCall, 0)
-	backupHistoryStandbySyncCommandExec = func(name string, args ...string) backupHistoryStandbySyncCommand {
-		calls = append(calls, backupHistoryStandbySyncCommandCall{name: name, args: append([]string{}, args...)})
+	backupHistoryStandbySyncCommandExec = func(ctx context.Context, name string, args ...string) backupHistoryStandbySyncCommand {
+		deadline, hasDeadline := ctx.Deadline()
+		calls = append(calls, backupHistoryStandbySyncCommandCall{
+			ctx:         ctx,
+			ctxErr:      ctx.Err(),
+			deadline:    deadline,
+			hasDeadline: hasDeadline,
+			name:        name,
+			args:        append([]string{}, args...),
+		})
 		response := backupHistoryStandbySyncCommandResponse{}
 		if len(calls) <= len(responses) {
 			response = responses[len(calls)-1]

@@ -165,6 +165,10 @@ func validateFlagCombinations(flags *pflag.FlagSet) {
 }
 
 func validateFlagValues() {
+	timeoutSeconds := MustGetFlagInt(options.HISTORY_SYNC_STANDBY_TIMEOUT)
+	if timeoutSeconds <= 0 || timeoutSeconds > maxHistorySyncStandbyTimeoutSeconds {
+		gplog.Fatal(errors.Errorf("--%s must be between 1 and %d seconds", options.HISTORY_SYNC_STANDBY_TIMEOUT, maxHistorySyncStandbyTimeoutSeconds), "")
+	}
 	err := utils.ValidateFullPath(MustGetFlagString(options.BACKUP_DIR))
 	gplog.FatalOnError(err)
 	err = utils.ValidateFullPath(MustGetFlagString(options.PLUGIN_CONFIG))

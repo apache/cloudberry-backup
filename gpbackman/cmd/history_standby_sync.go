@@ -20,6 +20,7 @@ under the License.
 package cmd
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -39,8 +40,14 @@ import (
 )
 
 const (
-	historyStandbySyncSSHOptions     = "ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30"
+	historyStandbySyncSSHOptions     = "ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o ConnectTimeout=30"
 	historyStandbySyncTempDirPattern = "gpbackman-history-standby-sync-%s-%d-*"
+	// Leave enough time for the 30-second SSH connection timeout and remote removal
+	// while keeping failure cleanup bounded.
+	historyStandbySyncCleanupTimeout = 120 * time.Second
+	// Cap the timeout at one day to catch accidentally oversized CLI values.
+	// A longer transport deadline is not meaningful for standby history synchronization.
+	historySyncStandbyTimeoutMax = int(24 * time.Hour / time.Second)
 )
 
 type historyStandbySyncResult struct {
@@ -57,14 +64,16 @@ type historyStandbySyncTarget struct {
 }
 
 var (
-	historyStandbySync                = syncHistoryStandby
-	historyStandbySyncOpenClusterConn = gpbckpconfig.NewClusterLocalClusterDefaultConn
-	historyStandbySyncOpenSQLite      = sql.Open
-	historyStandbySyncMkdirTemp       = os.MkdirTemp
-	historyStandbySyncRemoveAll       = os.RemoveAll
-	historyStandbySyncNow             = time.Now
-	historyStandbySyncPID             = os.Getpid
-	historyStandbySyncCurrentUser     = func() (string, error) {
+	historyStandbySync                   = syncHistoryStandby
+	historyStandbySyncOpenClusterConn    = gpbckpconfig.NewClusterLocalClusterDefaultConn
+	historyStandbySyncOpenSQLite         = sql.Open
+	historyStandbySyncMkdirTemp          = os.MkdirTemp
+	historyStandbySyncRemoveAll          = os.RemoveAll
+	historyStandbySyncNow                = time.Now
+	historyStandbySyncPID                = os.Getpid
+	historyStandbySyncTimeoutSeconds     = historySyncStandbyTimeoutDefault
+	historyStandbySyncContextWithTimeout = context.WithTimeout
+	historyStandbySyncCurrentUser        = func() (string, error) {
 		currentUser, err := operating.System.CurrentUser()
 		if err != nil {
 			return "", err
@@ -125,7 +134,14 @@ func syncHistoryStandby() historyStandbySyncResult {
 	gplog.Info("%s", textmsg.InfoTextHistoryStandbySyncStart(target.sourceDBPath))
 	err = withHistoryStandbySyncLock(target.sourceDBPath, func() error {
 		return withHistoryStandbySyncSnapshot(target.sourceDBPath, target.sourceMode, func(snapshotPath string) error {
-			return syncHistoryStandbySnapshotToStandby(target, userName, snapshotPath)
+			ctx, cancel := historyStandbySyncContextWithTimeout(context.Background(), time.Duration(historyStandbySyncTimeoutSeconds)*time.Second)
+			defer cancel()
+
+			transportErr := syncHistoryStandbySnapshotToStandby(ctx, target, userName, snapshotPath)
+			if transportErr != nil && errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				return fmt.Errorf("standby history sync transport timed out after %d seconds: %w", historyStandbySyncTimeoutSeconds, transportErr)
+			}
+			return transportErr
 		})
 	})
 	if err != nil {
@@ -365,12 +381,12 @@ func cleanupHistoryStandbySyncTempDir(tempDir string) error {
 	return nil
 }
 
-func syncHistoryStandbySnapshotToStandby(target *historyStandbySyncTarget, userName, snapshotPath string) error {
+func syncHistoryStandbySnapshotToStandby(ctx context.Context, target *historyStandbySyncTarget, userName, snapshotPath string) error {
 	remoteTempPath := newHistoryStandbySyncRemoteTempPath(target.standbyDataDir, snapshotPath)
-	if err := rsyncHistoryStandbySyncSnapshot(snapshotPath, target.standbyHost, userName, remoteTempPath); err != nil {
+	if err := rsyncHistoryStandbySyncSnapshot(ctx, snapshotPath, target.standbyHost, userName, remoteTempPath); err != nil {
 		return cleanupHistoryStandbySyncRemoteTempAfterError(err, target.standbyHost, userName, remoteTempPath)
 	}
-	if err := installHistoryStandbySyncSnapshotOnStandby(target, userName, remoteTempPath); err != nil {
+	if err := installHistoryStandbySyncSnapshotOnStandby(ctx, target, userName, remoteTempPath); err != nil {
 		return cleanupHistoryStandbySyncRemoteTempAfterError(err, target.standbyHost, userName, remoteTempPath)
 	}
 	return nil
@@ -380,10 +396,13 @@ func newHistoryStandbySyncRemoteTempPath(standbyDataDir, snapshotPath string) st
 	return filepath.Join(standbyDataDir, fmt.Sprintf(".%s.%s.tmp", historyDBNameConst, filepath.Base(filepath.Dir(snapshotPath))))
 }
 
-func rsyncHistoryStandbySyncSnapshot(snapshotPath, standbyHost, userName, remoteTempPath string) error {
+func rsyncHistoryStandbySyncSnapshot(ctx context.Context, snapshotPath, standbyHost, userName, remoteTempPath string) error {
 	args := buildHistoryStandbySyncRsyncArgs(snapshotPath, standbyHost, userName, remoteTempPath)
 	gplog.Debug("Transfer history db snapshot to standby coordinator: %s -> %s:%s", snapshotPath, standbyHost, remoteTempPath)
-	output, err := execCombinedOutputCommand("rsync", args...).CombinedOutput()
+	output, err := execCombinedOutputCommand(ctx, "rsync", args...).CombinedOutput()
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		err = ctxErr
+	}
 	if err != nil {
 		return fmt.Errorf("rsync standby history snapshot to %s:%s failed: %w%s", standbyHost, remoteTempPath, err, formatHistoryStandbySyncCommandOutput(output))
 	}
@@ -401,10 +420,10 @@ func buildHistoryStandbySyncRsyncArgs(snapshotPath, standbyHost, userName, remot
 	}
 }
 
-func installHistoryStandbySyncSnapshotOnStandby(target *historyStandbySyncTarget, userName, remoteTempPath string) error {
+func installHistoryStandbySyncSnapshotOnStandby(ctx context.Context, target *historyStandbySyncTarget, userName, remoteTempPath string) error {
 	command := buildHistoryStandbySyncRemoteInstallCommand(remoteTempPath, target.standbyHistoryDBPath)
 	gplog.Debug("Install history db snapshot on standby coordinator: %s:%s", target.standbyHost, target.standbyHistoryDBPath)
-	output, err := historyStandbySyncRunSSHCommand(command, target.standbyHost, userName)
+	output, err := historyStandbySyncRunSSHCommand(ctx, command, target.standbyHost, userName)
 	if err != nil {
 		return fmt.Errorf("install standby history snapshot on %s:%s failed: %w%s", target.standbyHost, target.standbyHistoryDBPath, err, formatHistoryStandbySyncCommandOutput(output))
 	}
@@ -428,16 +447,19 @@ func buildHistoryStandbySyncRemoteInstallCommand(remoteTempPath, standbyHistoryD
 }
 
 func cleanupHistoryStandbySyncRemoteTempAfterError(primaryErr error, standbyHost, userName, remoteTempPath string) error {
-	if cleanupErr := cleanupHistoryStandbySyncRemoteTemp(standbyHost, userName, remoteTempPath); cleanupErr != nil {
-		return fmt.Errorf("%w; additionally failed to clean up remote temp file: %v", primaryErr, cleanupErr)
+	cleanupCtx, cancel := context.WithTimeout(context.Background(), historyStandbySyncCleanupTimeout)
+	defer cancel()
+
+	if cleanupErr := cleanupHistoryStandbySyncRemoteTemp(cleanupCtx, standbyHost, userName, remoteTempPath); cleanupErr != nil {
+		return fmt.Errorf("%w; additionally failed to clean up remote temp file: %w", primaryErr, cleanupErr)
 	}
 	return primaryErr
 }
 
-func cleanupHistoryStandbySyncRemoteTemp(standbyHost, userName, remoteTempPath string) error {
+func cleanupHistoryStandbySyncRemoteTemp(ctx context.Context, standbyHost, userName, remoteTempPath string) error {
 	command := buildHistoryStandbySyncRemoteCleanupCommand(remoteTempPath)
 	gplog.Debug("Clean up remote standby history sync temp file: %s:%s", standbyHost, remoteTempPath)
-	output, err := historyStandbySyncRunSSHCommand(command, standbyHost, userName)
+	output, err := historyStandbySyncRunSSHCommand(ctx, command, standbyHost, userName)
 	if err != nil {
 		return fmt.Errorf("clean up remote standby history sync temp file %s:%s failed: %w%s", standbyHost, remoteTempPath, err, formatHistoryStandbySyncCommandOutput(output))
 	}
@@ -448,9 +470,12 @@ func buildHistoryStandbySyncRemoteCleanupCommand(remoteTempPath string) string {
 	return fmt.Sprintf("rm -f -- %s", shellQuoteHistoryStandbySyncPath(remoteTempPath))
 }
 
-func runHistoryStandbySyncSSHCommand(remoteCommand, standbyHost, userName string) ([]byte, error) {
-	return execCombinedOutputCommand(
+func runHistoryStandbySyncSSHCommand(ctx context.Context, remoteCommand, standbyHost, userName string) ([]byte, error) {
+	output, err := execCombinedOutputCommand(
+		ctx,
 		"ssh",
+		"-o",
+		"BatchMode=yes",
 		"-o",
 		"StrictHostKeyChecking=no",
 		"-o",
@@ -458,6 +483,10 @@ func runHistoryStandbySyncSSHCommand(remoteCommand, standbyHost, userName string
 		fmt.Sprintf("%s@%s", userName, standbyHost),
 		remoteCommand,
 	).CombinedOutput()
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return output, ctxErr
+	}
+	return output, err
 }
 
 func historyStandbySyncSQLiteURI(dbPath, mode string) string {

@@ -43,6 +43,12 @@ only after the standby file is replaced atomically with a verified snapshot.`,
 
 func init() {
 	rootCmd.AddCommand(historySyncCmd)
+	historySyncCmd.Flags().IntVar(
+		&historyStandbySyncTimeoutSeconds,
+		historySyncStandbyTimeoutFlagName,
+		historySyncStandbyTimeoutDefault,
+		"shared rsync and remote install timeout in seconds; must be an integer between 1 and 86400",
+	)
 }
 
 func doHistorySync() {

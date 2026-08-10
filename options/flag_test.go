@@ -58,6 +58,39 @@ var _ = Describe("utils/flag tests", func() {
 			})
 		})
 		Context("SetBackupFlagDefaults", func() {
+			It("registers history-sync-standby-timeout with a 300 second default", func() {
+				flagSet := pflag.NewFlagSet("gpbackup", pflag.ContinueOnError)
+				options.SetBackupFlagDefaults(flagSet)
+
+				flag := flagSet.Lookup(options.HISTORY_SYNC_STANDBY_TIMEOUT)
+				Expect(flag).ToNot(BeNil())
+				Expect(flag.DefValue).To(Equal("300"))
+				value, err := flagSet.GetInt(options.HISTORY_SYNC_STANDBY_TIMEOUT)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(value).To(Equal(300))
+			})
+
+			It("accepts a custom standby history sync timeout in seconds", func() {
+				flagSet := pflag.NewFlagSet("gpbackup", pflag.ContinueOnError)
+				options.SetBackupFlagDefaults(flagSet)
+
+				Expect(flagSet.Parse([]string{"--" + options.HISTORY_SYNC_STANDBY_TIMEOUT, "600"})).To(Succeed())
+				value, err := flagSet.GetInt(options.HISTORY_SYNC_STANDBY_TIMEOUT)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(value).To(Equal(600))
+			})
+
+			DescribeTable("rejects non-integer standby history sync timeout values",
+				func(value string) {
+					flagSet := pflag.NewFlagSet("gpbackup", pflag.ContinueOnError)
+					options.SetBackupFlagDefaults(flagSet)
+
+					Expect(flagSet.Parse([]string{"--" + options.HISTORY_SYNC_STANDBY_TIMEOUT, value})).ToNot(Succeed())
+				},
+				Entry("fractional", "1.5"),
+				Entry("duration", "5m"),
+			)
+
 			It("registers no-history-sync-standby for gpbackup with a false default", func() {
 				flagSet := pflag.NewFlagSet("gpbackup", pflag.ContinueOnError)
 				options.SetBackupFlagDefaults(flagSet)
@@ -74,6 +107,7 @@ var _ = Describe("utils/flag tests", func() {
 				options.SetRestoreFlagDefaults(flagSet)
 
 				Expect(flagSet.Lookup(options.NO_HISTORY_SYNC_STANDBY)).To(BeNil())
+				Expect(flagSet.Lookup(options.HISTORY_SYNC_STANDBY_TIMEOUT)).To(BeNil())
 			})
 		})
 	})
