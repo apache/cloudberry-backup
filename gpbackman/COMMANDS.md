@@ -49,6 +49,8 @@ After a successful `backup-delete`, `backup-clean`, or `history-clean`, gpBackMa
 
 The `history-sync`, `backup-delete`, `backup-clean`, and `history-clean` commands accept `--history-sync-standby-timeout SECONDS`. The default is 300 seconds. `SECONDS` must be an integer from 1 to 86400 seconds; `0`, `86401`, fractions, and duration strings such as `5m` are rejected. The 24-hour upper bound guards against accidentally oversized values; a longer timeout is not meaningful for this synchronization. This value is one shared budget for `rsync` and remote install, not a separate timeout for each command. The timeout starts only after snapshot validation and does not include standby discovery, `VACUUM INTO`, or `PRAGMA quick_check`. Remote cleanup after a transport failure uses a separate fixed timeout of 120 seconds. Read-only commands do not accept this option.
 
+`rsync` 3.0.0 or later must be installed on both the host running gpBackMan and the standby coordinator. The current OS user must have non-interactive SSH access to the standby host.
+
 Only `gpbackup_history.db` is synchronized. Report files, backup data, and other backup artifacts are not synchronized.
 
 # Delete all existing backups older than the specified time condition (`backup-clean`)

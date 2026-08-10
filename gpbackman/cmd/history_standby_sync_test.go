@@ -544,13 +544,14 @@ var _ = Describe("history standby sync", func() {
 		Expect(mock.ExpectationsWereMet()).To(Succeed())
 	})
 
-	It("passes rsync paths as arguments and quotes remote shell paths", func() {
+	It("protects rsync paths and quotes remote shell paths", func() {
 		remoteTempPath := "/data dir/standby's/.gpbackup_history.db.tmp"
 		destPath := "/data dir/standby's/gpbackup_history.db"
 		Expect(historyStandbySyncSSHOptions).To(ContainSubstring("BatchMode=yes"))
 
 		Expect(buildHistoryStandbySyncRsyncArgs("/tmp/snapshot", "sdw-standby", "gpadmin", remoteTempPath)).To(Equal([]string{
 			"-p",
+			"-s",
 			"-e",
 			historyStandbySyncSSHOptions,
 			"--",

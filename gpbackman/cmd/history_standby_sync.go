@@ -412,6 +412,7 @@ func rsyncHistoryStandbySyncSnapshot(ctx context.Context, snapshotPath, standbyH
 func buildHistoryStandbySyncRsyncArgs(snapshotPath, standbyHost, userName, remoteTempPath string) []string {
 	return []string{
 		"-p",
+		"-s",
 		"-e",
 		historyStandbySyncSSHOptions,
 		"--",

@@ -25,8 +25,10 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
@@ -399,13 +401,14 @@ var _ = Describe("backup history standby sync", func() {
 		Expect(mock.ExpectationsWereMet()).To(Succeed())
 	})
 
-	It("passes rsync paths as arguments and quotes remote shell paths", func() {
+	It("protects rsync paths and quotes remote shell paths", func() {
 		remoteTempPath := "/data dir/standby's/.gpbackup_history.db.tmp"
 		destPath := "/data dir/standby's/gpbackup_history.db"
 		Expect(backupHistoryStandbySyncSSHOptions).To(ContainSubstring("BatchMode=yes"))
 
 		Expect(buildBackupHistoryStandbySyncRsyncArgs("/tmp/snapshot", "sdw-standby", "gpadmin", remoteTempPath)).To(Equal([]string{
 			"-p",
+			"-s",
 			"-e",
 			backupHistoryStandbySyncSSHOptions,
 			"--",
@@ -418,6 +421,39 @@ var _ = Describe("backup history standby sync", func() {
 		Expect(installCommand).To(ContainSubstring("chmod --reference=" + shellQuoteBackupHistoryStandbySyncPath(destPath) + " -- " + shellQuoteBackupHistoryStandbySyncPath(remoteTempPath)))
 		Expect(installCommand).To(ContainSubstring("mv -f -- " + shellQuoteBackupHistoryStandbySyncPath(remoteTempPath) + " " + shellQuoteBackupHistoryStandbySyncPath(destPath)))
 		Expect(buildBackupHistoryStandbySyncRemoteCleanupCommand(remoteTempPath)).To(Equal("rm -f -- " + shellQuoteBackupHistoryStandbySyncPath(remoteTempPath)))
+	})
+
+	It("keeps protected rsync paths out of the remote shell command", func() {
+		rsyncPath := requireBackupHistoryStandbySyncRsync3()
+		tmpDir := GinkgoT().TempDir()
+		remoteArgsPath := filepath.Join(tmpDir, "remote-args")
+		fakeShellPath := filepath.Join(tmpDir, "fake-ssh")
+		fakeShell := "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$RSYNC_REMOTE_ARGS_FILE\"\nexit 1\n"
+		Expect(os.WriteFile(fakeShellPath, []byte(fakeShell), 0o700)).To(Succeed())
+
+		snapshotPath := filepath.Join(tmpDir, "snapshot")
+		Expect(os.WriteFile(snapshotPath, []byte("snapshot"), 0o600)).To(Succeed())
+		remoteTempPath := "/data dir/standby's/$HOME/[history]*;RSYNC_REMOTE_PATH_SENTINEL"
+		args := buildBackupHistoryStandbySyncRsyncArgs(snapshotPath, "sdw-standby", "gpadmin", remoteTempPath)
+		remoteShellReplaced := false
+		for i := range args {
+			if args[i] == "-e" && i+1 < len(args) {
+				args[i+1] = fakeShellPath
+				remoteShellReplaced = true
+				break
+			}
+		}
+		Expect(remoteShellReplaced).To(BeTrue())
+
+		command := exec.Command(rsyncPath, args...)
+		command.Env = append(os.Environ(), "RSYNC_REMOTE_ARGS_FILE="+remoteArgsPath)
+		_, err := command.CombinedOutput()
+		Expect(err).To(HaveOccurred())
+
+		remoteArgs, err := os.ReadFile(remoteArgsPath)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(string(remoteArgs)).To(ContainSubstring("--server"))
+		Expect(string(remoteArgs)).ToNot(ContainSubstring("RSYNC_REMOTE_PATH_SENTINEL"))
 	})
 
 	It("chains remote cleanup errors onto the primary transport error", func() {
@@ -515,6 +551,32 @@ var _ = Describe("backup history standby sync", func() {
 		Expect(disabledValues).To(BeEmpty())
 	})
 })
+
+func requireBackupHistoryStandbySyncRsync3() string {
+	GinkgoHelper()
+
+	rsyncPath, err := exec.LookPath("rsync")
+	if err != nil {
+		Skip("rsync is not installed")
+		return ""
+	}
+	output, err := exec.Command(rsyncPath, "--version").CombinedOutput()
+	if err != nil {
+		Skip(fmt.Sprintf("cannot determine rsync version: %v", err))
+		return ""
+	}
+	match := regexp.MustCompile(`(?m)^rsync\s+version\s+([0-9]+)\.`).FindStringSubmatch(string(output))
+	if len(match) != 2 {
+		Skip("cannot parse rsync version")
+		return ""
+	}
+	majorVersion, err := strconv.Atoi(match[1])
+	if err != nil || majorVersion < 3 {
+		Skip("rsync 3.0.0 or later is required")
+		return ""
+	}
+	return rsyncPath
+}
 
 func createBackupHistoryStandbySyncSQLiteDB(path string) {
 	db, err := sql.Open("sqlite3", backupHistoryStandbySyncSQLiteURI(path, "rwc"))

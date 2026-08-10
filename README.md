@@ -121,17 +121,18 @@ The synchronization process:
 1. Takes a non-waiting lock next to the canonical source database.
 2. Creates a consistent SQLite snapshot with `VACUUM INTO` and accepts it only
    when `PRAGMA quick_check` returns `ok`.
-3. Transfers the snapshot with `rsync -p` to a unique temporary file in the
+3. Transfers the snapshot with `rsync -p -s` to a unique temporary file in the
    standby coordinator data directory.
 4. Preserves the existing standby file's owner, group, and mode when it
    exists, then atomically renames the temporary file to
    `gpbackup_history.db`.
 
-The host running `gpbackup` must have `ssh` and `rsync`, and the current OS
-user must have non-interactive SSH access to the standby host. That user must
-be able to create files in the standby coordinator data directory and preserve
-the destination file's ownership and permissions. The cluster must expose an
-up standby in `gp_segment_configuration`.
+`rsync` 3.0.0 or later must be installed on both the host running `gpbackup`
+and the standby coordinator. The `gpbackup` host must also have `ssh`, and the
+current OS user must have non-interactive SSH access to the standby host. That
+user must be able to create files in the standby coordinator data directory
+and preserve the destination file's ownership and permissions. The cluster
+must expose an up standby in `gp_segment_configuration`.
 
 The atomic rename prevents readers from observing a partially copied database,
 but it is not a failover coordination mechanism. A coordinator role change

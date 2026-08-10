@@ -39,7 +39,7 @@ import (
 )
 
 const (
-	backupHistoryDBName                    = "gpbackup_history.db"
+	backupHistoryDBName = "gpbackup_history.db"
 	// Leave enough time for the 30-second SSH connection timeout and remote removal
 	// while keeping failure cleanup bounded.
 	backupHistoryStandbySyncCleanupTimeout = 120 * time.Second
@@ -358,6 +358,7 @@ func rsyncBackupHistoryStandbySyncSnapshot(ctx context.Context, snapshotPath, st
 func buildBackupHistoryStandbySyncRsyncArgs(snapshotPath, standbyHost, userName, remoteTempPath string) []string {
 	return []string{
 		"-p",
+		"-s",
 		"-e",
 		backupHistoryStandbySyncSSHOptions,
 		"--",

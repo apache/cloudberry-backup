@@ -87,6 +87,10 @@ validation. Standby discovery and SQLite snapshot creation and validation
 transport step fails, remote cleanup of the temporary file uses its own fixed
 120-second timeout, independent of `--history-sync-standby-timeout`.
 
+`rsync` 3.0.0 or later must be installed on both the host running gpBackMan
+and the standby coordinator. The current OS user must have non-interactive SSH
+access to the standby host.
+
 Only `gpbackup_history.db` is synchronized. Report files, backup data, and other backup artifacts are not synchronized.
 
 ### Detail info about commands
