@@ -400,7 +400,7 @@ func rsyncHistoryStandbySyncSnapshot(ctx context.Context, snapshotPath, standbyH
 	args := buildHistoryStandbySyncRsyncArgs(snapshotPath, standbyHost, userName, remoteTempPath)
 	gplog.Debug("Transfer history db snapshot to standby coordinator: %s -> %s:%s", snapshotPath, standbyHost, remoteTempPath)
 	output, err := execCombinedOutputCommand(ctx, "rsync", args...).CombinedOutput()
-	if ctxErr := ctx.Err(); ctxErr != nil {
+	if ctxErr := ctx.Err(); ctxErr != nil && err != nil {
 		err = ctxErr
 	}
 	if err != nil {
@@ -484,7 +484,7 @@ func runHistoryStandbySyncSSHCommand(ctx context.Context, remoteCommand, standby
 		fmt.Sprintf("%s@%s", userName, standbyHost),
 		remoteCommand,
 	).CombinedOutput()
-	if ctxErr := ctx.Err(); ctxErr != nil {
+	if ctxErr := ctx.Err(); ctxErr != nil && err != nil {
 		return output, ctxErr
 	}
 	return output, err

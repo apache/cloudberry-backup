@@ -448,7 +448,10 @@ var _ = Describe("history standby sync", func() {
 			Expect(timeout).To(Equal(600 * time.Second))
 			return context.WithDeadline(parent, time.Now().Add(-time.Second))
 		}
-		commandCalls := setHistoryStandbySyncCommands([]historyStandbySyncCommandResponse{{}, {}})
+		commandCalls := setHistoryStandbySyncCommands([]historyStandbySyncCommandResponse{
+			{err: context.DeadlineExceeded},
+			{},
+		})
 		start := time.Now()
 
 		result := syncHistoryStandby()
