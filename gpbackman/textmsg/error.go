@@ -147,6 +147,10 @@ func ErrorTextUnableCleanDB(err error) string {
 	return fmt.Sprintf("Unable to clean db. Error: %v", err)
 }
 
+func ErrorTextUnableSyncHistoryDBToStandby(err error) string {
+	return fmt.Sprintf("Unable to sync history db to standby coordinator. Error: %v", err)
+}
+
 func ErrorTextUnableDeletePluginBackup(backupName string, err error) string {
 	return fmt.Sprintf("Unable to delete plugin backup %s. Error: %v", backupName, err)
 }
@@ -257,6 +261,10 @@ func ErrorBackupNotFoundError(backupName string) error {
 
 func ErrorInvalidInputValueError(value string) error {
 	return fmt.Errorf("invalid input value: %s", value)
+}
+
+func ErrorHistoryStandbySyncSkippedError(reason string) error {
+	return fmt.Errorf("history db sync to standby coordinator skipped: %s", reason)
 }
 
 // Error that is returned when backup has specific delete status.
