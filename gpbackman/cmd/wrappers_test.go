@@ -20,6 +20,7 @@ under the License.
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -97,6 +98,106 @@ var _ = Describe("wrappers tests", func() {
 			for _, tt := range tests {
 				Expect(formatBackupDuration(tt.value)).To(Equal(tt.want), tt.name)
 			}
+		})
+	})
+
+	Describe("runHistoryMutationWithStandbySync", func() {
+		var (
+			originalHistoryStandbySync func() historyStandbySyncResult
+			originalExecOSExit         func(int)
+		)
+
+		BeforeEach(func() {
+			originalHistoryStandbySync = historyStandbySync
+			originalExecOSExit = execOSExit
+		})
+
+		AfterEach(func() {
+			historyStandbySync = originalHistoryStandbySync
+			execOSExit = originalExecOSExit
+		})
+
+		It("runs standby sync after successful work returns", func() {
+			calls := make([]string, 0)
+			historyStandbySync = func() historyStandbySyncResult {
+				calls = append(calls, "sync")
+				return historyStandbySyncResult{}
+			}
+
+			runHistoryMutationWithStandbySync(func() error {
+				calls = append(calls, "work")
+				return nil
+			}, false)
+
+			Expect(calls).To(Equal([]string{"work", "sync"}))
+		})
+
+		It("runs standby sync after deferred work cleanup completes", func() {
+			calls := make([]string, 0)
+			historyStandbySync = func() historyStandbySyncResult {
+				calls = append(calls, "sync")
+				return historyStandbySyncResult{}
+			}
+
+			runHistoryMutationWithStandbySync(func() error {
+				calls = append(calls, "work")
+				defer func() {
+					calls = append(calls, "close")
+				}()
+				return nil
+			}, false)
+
+			Expect(calls).To(Equal([]string{"work", "close", "sync"}))
+		})
+
+		It("does not run standby sync after work errors", func() {
+			syncCalls := 0
+			exitCalls := 0
+			historyStandbySync = func() historyStandbySyncResult {
+				syncCalls++
+				return historyStandbySyncResult{}
+			}
+			execOSExit = func(code int) {
+				exitCalls++
+				Expect(code).To(Equal(exitErrorCode))
+			}
+
+			runHistoryMutationWithStandbySync(func() error {
+				return errors.New("work failed")
+			}, false)
+
+			Expect(syncCalls).To(Equal(0))
+			Expect(exitCalls).To(Equal(1))
+		})
+
+		It("keeps the command exit code successful when automatic sync fails", func() {
+			exitCalls := 0
+			historyStandbySync = func() historyStandbySyncResult {
+				return historyStandbySyncResult{err: errors.New("transport failed")}
+			}
+			execOSExit = func(code int) {
+				exitCalls++
+			}
+
+			runHistoryMutationWithStandbySync(func() error {
+				return nil
+			}, false)
+
+			Expect(exitCalls).To(Equal(0))
+		})
+
+		It("honors the disabled automatic policy after successful work", func() {
+			syncCalls := 0
+			historyStandbySync = func() historyStandbySyncResult {
+				syncCalls++
+				return historyStandbySyncResult{}
+			}
+
+			runHistoryMutationWithStandbySync(func() error {
+				return nil
+			}, true)
+
+			Expect(syncCalls).To(Equal(0))
 		})
 	})
 
