@@ -71,3 +71,15 @@ func InfoTextSegmentPrefix(segPrefix string) string {
 func InfoTextNothingToDo() string {
 	return "Nothing to do"
 }
+
+func InfoTextHistoryStandbySyncStart(sourceDBPath string) string {
+	return fmt.Sprintf("Sync history db to standby coordinator: %s", sourceDBPath)
+}
+
+func InfoTextHistoryStandbySyncSuccess(standbyHost, standbyHistoryDBPath string) string {
+	return fmt.Sprintf("History db sync to standby coordinator succeeded: %s:%s", standbyHost, standbyHistoryDBPath)
+}
+
+func InfoTextHistoryStandbySyncSkip(reason string) string {
+	return fmt.Sprintf("Skipping history db sync to standby coordinator: %s", reason)
+}

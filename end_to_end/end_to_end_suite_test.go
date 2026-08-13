@@ -90,15 +90,35 @@ func init() {
  * to allow checking its output.
  */
 func gpbackup(gpbackupPath string, backupHelperPath string, args ...string) []byte {
+	return runGpbackup(gpbackupPath, backupHelperPath, true, args...)
+}
+
+func gpbackupWithHistoryStandbySync(gpbackupPath string, backupHelperPath string, args ...string) []byte {
+	return runGpbackup(gpbackupPath, backupHelperPath, false, args...)
+}
+
+func runGpbackup(gpbackupPath string, backupHelperPath string, disableHistoryStandbySync bool, args ...string) []byte {
 	if useOldBackupVersion {
 		_ = os.Chdir("..")
 		command := exec.Command("make", "install", fmt.Sprintf("helper_path=%s", backupHelperPath))
 		mustRunCommand(command)
 		_ = os.Chdir("end_to_end")
 	}
+	if disableHistoryStandbySync && !useOldBackupVersion && !hasCommandArgument(args, "--no-history-sync-standby") {
+		args = append(args, "--no-history-sync-standby")
+	}
 	args = append([]string{"--verbose", "--dbname", "testdb"}, args...)
 	command := exec.Command(gpbackupPath, args...)
 	return mustRunCommand(command)
+}
+
+func hasCommandArgument(args []string, expected string) bool {
+	for _, arg := range args {
+		if arg == expected {
+			return true
+		}
+	}
+	return false
 }
 
 func gprestore(gprestorePath string, restoreHelperPath string, timestamp string, args ...string) []byte {
@@ -469,13 +489,35 @@ func moveSegmentBackupFiles(tarBaseName string, extractDirectory string, isMulti
 // gpbackman helpers
 
 func gpbackman(args ...string) []byte {
+	return runGpbackman(true, args...)
+}
+
+func gpbackmanWithHistoryStandbySync(args ...string) []byte {
+	return runGpbackman(false, args...)
+}
+
+func runGpbackman(disableHistoryStandbySync bool, args ...string) []byte {
+	args = gpbackmanArgsWithHistoryStandbySyncPolicy(disableHistoryStandbySync, args)
 	command := exec.Command(gpbackmanPath, args...)
 	return mustRunCommand(command)
 }
 
 func gpbackmanWithError(args ...string) ([]byte, error) {
+	args = gpbackmanArgsWithHistoryStandbySyncPolicy(true, args)
 	command := exec.Command(gpbackmanPath, args...)
 	return command.CombinedOutput()
+}
+
+func gpbackmanArgsWithHistoryStandbySyncPolicy(disabled bool, args []string) []string {
+	if !disabled || len(args) == 0 || hasCommandArgument(args, "--no-history-sync-standby") {
+		return args
+	}
+	switch args[0] {
+	case "backup-delete", "backup-clean", "history-clean":
+		return append(args, "--no-history-sync-standby")
+	default:
+		return args
+	}
 }
 
 func getHistoryDBPathForCluster() string {
