@@ -78,6 +78,7 @@ const (
 	TOTAL_RELATIONS               = 37
 	TOTAL_RELATIONS_AFTER_EXCLUDE = 21
 	TOTAL_CREATE_STATEMENTS       = 9
+	gpbackmanFilterDatabase       = "gpbackman_filter_db"
 )
 
 // This function is run automatically by ginkgo before any tests are run.
@@ -90,14 +91,18 @@ func init() {
  * to allow checking its output.
  */
 func gpbackup(gpbackupPath string, backupHelperPath string, args ...string) []byte {
-	return runGpbackup(gpbackupPath, backupHelperPath, true, args...)
+	return gpbackupForDatabase("testdb", gpbackupPath, backupHelperPath, args...)
 }
 
 func gpbackupWithHistoryStandbySync(gpbackupPath string, backupHelperPath string, args ...string) []byte {
-	return runGpbackup(gpbackupPath, backupHelperPath, false, args...)
+	return runGpbackupForDatabase("testdb", gpbackupPath, backupHelperPath, false, args...)
 }
 
-func runGpbackup(gpbackupPath string, backupHelperPath string, disableHistoryStandbySync bool, args ...string) []byte {
+func gpbackupForDatabase(databaseName string, gpbackupPath string, backupHelperPath string, args ...string) []byte {
+	return runGpbackupForDatabase(databaseName, gpbackupPath, backupHelperPath, true, args...)
+}
+
+func runGpbackupForDatabase(databaseName string, gpbackupPath string, backupHelperPath string, disableHistoryStandbySync bool, args ...string) []byte {
 	if useOldBackupVersion {
 		_ = os.Chdir("..")
 		command := exec.Command("make", "install", fmt.Sprintf("helper_path=%s", backupHelperPath))
@@ -107,7 +112,7 @@ func runGpbackup(gpbackupPath string, backupHelperPath string, disableHistorySta
 	if disableHistoryStandbySync && !useOldBackupVersion && !hasCommandArgument(args, "--no-history-sync-standby") {
 		args = append(args, "--no-history-sync-standby")
 	}
-	args = append([]string{"--verbose", "--dbname", "testdb"}, args...)
+	args = append([]string{"--verbose", "--dbname", databaseName}, args...)
 	command := exec.Command(gpbackupPath, args...)
 	return mustRunCommand(command)
 }
@@ -742,6 +747,23 @@ func end_to_end_setup() {
 
 func end_to_end_teardown() {
 	_ = os.RemoveAll(backupDir)
+}
+
+func setupGpbackmanFilterDatabase() {
+	_ = exec.Command("dropdb", gpbackmanFilterDatabase).Run()
+	Expect(exec.Command("createdb", gpbackmanFilterDatabase).Run()).To(Succeed())
+
+	filterConn := testutils.SetupTestDbConn(gpbackmanFilterDatabase)
+	defer filterConn.Close()
+	testhelper.AssertQueryRuns(filterConn, `
+		CREATE TABLE public.e2e_data (id integer, value text) DISTRIBUTED BY (id);
+		INSERT INTO public.e2e_data (id, value)
+		SELECT i, 'e2e-value-' || i FROM generate_series(1, 100) AS i;
+	`)
+}
+
+func teardownGpbackmanFilterDatabase() {
+	_ = exec.Command("dropdb", gpbackmanFilterDatabase).Run()
 }
 
 var _ = Describe("backup and restore end to end tests", func() {
