@@ -199,6 +199,11 @@ ORDER BY timestamp DESC;
 			Expect(filtered).NotTo(ContainSubstring("customer's db"))
 		})
 
+		It("returns a scan error from a backup-name query", func() {
+			_, err := execQueryFunc("SELECT NULL", historyDB)
+			Expect(err).To(HaveOccurred())
+		})
+
 		DescribeTable("returns only exact database matches while retaining unfiltered selection",
 			func(query func(string, string, *sql.DB) ([]string, error), timestamp string, expectedAll []string, exact, quoted, apostrophe string) {
 				for database, expected := range map[string][]string{

@@ -139,6 +139,20 @@ var _ = Describe("backup-info database filter", func() {
 		Entry("with an unknown database", "unknown", "demo", 0),
 	)
 
+	It("displays matching backups when their derived fields are invalid", func() {
+		t := tablewriter.NewWriter(GinkgoWriter)
+		backupData := backupInfoTestConfig("invalid", "demo")
+		backupData.EndTime = "also-invalid"
+		backupData.Incremental = true
+		backupData.DataOnly = true
+		backupData.IncludeSchemaFiltered = true
+		backupData.IncludeTableFiltered = true
+		backupData.DateDeleted = "invalid"
+
+		addBackupToTable("", "", "", "demo", false, false, &backupData, t)
+		Expect(t.NumLines()).To(Equal(1))
+	})
+
 	It("composes database filtering with type, table, schema, and detail filters", func() {
 		matchingTable := backupInfoTestConfig("20240101000000", "demo")
 		matchingTable.IncludeTableFiltered = true
