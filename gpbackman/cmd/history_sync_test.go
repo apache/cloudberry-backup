@@ -299,6 +299,26 @@ var _ = Describe("history sync command", func() {
 
 			Expect(disabledValues).To(Equal([]bool{true, false, true}))
 		})
+
+		It("keeps standby synchronization enabled for filtered cleanup commands", func() {
+			disabledValues := make([]bool, 0)
+			originalBackupCleanDatabase := backupCleanDatabase
+			originalHistoryCleanDatabase := historyCleanDatabase
+			runHistoryMutationWithStandbySync = func(work func() error, disabled bool) {
+				disabledValues = append(disabledValues, disabled)
+			}
+			backupCleanDatabase = `"Customer's DB"`
+			historyCleanDatabase = `"Customer's DB"`
+			DeferCleanup(func() {
+				backupCleanDatabase = originalBackupCleanDatabase
+				historyCleanDatabase = originalHistoryCleanDatabase
+			})
+
+			doCleanBackup()
+			doCleanHistory()
+
+			Expect(disabledValues).To(Equal([]bool{false, false}))
+		})
 	})
 })
 

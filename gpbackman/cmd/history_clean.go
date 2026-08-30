@@ -35,6 +35,7 @@ var (
 	historyCleanBeforeTimestamp      string
 	historyCleanOlderThanDays        uint
 	historyCleanNoHistorySyncStandby bool
+	historyCleanDatabase             string
 )
 
 var historyCleanCmd = &cobra.Command{
@@ -49,6 +50,11 @@ To delete information about backups older than the given timestamp, use the --be
 To delete information about backups older than the given number of days, use the --older-than-day option. 
 Only --older-than-days or --before-timestamp option must be specified, not both.
 
+Use --database to clean history only for the specified database. Without --database,
+cleanup includes deleted backup history for all databases in the history database.
+Database names are matched exactly and case-sensitively against backup history.
+For database names that require quoting, include the double quotes in the --database value.
+
 The gpbackup_history.db file location can be set using the --history-db option.
 Can be specified only once. The full path to the file is required.
 If the --history-db option is not specified, the history database is looked for in the current directory. To resolve it from $COORDINATOR_DATA_DIRECTORY instead, pass the --auto-load-history-db flag.`,
@@ -62,6 +68,12 @@ If the --history-db option is not specified, the history database is looked for 
 
 func init() {
 	rootCmd.AddCommand(historyCleanCmd)
+	historyCleanCmd.Flags().StringVar(
+		&historyCleanDatabase,
+		databaseFlagName,
+		"",
+		"delete backup history only for the specified database",
+	)
 	historyCleanCmd.PersistentFlags().UintVar(
 		&historyCleanOlderThanDays,
 		olderThanDaysFlagName,
@@ -92,6 +104,10 @@ func init() {
 // These flag checks are applied only for history-clean command.
 func doCleanHistoryFlagValidation(flags *pflag.FlagSet) {
 	var err error
+	if flags.Changed(databaseFlagName) && historyCleanDatabase == "" {
+		gplog.Error("%s", textmsg.ErrorTextUnableValidateFlag(historyCleanDatabase, databaseFlagName, textmsg.ErrorEmptyDatabase()))
+		execOSExit(exitErrorCode)
+	}
 	// If before-timestamp are specified and have correct values.
 	if flags.Changed(beforeTimestampFlagName) {
 		err = gpbckpconfig.CheckTimestamp(historyCleanBeforeTimestamp)
@@ -127,15 +143,15 @@ func cleanHistory() error {
 			gplog.Error("%s", textmsg.ErrorTextUnableActionHistoryDB("close", closeErr))
 		}
 	}()
-	err = historyCleanDB(beforeTimestamp, hDB)
+	err = historyCleanDB(beforeTimestamp, historyCleanDatabase, hDB)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func historyCleanDB(cutOffTimestamp string, hDB *sql.DB) error {
-	backupList, err := gpbckpconfig.GetBackupNamesForCleanBeforeTimestamp(cutOffTimestamp, "", hDB)
+func historyCleanDB(cutOffTimestamp, databaseName string, hDB *sql.DB) error {
+	backupList, err := gpbckpconfig.GetBackupNamesForCleanBeforeTimestamp(cutOffTimestamp, databaseName, hDB)
 	if err != nil {
 		gplog.Error("%s", textmsg.ErrorTextUnableReadHistoryDB(err))
 		return err
