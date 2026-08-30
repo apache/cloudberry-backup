@@ -34,10 +34,10 @@ import (
 
 var _ = Describe("wrappers tests", func() {
 	Describe("database flag scope", func() {
-		It("registers the database filter only on cleanup commands", func() {
+		It("registers the database filter only on supported commands", func() {
 			Expect(rootCmd.PersistentFlags().Lookup(databaseFlagName)).To(BeNil())
 			for _, command := range rootCmd.Commands() {
-				want := command == backupCleanCmd || command == historyCleanCmd
+				want := command == backupCleanCmd || command == backupInfoCmd || command == historyCleanCmd
 				Expect(command.Flags().Lookup(databaseFlagName) != nil).To(Equal(want), command.Name())
 			}
 		})

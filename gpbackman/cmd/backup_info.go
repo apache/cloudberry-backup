@@ -41,6 +41,7 @@ var (
 	backupInfoTableNameFilter  string
 	backupInfoSchemaNameFilter string
 	backupInfoExcludeFilter    bool
+	backupInfoDatabase         string
 	backupInfoTimestamp        string
 	backupInfoShowDetails      bool
 )
@@ -53,6 +54,7 @@ type BackupInfoOptions struct {
 	TableNameFilter  string
 	SchemaNameFilter string
 	ExcludeFilter    bool
+	DatabaseFilter   string
 	Timestamp        string
 	ShowDetails      bool
 }
@@ -69,6 +71,12 @@ To display failed backups, use the --failed option.
 To display all backups, use --deleted and --failed options together.
 
 To display backups of a specific type, use the --type option.
+
+Without the --database option, backups for all databases are displayed.
+To display backups only for a specific database, use the --database option.
+Database names are matched exactly and case-sensitively against backup history.
+The --database value is used without transformation. For database names that require quoting,
+include the double quotes in the flag value, for example: --database '"Sales DB"'.
 
 To display backups that include the specified table, use the --table option. 
 The formatting rules for <schema>.<table> match those of the --include-table option in gpbackup.
@@ -91,8 +99,8 @@ The details are presented as follows, depending on the active filtering type:
 To display a backup chain for a specific backup, use the --timestamp option.
 In this mode, the backup with the specified timestamp and all of its dependent backups will be displayed.
 The deleted and failed backups are always included in this mode.
-To display object filtering details in this mode, use the --detail option.
-When --timestamp is set, the following options cannot be used: --type, --table, --schema, --exclude, --failed, --deleted.
+The --detail option can be used with --timestamp to display object filtering details in this mode.
+When --timestamp is set, the following options cannot be used: --database, --type, --table, --schema, --exclude, --failed, --deleted.
 
 To display the "object filtering details" column for all backups without using --timestamp, use the --detail option.
 
@@ -151,6 +159,12 @@ func init() {
 		false,
 		"show backups that exclude the specific table (format <schema>.<table>) or schema",
 	)
+	backupInfoCmd.Flags().StringVar(
+		&backupInfoDatabase,
+		databaseFlagName,
+		"",
+		"show backups only for the specified database (exact, case-sensitive match)",
+	)
 	backupInfoCmd.Flags().BoolVar(
 		&backupInfoShowDetails,
 		detailFlagName,
@@ -162,17 +176,21 @@ func init() {
 // These flag checks are applied only for backup-info commands.
 func doBackupInfoFlagValidation(flags *pflag.FlagSet) {
 	var err error
+	if flags.Changed(databaseFlagName) && backupInfoDatabase == "" {
+		gplog.Error("%s", textmsg.ErrorTextUnableValidateFlag(backupInfoDatabase, databaseFlagName, textmsg.ErrorEmptyDatabase()))
+		execOSExit(exitErrorCode)
+	}
 	if flags.Changed(timestampFlagName) {
 		err = gpbckpconfig.CheckTimestamp(backupInfoTimestamp)
 		if err != nil {
 			gplog.Error("%s", textmsg.ErrorTextUnableValidateFlag(backupInfoTimestamp, timestampFlagName, err))
 			execOSExit(exitErrorCode)
 		}
-		// --timestamp is not compatible with --type, --table, --schema, --exclude, --failed, --deleted
+		// --timestamp is not compatible with --database, --type, --table, --schema, --exclude, --failed, --deleted
 		err = checkCompatibleFlags(flags, timestampFlagName,
-			typeFlagName, tableFlagName, schemaFlagName, excludeFlagName, failedFlagName, deletedFlagName)
+			databaseFlagName, typeFlagName, tableFlagName, schemaFlagName, excludeFlagName, failedFlagName, deletedFlagName)
 		if err != nil {
-			gplog.Error("%s", textmsg.ErrorTextUnableCompatibleFlags(err, timestampFlagName, typeFlagName, tableFlagName, schemaFlagName, excludeFlagName, failedFlagName, deletedFlagName))
+			gplog.Error("%s", textmsg.ErrorTextUnableCompatibleFlags(err, timestampFlagName, databaseFlagName, typeFlagName, tableFlagName, schemaFlagName, excludeFlagName, failedFlagName, deletedFlagName))
 			execOSExit(exitErrorCode)
 		}
 	}
@@ -221,6 +239,7 @@ func backupInfo() error {
 		TableNameFilter:  backupInfoTableNameFilter,
 		SchemaNameFilter: backupInfoSchemaNameFilter,
 		ExcludeFilter:    backupInfoExcludeFilter,
+		DatabaseFilter:   backupInfoDatabase,
 		Timestamp:        backupInfoTimestamp,
 		ShowDetails:      backupInfoShowDetails,
 	}
@@ -259,7 +278,7 @@ func backupInfoDB(opts BackupInfoOptions, hDB *sql.DB, t *tablewriter.Table) err
 				gplog.Error("%s", textmsg.ErrorTextUnableGetBackupInfo(backupName, err))
 				return err
 			}
-			addBackupToTable(opts.BackupTypeFilter, opts.TableNameFilter, opts.SchemaNameFilter, opts.ExcludeFilter, opts.ShowDetails, backupData, t)
+			addBackupToTable(opts.BackupTypeFilter, opts.TableNameFilter, opts.SchemaNameFilter, opts.DatabaseFilter, opts.ExcludeFilter, opts.ShowDetails, backupData, t)
 		}
 		return nil
 	}
@@ -270,7 +289,7 @@ func backupInfoDB(opts BackupInfoOptions, hDB *sql.DB, t *tablewriter.Table) err
 		gplog.Error("%s", textmsg.ErrorTextUnableGetBackupInfo(opts.Timestamp, err))
 		return err
 	}
-	addBackupToTable("", "", "", false, opts.ShowDetails, baseBackupData, t)
+	addBackupToTable("", "", "", "", false, opts.ShowDetails, baseBackupData, t)
 	backupDependenciesList, err := gpbckpconfig.GetBackupDependencies(opts.Timestamp, hDB)
 	if err != nil {
 		gplog.Error("%s", textmsg.ErrorTextUnableReadHistoryDB(err))
@@ -282,7 +301,7 @@ func backupInfoDB(opts BackupInfoOptions, hDB *sql.DB, t *tablewriter.Table) err
 			gplog.Error("%s", textmsg.ErrorTextUnableGetBackupInfo(depTimestamp, err))
 			return err
 		}
-		addBackupToTable("", "", "", false, opts.ShowDetails, backupData, t)
+		addBackupToTable("", "", "", "", false, opts.ShowDetails, backupData, t)
 	}
 	return nil
 }
@@ -311,7 +330,11 @@ func initTable(t *tablewriter.Table, includeDetails bool) {
 // If errors occur, they are logged, but they are not returned.
 // The main idea is to show the maximum available information and display all errors that occur.
 // But do not fall when errors occur. So, display anyway.
-func addBackupToTable(backupTypeFilter, backupTableFilter, backupSchemaFilter string, backupExcludeFilter, includeDetails bool, backupData *history.BackupConfig, t *tablewriter.Table) {
+func addBackupToTable(backupTypeFilter, backupTableFilter, backupSchemaFilter, backupDatabaseFilter string, backupExcludeFilter, includeDetails bool, backupData *history.BackupConfig, t *tablewriter.Table) {
+	if backupDatabaseFilter != "" && backupDatabaseFilter != backupData.DatabaseName {
+		return
+	}
+
 	var matchToObjectFilter bool
 	backupDate, err := gpbckpconfig.GetBackupDate(backupData)
 	if err != nil {
