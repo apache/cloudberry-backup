@@ -73,16 +73,16 @@ func GetBackupDependencies(backupName string, historyDB *sql.DB) ([]string, erro
 	return execQueryFunc(getBackupDependenciesQuery(backupName), historyDB)
 }
 
-func GetBackupNamesBeforeTimestamp(timestamp string, historyDB *sql.DB) ([]string, error) {
-	return execQueryFunc(getBackupNameBeforeTimestampQuery(timestamp), historyDB)
+func GetBackupNamesBeforeTimestamp(timestamp, databaseName string, historyDB *sql.DB) ([]string, error) {
+	return execBackupNamesQuery(getBackupNameBeforeTimestampQuery(timestamp, databaseName), databaseName, historyDB)
 }
 
-func GetBackupNamesAfterTimestamp(timestamp string, historyDB *sql.DB) ([]string, error) {
-	return execQueryFunc(getBackupNameAfterTimestampQuery(timestamp), historyDB)
+func GetBackupNamesAfterTimestamp(timestamp, databaseName string, historyDB *sql.DB) ([]string, error) {
+	return execBackupNamesQuery(getBackupNameAfterTimestampQuery(timestamp, databaseName), databaseName, historyDB)
 }
 
-func GetBackupNamesForCleanBeforeTimestamp(timestamp string, historyDB *sql.DB) ([]string, error) {
-	return execQueryFunc(getBackupNameForCleanBeforeTimestampQuery(timestamp), historyDB)
+func GetBackupNamesForCleanBeforeTimestamp(timestamp, databaseName string, historyDB *sql.DB) ([]string, error) {
+	return execBackupNamesQuery(getBackupNameForCleanBeforeTimestampQuery(timestamp, databaseName), databaseName, historyDB)
 }
 
 func getBackupNameQuery(showD, showF bool) string {
@@ -111,36 +111,50 @@ ORDER BY timestamp DESC;
 `, backupName, backupName)
 }
 
-func getBackupNameBeforeTimestampQuery(timestamp string) string {
-	return fmt.Sprintf(`
+func getBackupNameBeforeTimestampQuery(timestamp, databaseName string) string {
+	query := fmt.Sprintf(`
 SELECT timestamp 
 FROM backups 
 WHERE timestamp < '%s' 
 	AND status != '%s' 
 	AND date_deleted IN ('', '%s', '%s') 
-ORDER BY timestamp DESC;
 `, timestamp, history.BackupStatusInProgress, DateDeletedPluginFailed, DateDeletedLocalFailed)
+	return addDatabaseNamePredicate(query, databaseName) + "ORDER BY timestamp DESC;\n"
 }
 
-func getBackupNameAfterTimestampQuery(timestamp string) string {
-	return fmt.Sprintf(`
+func getBackupNameAfterTimestampQuery(timestamp, databaseName string) string {
+	query := fmt.Sprintf(`
 SELECT timestamp 
 FROM backups 
 WHERE timestamp > '%s' 
 	AND status != '%s' 
 	AND date_deleted IN ('', '%s', '%s') 
-ORDER BY timestamp DESC;
 `, timestamp, history.BackupStatusInProgress, DateDeletedPluginFailed, DateDeletedLocalFailed)
+	return addDatabaseNamePredicate(query, databaseName) + "ORDER BY timestamp DESC;\n"
 }
 
-func getBackupNameForCleanBeforeTimestampQuery(timestamp string) string {
-	return fmt.Sprintf(`
+func getBackupNameForCleanBeforeTimestampQuery(timestamp, databaseName string) string {
+	query := fmt.Sprintf(`
 SELECT timestamp 
 FROM backups 
 WHERE timestamp < '%s' 
 	AND date_deleted NOT IN ('', '%s', '%s', '%s') 
-ORDER BY timestamp DESC;
 `, timestamp, DateDeletedPluginFailed, DateDeletedLocalFailed, DateDeletedInProgress)
+	return addDatabaseNamePredicate(query, databaseName) + "ORDER BY timestamp DESC;\n"
+}
+
+func addDatabaseNamePredicate(query, databaseName string) string {
+	if databaseName == "" {
+		return query
+	}
+	return query + "\tAND database_name = ?\n"
+}
+
+func execBackupNamesQuery(query, databaseName string, historyDB *sql.DB) ([]string, error) {
+	if databaseName == "" {
+		return execQueryFunc(query, historyDB)
+	}
+	return execQueryFunc(query, historyDB, databaseName)
 }
 
 // UpdateDeleteStatus updates the date_deleted column in the history database.
@@ -197,8 +211,8 @@ func updateDeleteStatusQuery(timestamp, status string) string {
 	return fmt.Sprintf(`UPDATE backups SET date_deleted = '%s' WHERE timestamp = '%s';`, status, timestamp)
 }
 
-func execQueryFunc(query string, historyDB *sql.DB) ([]string, error) {
-	sqlRow, err := historyDB.Query(query)
+func execQueryFunc(query string, historyDB *sql.DB, args ...any) ([]string, error) {
+	sqlRow, err := historyDB.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}

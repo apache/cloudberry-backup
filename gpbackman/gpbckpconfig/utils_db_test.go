@@ -128,7 +128,7 @@ WHERE timestamp < '20240101120000'
 	AND date_deleted IN ('', 'Plugin Backup Delete Failed', 'Local Delete Failed') 
 ORDER BY timestamp DESC;
 `, history.BackupStatusInProgress)
-			Expect(getBackupNameBeforeTimestampQuery("20240101120000")).To(Equal(want))
+			Expect(getBackupNameBeforeTimestampQuery("20240101120000", "")).To(Equal(want))
 		})
 	})
 
@@ -142,7 +142,7 @@ WHERE timestamp > '20240101120000'
 	AND date_deleted IN ('', 'Plugin Backup Delete Failed', 'Local Delete Failed') 
 ORDER BY timestamp DESC;
 `, history.BackupStatusInProgress)
-			Expect(getBackupNameAfterTimestampQuery("20240101120000")).To(Equal(want))
+			Expect(getBackupNameAfterTimestampQuery("20240101120000", "")).To(Equal(want))
 		})
 	})
 
@@ -155,8 +155,75 @@ WHERE timestamp < '20240101120000'
 	AND date_deleted NOT IN ('', 'Plugin Backup Delete Failed', 'Local Delete Failed', 'In progress') 
 ORDER BY timestamp DESC;
 `
-			Expect(getBackupNameForCleanBeforeTimestampQuery("20240101120000")).To(Equal(want))
+			Expect(getBackupNameForCleanBeforeTimestampQuery("20240101120000", "")).To(Equal(want))
 		})
+	})
+
+	Describe("database-filtered backup name queries", func() {
+		var historyDB *sql.DB
+
+		BeforeEach(func() {
+			var err error
+			historyDB, err = sql.Open("sqlite3", "file:"+filepath.Join(GinkgoT().TempDir(), "history.db")+"?mode=rwc")
+			Expect(err).NotTo(HaveOccurred())
+			_, err = historyDB.Exec(`CREATE TABLE backups (timestamp TEXT, database_name TEXT, status TEXT, date_deleted TEXT)`)
+			Expect(err).NotTo(HaveOccurred())
+			for _, backup := range [][]string{
+				{"20240101110000", "customer", "Success", ""},
+				{"20240101100000", "Customer", "Success", ""},
+				{"20240101090000", `"quoted db"`, "Success", ""},
+				{"20240101080000", "customer's db", "Success", ""},
+				{"20240102110000", "customer", "Success", ""},
+				{"20240102100000", "Customer", "Success", ""},
+				{"20240102090000", `"quoted db"`, "Success", ""},
+				{"20240102080000", "customer's db", "Success", ""},
+				{"20240101110000-clean", "customer", "Success", "20240103000000"},
+				{"20240101100000-clean", "Customer", "Success", "20240103000000"},
+				{"20240101090000-clean", `"quoted db"`, "Success", "20240103000000"},
+				{"20240101080000-clean", "customer's db", "Success", "20240103000000"},
+			} {
+				_, err = historyDB.Exec(`INSERT INTO backups (timestamp, database_name, status, date_deleted) VALUES (?, ?, ?, ?)`, backup[0], backup[1], backup[2], backup[3])
+				Expect(err).NotTo(HaveOccurred())
+			}
+		})
+
+		AfterEach(func() {
+			Expect(historyDB.Close()).To(Succeed())
+		})
+
+		It("adds a bound database predicate only when a database is supplied", func() {
+			unfiltered := getBackupNameBeforeTimestampQuery("20240101120000", "")
+			filtered := getBackupNameBeforeTimestampQuery("20240101120000", "customer's db")
+			Expect(unfiltered).NotTo(ContainSubstring("database_name"))
+			Expect(filtered).To(ContainSubstring("AND database_name = ?"))
+			Expect(filtered).NotTo(ContainSubstring("customer's db"))
+		})
+
+		DescribeTable("returns only exact database matches while retaining unfiltered selection",
+			func(query func(string, string, *sql.DB) ([]string, error), timestamp string, expectedAll []string, exact, quoted, apostrophe string) {
+				for database, expected := range map[string][]string{
+					"":               expectedAll,
+					"customer":       {exact},
+					"CUSTOMER":       nil,
+					`"quoted db"`:    {quoted},
+					"customer's db":  {apostrophe},
+					"does-not-exist": nil,
+				} {
+					actual, err := query(timestamp, database, historyDB)
+					Expect(err).NotTo(HaveOccurred(), database)
+					Expect(actual).To(Equal(expected), database)
+				}
+			},
+			Entry("before timestamp", GetBackupNamesBeforeTimestamp, "20240101120000",
+				[]string{"20240101110000", "20240101100000", "20240101090000", "20240101080000"},
+				"20240101110000", "20240101090000", "20240101080000"),
+			Entry("after timestamp", GetBackupNamesAfterTimestamp, "20240101120000",
+				[]string{"20240102110000", "20240102100000", "20240102090000", "20240102080000"},
+				"20240102110000", "20240102090000", "20240102080000"),
+			Entry("history clean", GetBackupNamesForCleanBeforeTimestamp, "20240101120000",
+				[]string{"20240101110000-clean", "20240101100000-clean", "20240101090000-clean", "20240101080000-clean"},
+				"20240101110000-clean", "20240101090000-clean", "20240101080000-clean"),
+		)
 	})
 
 	Describe("deleteBackupsFormTableQuery", func() {

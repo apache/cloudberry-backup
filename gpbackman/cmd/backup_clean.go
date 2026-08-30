@@ -289,13 +289,13 @@ func fetchBackupNamesForDeletion(cutOffTimestamp, cutOffAfterTimestamp string, h
 	var backupList []string
 	var err error
 	if cutOffTimestamp != "" {
-		backupList, err = gpbckpconfig.GetBackupNamesBeforeTimestamp(cutOffTimestamp, hDB)
+		backupList, err = gpbckpconfig.GetBackupNamesBeforeTimestamp(cutOffTimestamp, "", hDB)
 		if err != nil {
 			return nil, err
 		}
 	}
 	if cutOffAfterTimestamp != "" {
-		backupList, err = gpbckpconfig.GetBackupNamesAfterTimestamp(cutOffAfterTimestamp, hDB)
+		backupList, err = gpbckpconfig.GetBackupNamesAfterTimestamp(cutOffAfterTimestamp, "", hDB)
 		if err != nil {
 			return nil, err
 		}
