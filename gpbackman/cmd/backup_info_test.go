@@ -212,6 +212,58 @@ var _ = Describe("backup-info database filter", func() {
 		Expect(backupInfoDB(BackupInfoOptions{Timestamp: baseTimestamp, ShowDetails: true}, historyDB, chain)).To(Succeed())
 		Expect(chain.NumLines()).To(Equal(3))
 	})
+
+	It("composes database filtering with exclude, deleted, and failed filters", func() {
+		configs := make([]history.BackupConfig, 0, 6)
+		for _, database := range []struct {
+			name       string
+			timestamps [3]string
+		}{
+			{"demo", [3]string{"20240101000000", "20240101000001", "20240101000002"}},
+			{"other", [3]string{"20240101000003", "20240101000004", "20240101000005"}},
+		} {
+			active := backupInfoTestConfig(database.timestamps[0], database.name)
+			active.ExcludeTableFiltered = true
+			active.ExcludeRelations = []string{"public.orders"}
+			configs = append(configs, active)
+
+			deleted := backupInfoTestConfig(database.timestamps[1], database.name)
+			deleted.ExcludeTableFiltered = true
+			deleted.ExcludeRelations = []string{"public.orders"}
+			deleted.DateDeleted = "20240102000000"
+			configs = append(configs, deleted)
+
+			failed := backupInfoTestConfig(database.timestamps[2], database.name)
+			failed.ExcludeTableFiltered = true
+			failed.ExcludeRelations = []string{"public.orders"}
+			failed.Status = history.BackupStatusFailed
+			configs = append(configs, failed)
+		}
+		historyDB := createBackupInfoTestDB(configs...)
+
+		for _, test := range []struct {
+			name        string
+			showDeleted bool
+			showFailed  bool
+			wantRows    int
+		}{
+			{"exclude", false, false, 1},
+			{"exclude and deleted", true, false, 2},
+			{"exclude and failed", false, true, 2},
+			{"exclude, deleted, and failed", true, true, 3},
+		} {
+			t := tablewriter.NewWriter(GinkgoWriter)
+			err := backupInfoDB(BackupInfoOptions{
+				ShowDeleted:     test.showDeleted,
+				ShowFailed:      test.showFailed,
+				TableNameFilter: "public.orders",
+				ExcludeFilter:   true,
+				DatabaseFilter:  "demo",
+			}, historyDB, t)
+			Expect(err).To(Succeed(), test.name)
+			Expect(t.NumLines()).To(Equal(test.wantRows), test.name)
+		}
+	})
 })
 
 func backupInfoTestConfig(timestamp, databaseName string) history.BackupConfig {
