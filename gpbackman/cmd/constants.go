@@ -55,6 +55,7 @@ const (
 	excludeFlagName                   = "exclude"
 	backupDirFlagName                 = "backup-dir"
 	parallelProcessesFlagName         = "parallel-processes"
+	databaseFlagName                  = "database"
 	ignoreErrorsFlagName              = "ignore-errors"
 	noHistorySyncStandbyFlagName      = "no-history-sync-standby"
 	historySyncStandbyTimeoutFlagName = "history-sync-standby-timeout"
