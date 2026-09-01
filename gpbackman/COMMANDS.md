@@ -65,6 +65,11 @@ To delete backup sets older than the given number of days, use the --older-than-
 To delete backup sets newer than the given timestamp, use the --after-timestamp option.
 Only --older-than-days, --before-timestamp or --after-timestamp option must be specified.
 
+Use --database to clean backup sets only for the specified database. Without --database,
+cleanup includes backup sets for all databases in the history database.
+Database names are matched exactly and case-sensitively against backup history.
+For database names that require quoting, include the double quotes in the --database value.
+
 By default, the existence of dependent backups is checked and deletion process is not performed,
 unless the --cascade option is passed in.
 
@@ -99,6 +104,7 @@ Flags:
       --backup-dir string         the full path to backup directory for local backups
       --before-timestamp string   delete backup sets older than the given timestamp
       --cascade                   delete all dependent backups
+      --database string           delete backup sets only for the specified database
   -h, --help                      help for backup-clean
       --history-sync-standby-timeout int   shared rsync and remote install timeout in seconds; must be an integer between 1 and 86400 (default 300)
       --no-history-sync-standby   skip automatic gpbackup_history.db sync to standby coordinator after this command
@@ -122,6 +128,20 @@ Delete backups older than a timestamp:
 ./gpbackman backup-clean \
   --before-timestamp 20240701100000 \
   --cascade
+```
+
+Delete local backups only for database `analytics`:
+```bash
+./gpbackman backup-clean \
+  --before-timestamp 20240701100000 \
+  --database analytics
+```
+
+For database `Sales DB`, include double quotes in the flag value:
+```bash
+./gpbackman backup-clean \
+  --before-timestamp 20240701100000 \
+  --database '"Sales DB"'
 ```
 
 Delete backups older than a number of days with multiple parallel processes:
@@ -251,6 +271,12 @@ To display all backups, use --deleted and --failed options together.
 
 To display backups of a specific type, use the --type option.
 
+Without the --database option, backups for all databases are displayed.
+To display backups only for a specific database, use the --database option.
+Database names are matched exactly and case-sensitively against backup history.
+The --database value is used without transformation. For database names that require quoting,
+include the double quotes in the flag value, for example: --database '"Sales DB"'.
+
 To display backups that include the specified table, use the --table option. 
 The formatting rules for <schema>.<table> match those of the --include-table option in gpbackup.
 
@@ -273,7 +299,7 @@ To display a backup chain for a specific backup, use the --timestamp option.
 In this mode, the backup with the specified timestamp and all of its dependent backups will be displayed.
 The deleted and failed backups are always included in this mode.
 To display object filtering details in this mode, use the --detail option.
-When --timestamp is set, the following options cannot be used: --type, --table, --schema, --exclude, --failed, --deleted.
+When --timestamp is set, the following options cannot be used: --database, --type, --table, --schema, --exclude, --failed, --deleted.
 
 To display the "object filtering details" column for all backups without using --timestamp, use the --detail option.
 
@@ -285,6 +311,7 @@ Usage:
   gpbackman backup-info [flags]
 
 Flags:
+      --database string    show backups only for the specified database (exact, case-sensitive match)
       --deleted            show deleted backups
       --detail             show object filtering details
       --exclude            show backups that exclude the specific table (format <schema>.<table>) or schema
@@ -376,6 +403,19 @@ Display info for active full backups from `gpbackup_history.db`:
  20230722100000 | Sat Jul 22 2023 10:00:00 | Success | demo     | full |                  | gpbackup_s3_plugin | 00:25:17 |              
  20230623101115 | Fri Jun 23 2023 10:11:15 | Success | demo     | full | include-table    | gpbackup_s3_plugin | 01:01:00 |              
  20230523101115 | Tue May 23 2023 10:11:15 | Success | demo     | full | include-schema   | gpbackup_s3_plugin | 01:01:00 |              
+```
+
+Display active backups only for database `analytics`:
+```bash
+./gpbackman backup-info \
+  --database analytics
+```
+
+Display active full backups only for database `analytics`:
+```bash
+./gpbackman backup-info \
+  --database analytics \
+  --type full
 ```
 
 Find all backups, including deleted ones, containing the `test1` schema.
@@ -477,6 +517,11 @@ To delete information about backups older than the given timestamp, use the --be
 To delete information about backups older than the given number of days, use the --older-than-day option. 
 Only --older-than-days or --before-timestamp option must be specified, not both.
 
+Use --database to clean history only for the specified database. Without --database,
+cleanup includes deleted backup history for all databases in the history database.
+Database names are matched exactly and case-sensitively against backup history.
+For database names that require quoting, include the double quotes in the --database value.
+
 The gpbackup_history.db file location can be set using the --history-db option.
 Can be specified only once. The full path to the file is required.
 If the --history-db option is not specified, the history database is looked for in the current directory. To resolve it from $COORDINATOR_DATA_DIRECTORY instead, pass the --auto-load-history-db flag.
@@ -486,6 +531,7 @@ Usage:
 
 Flags:
       --before-timestamp string   delete information about backups older than the given timestamp
+      --database string           delete backup history only for the specified database
   -h, --help                      help for history-clean
       --history-sync-standby-timeout int   shared rsync and remote install timeout in seconds; must be an integer between 1 and 86400 (default 300)
       --no-history-sync-standby   skip automatic gpbackup_history.db sync to standby coordinator after this command
@@ -512,6 +558,20 @@ Delete information about deleted backups from history database older than timest
 ```bash
 ./gpbackman history-clean \
   --before-timestamp 20240101100000
+```
+
+Delete deleted backup history only for database `analytics`:
+```bash
+./gpbackman history-clean \
+  --before-timestamp 20240101100000 \
+  --database analytics
+```
+
+For database `Sales DB`, include double quotes in the flag value:
+```bash
+./gpbackman history-clean \
+  --before-timestamp 20240101100000 \
+  --database '"Sales DB"'
 ```
 
 # Sync the history database to the standby coordinator (`history-sync`)

@@ -33,6 +33,16 @@ import (
 )
 
 var _ = Describe("wrappers tests", func() {
+	Describe("database flag scope", func() {
+		It("registers the database filter only on supported commands", func() {
+			Expect(rootCmd.PersistentFlags().Lookup(databaseFlagName)).To(BeNil())
+			for _, command := range rootCmd.Commands() {
+				want := command == backupCleanCmd || command == backupInfoCmd || command == historyCleanCmd
+				Expect(command.Flags().Lookup(databaseFlagName) != nil).To(Equal(want), command.Name())
+			}
+		})
+	})
+
 	Describe("getHistoryDBPath", func() {
 		// Save and restore env vars so these cases don't leak into the rest
 		// of the suite when run with --randomize-all.
