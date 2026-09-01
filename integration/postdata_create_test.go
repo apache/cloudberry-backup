@@ -406,7 +406,11 @@ AS $$ BEGIN RAISE EXCEPTION 'exception'; END; $$;`)
 				Schema: "public",
 				Name:   "key_dependent_view",
 				Definition: sql.NullString{
-					String: " SELECT view_base_table.key,\n    (view_base_table.data COLLATE \"C\") AS data\n   FROM public.view_base_table\n  GROUP BY view_base_table.key;",
+					// Postgres 16's ruleutils no longer qualifies column
+					// references with the table name when only one table
+					// is in the FROM clause (only the FROM entry itself
+					// still gets schema-qualified).
+					String: " SELECT key,\n    (data COLLATE \"C\") AS data\n   FROM public.view_base_table\n  GROUP BY key;",
 					Valid:  true,
 				},
 				ColumnDefs: []backup.ColumnDefinition{
