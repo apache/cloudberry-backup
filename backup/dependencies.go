@@ -239,7 +239,7 @@ func assignCohorts(slice []Sortable, dependencies DependencyMap, isDependentOn m
 	// to the toc.
 	for id := range tierMap {
 		cohort := objectToCohortMap[id]
-		tierMap[id][1] = uint32(cohort)
+		tierMap[id][1] = cohort
 	}
 	return
 }

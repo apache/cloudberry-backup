@@ -33,6 +33,12 @@ jobs:
         cd ${GOPATH}/src/github.com/apache/cloudberry-backup
         make depend
 
+    - name: Run linters
+      uses: golangci/golangci-lint-action@v9
+      with:
+        version: v2.12.2
+        working-directory: go/src/github.com/apache/cloudberry-backup
+
     - name: Build
       run: |
         cd ${GOPATH}/src/github.com/apache/cloudberry-backup

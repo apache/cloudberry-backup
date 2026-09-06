@@ -375,7 +375,7 @@ func GetColumnDefinitions(connectionPool *dbconn.DBConn) map[uint32][]ColumnDefi
 		AND a.attisdropped = 'f'
 	ORDER BY a.attrelid, a.attnum`, relationAndSchemaFilterClause())
 
-	query := ``
+	var query string
 	if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("6") {
 		query = before6Query
 	} else if connectionPool.Version.IsGPDB() && connectionPool.Version.Is("6") {
@@ -736,7 +736,7 @@ func GetTableInheritance(connectionPool *dbconn.DBConn, tables []Relation) map[u
 	return resultMap
 }
 
-// Used to contruct root tables for GPDB 7+, because the root partition must be
+// Used to construct root tables for GPDB 7+, because the root partition must be
 // constructed by itself first.
 func GetPartitionKeyDefs(connectionPool *dbconn.DBConn) map[uint32]string {
 	if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("7") {

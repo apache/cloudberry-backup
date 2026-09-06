@@ -89,7 +89,9 @@ func GetLatestMatchingBackupConfig(historyDBPath string, currentBackupConfig *hi
 		gplog.Error("%s", err.Error())
 		return nil
 	}
-	defer timestampRows.Close()
+	defer func() {
+		_ = timestampRows.Close()
+	}()
 
 	timestamps := make([]string, 0)
 	for timestampRows.Next() {

@@ -174,7 +174,7 @@ popd
 
 **NOTE**: The integration and end_to_end tests require a running Cloudberry instance.
 
-* To run all tests except end-to-end (linters, unit, and integration), use `make test`.
+* To build and run unit and integration tests, use `make test`.
 * To run only unit tests, use `make unit`.
 * To run only integration tests (requires a running Cloudberry instance), use `make integration`.
 * To run end to end tests (requires a running Cloudberry instance), use `make end_to_end`.
@@ -183,8 +183,9 @@ We provide the following targets to help developers ensure their code fits
 Go standard formatting guidelines:
 
 * To run a linting tool that checks for basic coding errors, use: `make lint`.
-This target runs [gometalinter](https://github.com/alecthomas/gometalinter).
-Note: The lint target will fail if code is not formatted properly.
+This target runs [golangci-lint](https://golangci-lint.run/) installed in
+`$(GOPATH)/bin`. CI installs its pinned version through the official GitHub
+Action.
 
 * To automatically format your code and add/remove imports, use `make format`.
 This target runs

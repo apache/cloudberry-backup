@@ -27,6 +27,7 @@ EXPORTER_VERSION_STR=-X github.com/prometheus/common/version.Version=$(GIT_VERSI
 # note that /testutils is not a production directory, but has unit tests to validate testing tools
 SUBDIRS_HAS_UNIT=backup/ filepath/ history/ helper/ options/ report/ restore/ toc/ utils/ testutils/ plugins/s3plugin/ gpbackman/cmd/ gpbackman/gpbckpconfig/ gpbackman/textmsg/ exporter/
 SUBDIRS_ALL=$(SUBDIRS_HAS_UNIT) integration/ end_to_end/
+GOLANGCI_LINT_VERSION=v2.12.2
 GOLANG_LINTER=$(GOPATH)/bin/golangci-lint
 GINKGO=$(GOPATH)/bin/ginkgo
 GOIMPORTS=$(GOPATH)/bin/goimports
@@ -56,18 +57,16 @@ $(GOIMPORTS) :
 $(GOSQLITE) :
 	go install github.com/mattn/go-sqlite3
 
+$(GOLANG_LINTER) :
+	GOBIN=$(GOPATH)/bin go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
+
 format : $(GOIMPORTS)
 		@goimports -w $(shell find . -type f -name '*.go' -not -path "./vendor/*")
 
-LINTER_VERSION=2.10.1
-$(GOLANG_LINTER) :
-		mkdir -p $(GOPATH)/bin
-		curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/main/install.sh | sh -s -- -b $(GOPATH)/bin v${LINTER_VERSION}
-
-.PHONY : coverage integration end_to_end
+.PHONY : coverage integration end_to_end lint
 
 lint : $(GOLANG_LINTER)
-		golangci-lint run
+		$(GOLANG_LINTER) run
 
 unit : $(GINKGO)
 	TEST_DB_TYPE=CBDB TEST_DB_VERSION=2.999.0 ginkgo $(GINKGO_FLAGS) $(SUBDIRS_HAS_UNIT) 2>&1

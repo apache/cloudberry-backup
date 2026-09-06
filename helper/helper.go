@@ -251,7 +251,7 @@ func getOidListFromFile(oidFileName string) ([]int, error) {
 
 func flushAndCloseRestoreWriter(pipeName string, oid int) error {
 	if writer != nil {
-		writer.Write([]byte{}) // simulate writer connected in case of error
+		_, _ = writer.Write([]byte{}) // simulate writer connected in case of error
 		err := writer.Flush()
 		if err != nil {
 			logError("Oid %d: Failed to flush pipe %s", oid, pipeName)
@@ -318,9 +318,9 @@ func DoCleanup() {
 	logVerbose("Cleanup complete")
 }
 
-func logInfo(s string, v ...interface{}) {
+func logInfo(s string) {
 	s = fmt.Sprintf("Segment %d: %s", *content, s)
-	gplog.Info(s, v...)
+	gplog.Info("%s", s)
 }
 
 func logWarn(s string, v ...interface{}) {

@@ -85,7 +85,7 @@ func initializeConnectionPool(timestamp string) {
 }
 
 func SetSessionGUCs(connNum int) {
-	// These GUCs ensure the dumps portability accross systems
+	// These GUCs ensure the dumps portability across systems
 	connectionPool.MustExec("SET search_path TO pg_catalog", connNum)
 	connectionPool.MustExec("SET statement_timeout = 0", connNum)
 	connectionPool.MustExec("SET DATESTYLE = ISO", connNum)
@@ -616,8 +616,8 @@ func addToMetadataMap(newMetadata MetadataMap, metadataMap MetadataMap) {
 
 // This function is fairly unwieldy, but there's not really a good way to break it down
 func backupDependentObjects(metadataFile *utils.FileWithByteCount, tables []Table,
-	protocols []ExternalProtocol, filteredMetadata MetadataMap, domainConstraints []Constraint,
-	sortables []Sortable, sequences []Sequence, funcInfoMap map[uint32]FunctionInfo, tableOnly bool) []View {
+	filteredMetadata MetadataMap, domainConstraints []Constraint,
+	sortables []Sortable, sequences []Sequence, funcInfoMap map[uint32]FunctionInfo) []View {
 	var sortedSlice []Sortable
 	gplog.Verbose("Writing CREATE statements for dependent objects to metadata file")
 

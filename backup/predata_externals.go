@@ -292,8 +292,6 @@ func PrintExternalTableStatements(metadataFile *utils.FileWithByteCount, tableNa
 	if extTableDef.Type == READABLE || (extTableDef.Type == WRITABLE_WEB && extTableDef.Protocol == S3) {
 		if extTableDef.ExecLocation == "COORDINATOR_ONLY" {
 			metadataFile.MustPrintf(" ON COORDINATOR")
-		} else if extTableDef.ExecLocation == "COORDINATOR_ONLY" {
-			metadataFile.MustPrintf(" ON COORDINATOR")
 		}
 	}
 	if extTableDef.Type == READABLE_WEB || extTableDef.Type == WRITABLE_WEB {
