@@ -36,7 +36,9 @@ func RestoreFile(c *cli.Context) error {
 	bucket := config.Options.Bucket
 	fileKey := GetS3Path(config.Options.Folder, fileName)
 	file, err := os.Create(fileName)
-	defer file.Close()
+	defer func() {
+		_ = file.Close()
+	}()
 	if err != nil {
 		return err
 	}

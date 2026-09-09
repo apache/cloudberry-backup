@@ -291,7 +291,7 @@ func PrintCreateExtensionStatements(metadataFile *utils.FileWithByteCount, objTo
 	for _, extensionDef := range extensionDefs {
 		start := metadataFile.ByteCount
 		if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
-			// changes to gp_toolkit in gpdb7 require explicilty creating the schema before the extension
+			// changes to gp_toolkit in gpdb7 require explicitly creating the schema before the extension
 			metadataFile.MustPrintf(
 				"\n\nCREATE SCHEMA IF NOT EXISTS %[1]s;\nSET search_path=%[1]s,pg_catalog;\nCREATE EXTENSION IF NOT EXISTS %[2]s WITH SCHEMA %[1]s;\nSET search_path=pg_catalog;\n",
 				extensionDef.Schema, extensionDef.Name)

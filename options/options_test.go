@@ -134,6 +134,7 @@ var _ = Describe("options", func() {
 			_, err = file.WriteString("\n")
 			Expect(err).To(Not(HaveOccurred()))
 			_, err = file.WriteString("\n")
+			Expect(err).To(Not(HaveOccurred()))
 			err = file.Close()
 			Expect(err).To(Not(HaveOccurred()))
 
@@ -167,6 +168,7 @@ var _ = Describe("options", func() {
 			_, err = file.WriteString("\n")
 			Expect(err).To(Not(HaveOccurred()))
 			_, err = file.WriteString("\n")
+			Expect(err).To(Not(HaveOccurred()))
 			err = file.Close()
 			Expect(err).To(Not(HaveOccurred()))
 

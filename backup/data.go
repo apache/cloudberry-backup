@@ -234,7 +234,7 @@ func BackupDataForAllTables(tables []Table) []map[uint32]int64 {
 						fmt.Printf("\n")
 					}
 					gplog.Warn("Worker %d could not acquire AccessShareLock for table %s.", whichConn, table.FQN())
-					logTableLocks(table, whichConn)
+					logTableLocks(table)
 					// rollback transaction and defer table
 					err = connectionPool.Rollback(whichConn)
 					if err != nil {

@@ -927,13 +927,13 @@ var _ = Describe("backup and restore end to end tests", func() {
 			helperLogs, _ := path.Glob(path.Join(homeDir, "gpAdminLogs/gprestore_*"))
 			cmdStr := fmt.Sprintf("tail -n 40 %s | grep \"Creating skip file\" || true", helperLogs[len(helperLogs)-1])
 
-			attemts := 1000
+			attempts := 1000
 			err = errors.New("Timeout to discover skip file")
-			for attemts > 0 {
+			for attempts > 0 {
 				output := mustRunCommand(exec.Command("bash", "-c", cmdStr))
 				if strings.TrimSpace(string(output)) == "" {
 					time.Sleep(5 * time.Millisecond)
-					attemts--
+					attempts--
 				} else {
 					err = nil
 					break
@@ -2511,7 +2511,7 @@ LANGUAGE plpgsql NO SQL;`)
 			Expect(err).To(HaveOccurred())
 			Expect(string(output)).To(MatchRegexp("Segment count for backup with timestamp [0-9]+ is unknown, cannot restore using --resize-cluster flag"))
 		})
-		It("Will not restore to a different-size cluster without the approprate flag", func() {
+		It("Will not restore to a different-size cluster without the appropriate flag", func() {
 			command := exec.Command("tar", "-xzf", "resources/5-segment-db.tar.gz", "-C", backupDir)
 			mustRunCommand(command)
 

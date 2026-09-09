@@ -97,7 +97,7 @@ func setLogLevelFile(level string) error {
 // COORDINATOR_DATA_DIRECTORY environment variable exported by the standard
 // Cloudberry environment scripts. As a final fallback, return the bare
 // filename so it is resolved against the current working directory,
-// preserving the original behaviour for the default invocation.
+// preserving the original behavior for the default invocation.
 func getHistoryDBPath(historyDBPath string, autoLoad bool) string {
 	if historyDBPath != "" {
 		return historyDBPath
@@ -252,7 +252,9 @@ func getBackupMasterDirClusterInfo(dbName string) string {
 		gplog.Error("%s", textmsg.ErrorTextUnableConnectLocalCluster(err))
 		return ""
 	}
-	defer db.Close()
+	defer func() {
+		_ = db.Close()
+	}()
 	sqlQuery := "SELECT datadir FROM gp_segment_configuration WHERE content = -1 AND role = 'p';"
 	queryResult, err := gpbckpconfig.ExecuteQueryLocalClusterConn[string](db, sqlQuery)
 	if err != nil {
@@ -270,7 +272,9 @@ func getSegmentConfigurationClusterInfo(dbName string) ([]gpbckpconfig.SegmentCo
 		gplog.Error("%s", textmsg.ErrorTextUnableConnectLocalCluster(err))
 		return queryResult, err
 	}
-	defer db.Close()
+	defer func() {
+		_ = db.Close()
+	}()
 	sqlQuery := "SELECT content as contentid, hostname, datadir FROM gp_segment_configuration WHERE role = 'p' and content != -1 ORDER BY content;"
 	queryResult, err = gpbckpconfig.ExecuteQueryLocalClusterConn[[]gpbckpconfig.SegmentConfig](db, sqlQuery)
 	if err != nil {

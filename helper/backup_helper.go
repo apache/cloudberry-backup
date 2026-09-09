@@ -86,7 +86,7 @@ func doBackupAgent() error {
 
 		_ = readHandle.Close()
 		logInfo(fmt.Sprintf("Oid %d: Deleting pipe: %s\n", oid, currentPipe))
-		deletePipe(currentPipe)
+		_ = deletePipe(currentPipe)
 	}
 
 	_ = pipeWriter.Close()
@@ -141,19 +141,19 @@ func getBackupPipeWriter() (pipe BackupPipeWriterCloser, writeCmd *exec.Cmd, err
 
 	if *compressionLevel == 0 {
 		pipe = NewCommonBackupPipeWriterCloser(writeHandle)
-		return
+		return pipe, writeCmd, nil
 	}
 
 	if *compressionType == "gzip" {
 		pipe, err = NewGZipBackupPipeWriterCloser(writeHandle, *compressionLevel)
-		return
+		return pipe, writeCmd, err
 	}
 	if *compressionType == "zstd" {
 		pipe, err = NewZSTDBackupPipeWriterCloser(writeHandle, *compressionLevel)
-		return
+		return pipe, writeCmd, err
 	}
 
-	writeHandle.Close()
+	_ = writeHandle.Close()
 	// error logging handled by calling functions
 	return nil, nil, fmt.Errorf("unknown compression type '%s' (compression level %d)", *compressionType, *compressionLevel)
 }
