@@ -256,7 +256,9 @@ func FindHistoricalPluginVersion(timestamp string) string {
 		if err != nil {
 			return historicalPluginVersion
 		}
-		defer historyDB.Close()
+		defer func() {
+			_ = historyDB.Close()
+		}()
 
 		foundBackupConfig, err := history.GetBackupConfig(timestamp, historyDB)
 		if err != nil && err.Error() != "timestamp doesn't match any existing backups" {

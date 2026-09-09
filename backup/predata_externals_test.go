@@ -320,7 +320,7 @@ SEGMENT REJECT LIMIT 2 ROWS`)
 
 				Expect(resultStatement).To(Equal(`FORMAT 'TEXT'`))
 			})
-			It("generates a FORMAT statment with some options provided", func() {
+			It("generates a FORMAT statement with some options provided", func() {
 				extTableDef.FormatType = "t"
 				extTableDef.FormatOpts = `delimiter '\t' null '\N' escape '\'`
 

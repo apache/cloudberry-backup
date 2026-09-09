@@ -216,7 +216,9 @@ func execQueryFunc(query string, historyDB *sql.DB, args ...any) ([]string, erro
 	if err != nil {
 		return nil, err
 	}
-	defer sqlRow.Close()
+	defer func() {
+		_ = sqlRow.Close()
+	}()
 	var resultList []string
 	for sqlRow.Next() {
 		var b string

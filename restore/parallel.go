@@ -28,7 +28,7 @@ func executeStatementsForConn(statements chan toc.StatementWithType, fatalErr *e
 				gplog.Error("Error detected on connection %d. Terminating transactions.", whichConn)
 				txMutex.Lock()
 				if connectionPool.Tx[whichConn] != nil {
-					connectionPool.Rollback(whichConn)
+					_ = connectionPool.Rollback(whichConn)
 				}
 				txMutex.Unlock()
 			}
@@ -65,7 +65,7 @@ func executeStatementsForConn(statements chan toc.StatementWithType, fatalErr *e
 	if executeInParallel {
 		txMutex.Lock()
 		if connectionPool.Tx[whichConn] != nil {
-			connectionPool.Commit(whichConn)
+			_ = connectionPool.Commit(whichConn)
 		}
 		txMutex.Unlock()
 	}

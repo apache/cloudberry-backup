@@ -463,8 +463,8 @@ func PrintCreatePostdataViewStatements(metadataFile *utils.FileWithByteCount, ob
 	for _, view := range views {
 		start := metadataFile.ByteCount
 		metadataFile.MustPrintf("\n\nCREATE OR REPLACE VIEW %s%s AS %s\n", view.FQN(), view.Options, view.Definition.String)
-		section, entry := view.GetMetadataEntry()
-		section = "postdata"
+		_, entry := view.GetMetadataEntry()
+		section := "postdata"
 		tier := globalTierMap[view.GetUniqueID()]
 		objToc.AddMetadataEntry(section, entry, start, metadataFile.ByteCount, tier)
 	}

@@ -432,7 +432,6 @@ LANGUAGE SQL`)
 				structmatcher.ExpectStructsToMatch(&dictionaryMetadata, &resultMetadata)
 			})
 			It("returns a slice of default metadata for a text search configuration", func() {
-				resultMetadataMap := backup.GetMetadataForObjectType(connectionPool, backup.TYPE_TS_CONFIGURATION)
 				configurationMetadata := testutils.DefaultMetadata(toc.OBJ_TEXT_SEARCH_CONFIGURATION, false, true, true, false)
 
 				testhelper.AssertQueryRuns(connectionPool, `CREATE TEXT SEARCH CONFIGURATION public.testconfiguration (PARSER = pg_catalog."default");`)
@@ -440,7 +439,7 @@ LANGUAGE SQL`)
 				testhelper.AssertQueryRuns(connectionPool, "COMMENT ON TEXT SEARCH CONFIGURATION public.testconfiguration IS 'This is a text search configuration comment.'")
 
 				uniqueID := testutils.UniqueIDFromObjectName(connectionPool, "public", "testconfiguration", backup.TYPE_TS_CONFIGURATION)
-				resultMetadataMap = backup.GetMetadataForObjectType(connectionPool, backup.TYPE_TS_CONFIGURATION)
+				resultMetadataMap := backup.GetMetadataForObjectType(connectionPool, backup.TYPE_TS_CONFIGURATION)
 
 				Expect(resultMetadataMap).To(HaveLen(1))
 				resultMetadata := resultMetadataMap[uniqueID]
@@ -778,7 +777,6 @@ LANGUAGE SQL`)
 				structmatcher.ExpectStructsToMatch(&dictionaryMetadata, &resultMetadata)
 			})
 			It("returns a slice of default metadata for a text search configuration in a specific schema", func() {
-				resultMetadataMap := backup.GetMetadataForObjectType(connectionPool, backup.TYPE_TS_CONFIGURATION)
 				configurationMetadata := testutils.DefaultMetadata(toc.OBJ_TEXT_SEARCH_CONFIGURATION, false, true, true, false)
 
 				testhelper.AssertQueryRuns(connectionPool, `CREATE TEXT SEARCH CONFIGURATION public.testconfiguration (PARSER = pg_catalog."default");`)
@@ -790,7 +788,7 @@ LANGUAGE SQL`)
 				testhelper.AssertQueryRuns(connectionPool, "COMMENT ON TEXT SEARCH CONFIGURATION testschema.testconfiguration IS 'This is a text search configuration comment.'")
 
 				_ = backupCmdFlags.Set(options.INCLUDE_SCHEMA, "testschema")
-				resultMetadataMap = backup.GetMetadataForObjectType(connectionPool, backup.TYPE_TS_CONFIGURATION)
+				resultMetadataMap := backup.GetMetadataForObjectType(connectionPool, backup.TYPE_TS_CONFIGURATION)
 
 				Expect(resultMetadataMap).To(HaveLen(1))
 				uniqueID := testutils.UniqueIDFromObjectName(connectionPool, "testschema", "testconfiguration", backup.TYPE_TS_CONFIGURATION)

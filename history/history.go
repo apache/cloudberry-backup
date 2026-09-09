@@ -89,7 +89,7 @@ func InitializeHistoryDatabase(historyDBPath string) (*sql.DB, error) {
 		return nil, err
 	} else if err == nil {
 		// We don't want an fd handle to it, so close it
-		fd.Close()
+		_ = fd.Close()
 	}
 
 	db, err := sql.Open("sqlite3", historyDBPath)
@@ -134,8 +134,8 @@ func InitializeHistoryDatabase(historyDBPath string) (*sql.DB, error) {
 		);`
 	_, err = tx.Exec(createBackupsTable)
 	if err != nil {
-		tx.Rollback()
-		db.Close()
+		_ = tx.Rollback()
+		_ = db.Close()
 		return nil, err
 	}
 
@@ -150,8 +150,8 @@ func InitializeHistoryDatabase(historyDBPath string) (*sql.DB, error) {
 	for _, auxTable := range auxTables {
 		_, err = tx.Exec(fmt.Sprintf(createAuxTableQuery, auxTable))
 		if err != nil {
-			tx.Rollback()
-			db.Close()
+			_ = tx.Rollback()
+			_ = db.Close()
 			return nil, err
 		}
 	}
@@ -167,8 +167,8 @@ func InitializeHistoryDatabase(historyDBPath string) (*sql.DB, error) {
 		);`
 	_, err = tx.Exec(createRestorePlansTable)
 	if err != nil {
-		tx.Rollback()
-		db.Close()
+		_ = tx.Rollback()
+		_ = db.Close()
 		return nil, err
 	}
 
@@ -181,14 +181,14 @@ func InitializeHistoryDatabase(historyDBPath string) (*sql.DB, error) {
 		);`
 	_, err = tx.Exec(createRestorePlanTablesTable)
 	if err != nil {
-		tx.Rollback()
-		db.Close()
+		_ = tx.Rollback()
+		_ = db.Close()
 		return nil, err
 	}
 
 	err = tx.Commit()
 	if err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, err
 	}
 	return db, nil
@@ -281,12 +281,12 @@ func StoreBackupHistory(db *sql.DB, currentBackupConfig *BackupConfig) error {
 	return err
 
 CleanupError:
-	tx.Rollback()
+	_ = tx.Rollback()
 	return err
 }
 
 func GetMainBackupInfo(timestamp string, historyDB *sql.DB) (BackupConfig, error) {
-	// Retreive main backups information. SQLite doesn't have booleans so convert from ints
+	// Retrieve main backups information. SQLite doesn't have booleans so convert from ints
 	// TODO -- consider passing in a tx instead so that aux tables are coherent with main backups
 	// table. Need to confirm this is possible with sqlite. Unclear if we ever pull in and use aux
 	// table info, so it may not be needed.
@@ -349,7 +349,9 @@ func getAuxTable(db *sql.DB, timestamp, tableName string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer auxTableRows.Close()
+	defer func() {
+		_ = auxTableRows.Close()
+	}()
 
 	auxTableSlice := make([]string, 0)
 	for auxTableRows.Next() {
@@ -397,7 +399,9 @@ func GetBackupConfig(timestamp string, historyDB *sql.DB) (*BackupConfig, error)
 	if err != nil {
 		return nil, err
 	}
-	defer restorePlanRows.Close()
+	defer func() {
+		_ = restorePlanRows.Close()
+	}()
 
 	backupConfig.RestorePlan = make([]RestorePlanEntry, 0)
 	for restorePlanRows.Next() {
@@ -418,8 +422,9 @@ func GetBackupConfig(timestamp string, historyDB *sql.DB) (*BackupConfig, error)
 		if err != nil {
 			return nil, err
 		}
-		defer restorePlanTableRows.Close()
-
+		defer func(rows *sql.Rows) {
+			_ = rows.Close()
+		}(restorePlanTableRows)
 		for restorePlanTableRows.Next() {
 			var tableFQN string
 			err = restorePlanTableRows.Scan(&tableFQN)

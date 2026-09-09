@@ -114,7 +114,7 @@ func GetConstraints(connectionPool *dbconn.DBConn, includeTables ...Relation) []
 	// filter out constraints that are inherited using the INHERITS clause, or
 	// inherited from a parent partition table. This field only accurately
 	// reflects constraints in GPDB6+ because check constraints on parent
-	// tables must propogate to children. For GPDB versions 5 or lower, this
+	// tables must propagate to children. For GPDB versions 5 or lower, this
 	// field will default to false.
 	conIsLocal := ""
 	if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("6")) || connectionPool.Version.IsCBDB() {
