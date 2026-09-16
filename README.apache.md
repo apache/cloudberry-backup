@@ -48,7 +48,7 @@ repository, those packages therefore ship:
 
 | File in this repository | Installed in the package as | Contents |
 | --- | --- | --- |
-| `LICENSE-binary`  | `LICENSE`  | `LICENSE`, plus an inventory of every component linked into the binaries, grouped by license |
+| `LICENSE-binary`  | `LICENSE`  | `LICENSE`, plus an inventory of every component bundled inside the binaries, grouped by license |
 | `NOTICE-binary`   | `NOTICE`   | `NOTICE`, plus the NOTICE files of bundled Apache-licensed components, as required by section 4(d) of the Apache License 2.0 |
 | `licenses-binary/` | `licenses/` | The verbatim license text of each bundled component, laid out by import path |
 
@@ -60,10 +60,12 @@ invalidate them:
 scripts/generate-binary-license.sh
 ```
 
-The script resolves the modules actually linked into each shipped binary,
-for each released platform, which means test-only dependencies such as
-Ginkgo and Gomega are correctly excluded, while platform-gated modules
-that only appear on Linux are correctly included. `make package` copies
+The script resolves the modules actually compiled into each shipped
+binary, for each released platform, which means test-only dependencies
+such as Ginkgo and Gomega are correctly excluded, while platform-gated
+modules that only appear on Linux are correctly included.  Libraries that
+stay outside the artifact and are resolved from the host at run time, such
+as the system C library, are not bundled and so are not listed. `make package` copies
 the generated files into the tarball, and the `binary-license-check` job
 in the compliance workflow runs the script with `--check` to fail the
 build when the committed files have drifted.

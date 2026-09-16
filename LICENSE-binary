@@ -248,9 +248,16 @@ The Greenplum Database Backup software includes:
 ================================================================================
 
 The convenience binary packages of Apache Cloudberry Backup (Incubating)
-are statically linked, and therefore contain the code of the third-party
-components listed below.  None of these components are present in the
-source release; this section applies to the binary artifacts only.
+are statically linked, so the compiled code of the third-party components
+listed below is bundled inside the shipped binaries themselves.  None of
+these components are present in the source release; this section applies
+to the binary artifacts only.
+
+The list covers what is bundled, not what is merely depended upon.
+Libraries that are resolved from the host at run time rather than
+packaged with the binaries -- the system C library above all -- are
+therefore deliberately not listed here, and neither are dependencies used
+only to build or test the project.
 
 The full text of each component's license is reproduced under the
 licenses/ directory of the package, laid out by import path.  (In the
