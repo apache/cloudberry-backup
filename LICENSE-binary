@@ -278,7 +278,7 @@ The following components are licensed under the Apache License, Version
 component ships a NOTICE file, its contents are reproduced in
 NOTICE-binary as required by section 4(d).
 
-  github.com/apache/cloudberry-go-libs v1.0.12-0.20260624080114-3de23e29a87a
+  github.com/apache/cloudberry-go-libs v1.0.12-0.20260915140105-0e762c961c5e
   github.com/aws/aws-sdk-go v1.44.257
   github.com/coreos/go-systemd/v22 v22.6.0
   github.com/jmespath/go-jmespath v0.4.0
