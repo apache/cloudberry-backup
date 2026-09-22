@@ -267,7 +267,6 @@ code or new licensing patterns.
             <exclude>gprestore.go</exclude>
             <exclude>show_coverage.sh</exclude>
             <exclude>go.mod</exclude>
-            <exclude>gometalinter.config</exclude>
             <exclude>.github/workflows/build_and_unit_test.yml</exclude>
             <exclude>gpbackup_helper.go</exclude>
             <exclude>tools.go</exclude>
