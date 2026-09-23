@@ -193,9 +193,17 @@ package:
 	@GOOS=$(GOOS) GOARCH=$(GOARCH) CGO_ENABLED=$(CGO) go build -tags '$(GPBACKMAN)' -o $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/bin/$(GPBACKMAN) --ldflags '-X $(GPBACKMAN_VERSION_STR)'
 	@GOOS=$(GOOS) GOARCH=$(GOARCH) CGO_ENABLED=$(CGO) go build -tags '$(EXPORTER)' -o $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/bin/$(EXPORTER) -ldflags "$(EXPORTER_VERSION_STR)"
 	@echo "Copying Apache compliance files..."
-	@cp LICENSE $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/
-	@cp NOTICE $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/
+# The binaries are statically linked, so they contain the code of every
+# module in the build graph. The package therefore ships the -binary
+# variants, which describe what is actually inside the artifact, under
+# the plain names. Regenerate them with scripts/generate-binary-license.sh.
+	@test -f LICENSE-binary || { echo "ERROR: LICENSE-binary is missing; run scripts/generate-binary-license.sh"; exit 1; }
+	@test -d licenses-binary || { echo "ERROR: licenses-binary/ is missing; run scripts/generate-binary-license.sh"; exit 1; }
+	@cp LICENSE-binary $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/LICENSE
+	@cp NOTICE-binary $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/NOTICE
 	@cp DISCLAIMER $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/
+	@rm -rf $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/licenses
+	@cp -a licenses-binary $(BUILD_DIR)/$(PACKAGE_NAME)-$(PACKAGE_VERSION)-$(GOOS)-$(GOARCH)/licenses
 	@echo "Creating install script..."
 	@sed -e 's/__PACKAGE_NAME__/$(PACKAGE_NAME)/g' \
 	     -e 's/__BACKUP__/$(BACKUP)/g' \
