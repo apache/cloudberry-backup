@@ -840,7 +840,8 @@ func GetForeignDataWrappers(connectionPool *dbconn.DBConn) []ForeignDataWrapper 
 			SELECT pg_catalog.quote_ident(option_name) || ' ' || pg_catalog.quote_literal(option_value)
 			FROM pg_options_to_table(fdwoptions) ORDER BY option_name), ', ') AS options
 	FROM pg_foreign_data_wrapper
-	WHERE oid >= %d AND %s`, FIRST_NORMAL_OBJECT_ID, ExtensionFilterClause(""))
+	WHERE oid >= %d AND %s
+	ORDER BY oid`, FIRST_NORMAL_OBJECT_ID, ExtensionFilterClause(""))
 
 	err := connectionPool.Select(&results, query)
 	gplog.FatalOnError(err)
@@ -889,7 +890,8 @@ func GetForeignServers(connectionPool *dbconn.DBConn) []ForeignServer {
 			FROM pg_options_to_table(fs.srvoptions) ORDER BY option_name), ', ') AS options
 	FROM pg_foreign_server fs
 		LEFT JOIN pg_foreign_data_wrapper fdw ON fdw.oid = srvfdw
-	WHERE fs.oid >= %d AND %s`, FIRST_NORMAL_OBJECT_ID, ExtensionFilterClause("fs"))
+	WHERE fs.oid >= %d AND %s
+	ORDER BY fs.oid`, FIRST_NORMAL_OBJECT_ID, ExtensionFilterClause("fs"))
 
 	err := connectionPool.Select(&results, query)
 	gplog.FatalOnError(err)
