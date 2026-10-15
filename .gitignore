@@ -31,6 +31,11 @@ gpbackman
 
 !gpbackman/
 
+# Build output: "make package" writes the convenience tarballs here, and
+# the Apache RAT check writes its report to target/.
+build/
+target/
+
 # Logs
 *.log
 
