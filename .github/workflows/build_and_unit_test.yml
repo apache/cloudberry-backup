@@ -10,6 +10,29 @@ on:
 
 jobs:
 
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        path: go/src/github.com/apache/cloudberry-backup
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: "1.24"
+
+    - name: Set Environment
+      run: |
+        echo "GOPATH=${GITHUB_WORKSPACE}/go" >> $GITHUB_ENV
+        echo "${GITHUB_WORKSPACE}/go/bin" >> $GITHUB_PATH
+
+    - name: Run golangci-lint
+      run: |
+        cd ${GOPATH}/src/github.com/apache/cloudberry-backup
+        make lint
+
   build_and_unit_test:
     runs-on: ubuntu-latest
     steps:
