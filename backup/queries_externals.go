@@ -61,7 +61,8 @@ func GetExternalTableDefinitions(connectionPool *dbconn.DBConn) map[uint32]Exter
 		e.fmtopts AS formatopts,
 		coalesce(e.command, '') AS command,
 		coalesce(e.rejectlimit, 0) AS rejectlimit,
-		coalesce(e.rejectlimittype, '') AS rejectlimittype,
+		-- gp_exttable_fdw represents "not set" as char(-1) i.e. '\377', not SQL NULL
+		coalesce(nullif(e.rejectlimittype, '\377'), '') AS rejectlimittype,
 		e.logerrors,
 		coalesce('log_errors=persistently' = any(ft.ftoptions), false) AS logerrpersist,
 		pg_encoding_to_char(e.encoding) AS encoding,

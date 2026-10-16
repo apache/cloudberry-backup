@@ -5,6 +5,7 @@ import (
 
 	"github.com/apache/cloudberry-backup/backup"
 	"github.com/apache/cloudberry-backup/testutils"
+	"github.com/apache/cloudberry-go-libs/dbconn"
 	"github.com/apache/cloudberry-go-libs/structmatcher"
 	"github.com/apache/cloudberry-go-libs/testhelper"
 
@@ -506,7 +507,13 @@ CREATEEXTTABLE (protocol='gphdfs', type='writable')`
 		})
 	})
 	Describe("GetRoleMembers", func() {
+		// PG16 rewrote role-grant machinery: an implicit (unspecified) grantor
+		// on a GRANT ROLE always resolves to the bootstrap superuser (the role
+		// with oid 10, i.e. the role that ran initdb), never to the acting
+		// superuser, even when the acting role also has the SUPERUSER attribute.
+		var bootstrapSuperuser string
 		BeforeEach(func() {
+			bootstrapSuperuser = dbconn.MustSelectString(connectionPool, "SELECT rolname FROM pg_authid WHERE oid = 10")
 			testhelper.AssertQueryRuns(connectionPool, `CREATE ROLE usergroup`)
 			testhelper.AssertQueryRuns(connectionPool, `CREATE ROLE testuser`)
 		})
@@ -516,7 +523,7 @@ CREATEEXTTABLE (protocol='gphdfs', type='writable')`
 		})
 		It("returns a role without ADMIN OPTION", func() {
 			testhelper.AssertQueryRuns(connectionPool, "GRANT usergroup TO testuser")
-			expectedRoleMember := backup.RoleMember{Role: "usergroup", Member: "testuser", Grantor: "testrole", IsAdmin: false}
+			expectedRoleMember := backup.RoleMember{Role: "usergroup", Member: "testuser", Grantor: bootstrapSuperuser, IsAdmin: false}
 
 			roleMembers := backup.GetRoleMembers(connectionPool)
 
@@ -529,13 +536,20 @@ CREATEEXTTABLE (protocol='gphdfs', type='writable')`
 			Fail("Role 'testuser' is not a member of role 'usergroup'")
 		})
 		It("returns a role WITH ADMIN OPTION", func() {
+			// Under PG16, an explicit GRANTED BY <role> requires that role to
+			// actually hold ADMIN OPTION on the target role; being a superuser
+			// is no longer sufficient on its own. Grant testrole that standing
+			// first (itself defaulting to the bootstrap superuser as grantor).
+			testhelper.AssertQueryRuns(connectionPool, "GRANT usergroup TO testrole WITH ADMIN OPTION")
 			testhelper.AssertQueryRuns(connectionPool, "GRANT usergroup TO testuser WITH ADMIN OPTION GRANTED BY testrole")
 			expectedRoleMember := backup.RoleMember{Role: "usergroup", Member: "testuser", Grantor: "testrole", IsAdmin: true}
 
 			roleMembers := backup.GetRoleMembers(connectionPool)
 
+			// The setup grant above also makes testrole itself a member of
+			// usergroup, so match on Member too, not just Role.
 			for _, roleMember := range roleMembers {
-				if roleMember.Role == "usergroup" {
+				if roleMember.Role == "usergroup" && roleMember.Member == "testuser" {
 					structmatcher.ExpectStructsToMatch(&expectedRoleMember, &roleMember)
 					return
 				}
@@ -552,7 +566,7 @@ CREATEEXTTABLE (protocol='gphdfs', type='writable')`
 			testhelper.AssertQueryRuns(connectionPool, `CREATE ROLE "1testuser"`)
 			defer testhelper.AssertQueryRuns(connectionPool, `DROP ROLE "1testuser"`)
 			testhelper.AssertQueryRuns(connectionPool, `GRANT "1usergroup" TO "1testuser"`)
-			expectedRoleMember := backup.RoleMember{Role: `"1usergroup"`, Member: `"1testuser"`, Grantor: `"1testrole"`, IsAdmin: false}
+			expectedRoleMember := backup.RoleMember{Role: `"1usergroup"`, Member: `"1testuser"`, Grantor: bootstrapSuperuser, IsAdmin: false}
 
 			roleMembers := backup.GetRoleMembers(connectionPool)
 
@@ -565,25 +579,27 @@ CREATEEXTTABLE (protocol='gphdfs', type='writable')`
 			Fail(`Role "1testuser" is not a member of role "1usergroup"`)
 		})
 		It("handles dropped granter", func() {
-			testhelper.AssertQueryRuns(connectionPool, `CREATE ROLE testdropgranter_role`)
-			defer testhelper.AssertQueryRuns(connectionPool, `DROP ROLE testdropgranter_role`)
-			testhelper.AssertQueryRuns(connectionPool, `CREATE ROLE testdropgranter_member`)
-			defer testhelper.AssertQueryRuns(connectionPool, `DROP ROLE testdropgranter_member`)
-			testhelper.AssertQueryRuns(connectionPool, `CREATE ROLE testdropgranter_granter`)
-			testhelper.AssertQueryRuns(connectionPool, `GRANT testdropgranter_role TO testdropgranter_member GRANTED BY testdropgranter_granter`)
-			testhelper.AssertQueryRuns(connectionPool, `DROP ROLE testdropgranter_granter`)
-			expectedRoleMember := backup.RoleMember{Role: `testdropgranter_role`, Member: `testdropgranter_member`, Grantor: ``, IsAdmin: false}
-
-			roleMember := backup.GetRoleMembers(connectionPool)
-			Expect(len(roleMember)).To(Equal(1))
-			structmatcher.ExpectStructsToMatch(&expectedRoleMember, &roleMember[0])
+			// PG16 tracks the grantor of a role membership as a real dependency
+			// (pg_shdepend), so a role can no longer be dropped while it is
+			// still recorded as another membership's grantor - DROP ROLE fails
+			// with "cannot be dropped because some objects depend on it", and
+			// REVOKE ADMIN OPTION ... FROM requires CASCADE, which removes the
+			// dependent membership rather than orphaning its grantor. So the
+			// on-disk state this test simulates (a membership whose grantor
+			// role no longer exists) can no longer be produced by live DDL; it
+			// can still arrive via pg_upgrade from a pre-16 cluster, which is
+			// exactly the case GetRoleMembers's fallback (a dangling grantor
+			// oid renders as '' rather than pg_get_userbyid's "unknown" text)
+			// exists to handle. Skipping rather than asserting on unreachable
+			// setup.
+			Skip("PG16 role-grant dependency tracking prevents dropping a role that is still recorded as another membership's grantor; this state can now only arise via pg_upgrade from pre-16 clusters")
 		})
 		It("handles implicit cast of oid to text", func() {
 			testhelper.AssertQueryRuns(connectionPool, "CREATE OR REPLACE FUNCTION pg_catalog.text(oid) RETURNS text STRICT IMMUTABLE LANGUAGE SQL AS 'SELECT textin(oidout($1));';")
 			testhelper.AssertQueryRuns(connectionPool, "CREATE CAST (oid AS text) WITH FUNCTION pg_catalog.text(oid) AS IMPLICIT;")
 			defer testhelper.AssertQueryRuns(connectionPool, "DROP FUNCTION pg_catalog.text(oid) CASCADE;")
 			testhelper.AssertQueryRuns(connectionPool, "GRANT usergroup TO testuser")
-			expectedRoleMember := backup.RoleMember{Role: "usergroup", Member: "testuser", Grantor: "testrole", IsAdmin: false}
+			expectedRoleMember := backup.RoleMember{Role: "usergroup", Member: "testuser", Grantor: bootstrapSuperuser, IsAdmin: false}
 
 			roleMembers := backup.GetRoleMembers(connectionPool)
 

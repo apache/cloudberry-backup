@@ -53,9 +53,9 @@ permissions:
 
 env:
   CLOUDBERRY_REPO: apache/cloudberry
-  # Currently targeting REL_2_STABLE (2.x) branch only.
+  # Currently targeting main  branch only.
   # TODO: Switch back to "main" once Cloudberry 3.x / main branch stabilizes with PG16 support.
-  CLOUDBERRY_REF: REL_2_STABLE
+  CLOUDBERRY_REF: main
   CLOUDBERRY_DIR: cloudberry
   CLOUDBERRY_BACKUP_DIR: cloudberry-backup
 
