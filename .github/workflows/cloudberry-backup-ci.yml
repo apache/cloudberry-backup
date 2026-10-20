@@ -25,13 +25,16 @@
 #   and runs Cloudberry-backup tests against a demo Cloudberry cluster.
 #
 # Workflow Overview:
-# 1. Build Cloudberry from source and upload the installation as an artifact.
-# 2. For each test target (unit, integration, end_to_end), restore the
-#    Cloudberry installation, create a demo cluster, and run tests.
+# 1. For each Cloudberry branch (REL_2_STABLE, main), build Cloudberry
+#    from source and upload the installation as an artifact.
+# 2. For each Cloudberry branch and test target (unit, integration,
+#    end_to_end, ...), restore the matching Cloudberry installation,
+#    create a demo cluster, and run tests.
 #
 # Notes:
 # - Each test job runs in an isolated environment and creates its own demo cluster.
 # - Artifacts are used to avoid rebuilding Cloudberry for every test target.
+# - Artifact names carry the Cloudberry branch so the two builds never mix.
 # --------------------------------------------------------------------
 
 name: cloudberry-backup-ci
@@ -53,15 +56,16 @@ permissions:
 
 env:
   CLOUDBERRY_REPO: apache/cloudberry
-  # Currently targeting REL_2_STABLE (2.x) branch only.
-  # TODO: Switch back to "main" once Cloudberry 3.x / main branch stabilizes with PG16 support.
-  CLOUDBERRY_REF: REL_2_STABLE
+  # The Cloudberry branches to test against are set by the
+  # `cloudberry_ref` matrix of each job:
+  #   - REL_2_STABLE: Cloudberry 2.x (PG14 kernel), the current stable line.
+  #   - main:         the future Cloudberry 3.x (PG16 kernel).
   CLOUDBERRY_DIR: cloudberry
   CLOUDBERRY_BACKUP_DIR: cloudberry-backup
 
 jobs:
   build_cloudberry:
-    name: Build Cloudberry From Source
+    name: Build Cloudberry From Source (${{ matrix.cloudberry_ref }})
     runs-on: ubuntu-22.04
     timeout-minutes: 180
     container:
@@ -72,6 +76,11 @@ jobs:
         -v /usr/share:/host_usr_share
         -v /usr/local:/host_usr_local
         -v /opt:/host_opt
+
+    strategy:
+      fail-fast: false
+      matrix:
+        cloudberry_ref: [REL_2_STABLE, main]
 
     steps:
       - name: Free Disk Space
@@ -99,7 +108,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: ${{ env.CLOUDBERRY_REPO }}
-          ref: ${{ env.CLOUDBERRY_REF }}
+          ref: ${{ matrix.cloudberry_ref }}
           fetch-depth: 1
           submodules: true
           path: ${{ env.CLOUDBERRY_DIR }}
@@ -159,7 +168,7 @@ jobs:
       - name: Upload Cloudberry Installation
         uses: actions/upload-artifact@v4
         with:
-          name: cloudberry-db-install
+          name: cloudberry-db-install-${{ matrix.cloudberry_ref }}
           path: cloudberry-db.tgz
           if-no-files-found: error
           retention-days: 7
@@ -167,14 +176,19 @@ jobs:
       - name: Upload Cloudberry Source
         uses: actions/upload-artifact@v4
         with:
-          name: cloudberry-source
+          name: cloudberry-source-${{ matrix.cloudberry_ref }}
           path: cloudberry-src.tgz
           if-no-files-found: error
           retention-days: 7
 
   test_cloudberry_backup:
-    name: Cloudberry-backup Tests (${{ matrix.test_target }})
+    name: Cloudberry-backup Tests (${{ matrix.cloudberry_ref }}, ${{ matrix.test_target }})
     needs: [build_cloudberry]
+    # `needs` on a matrix job fails as soon as any one of its legs fails, so
+    # run anyway and let each leg fail on its own if the Cloudberry build it
+    # downloads is missing.  That keeps a broken main build from hiding the
+    # REL_2_STABLE results.
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-22.04
     timeout-minutes: 180
     container:
@@ -189,6 +203,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        cloudberry_ref: [REL_2_STABLE, main]
         test_target: [smoke, unit, integration, end_to_end, s3_plugin_e2e, regression, scale, package_install]
 
     steps:
@@ -222,12 +237,12 @@ jobs:
       - name: Download Cloudberry Installation
         uses: actions/download-artifact@v4
         with:
-          name: cloudberry-db-install
+          name: cloudberry-db-install-${{ matrix.cloudberry_ref }}
 
       - name: Download Cloudberry Source
         uses: actions/download-artifact@v4
         with:
-          name: cloudberry-source
+          name: cloudberry-source-${{ matrix.cloudberry_ref }}
 
       - name: Restore Cloudberry Installation
         run: |
@@ -281,6 +296,7 @@ jobs:
           CLOUDBERRY_BACKUP_SRC: ${{ github.workspace }}/${{ env.CLOUDBERRY_BACKUP_DIR }}
           CLOUDBERRY_SRC: ${{ github.workspace }}/${{ env.CLOUDBERRY_DIR }}
           TEST_TARGET: ${{ matrix.test_target }}
+          CLOUDBERRY_REF: ${{ matrix.cloudberry_ref }}
         run: |
           set -euo pipefail
           TEST_LOG_ROOT="${GITHUB_WORKSPACE}/test-logs/${TEST_TARGET}"
@@ -434,7 +450,17 @@ jobs:
                 ;;
               regression)
                 pushd ${CLOUDBERRY_SRC}/src/test/regress
-                ./pg_regress --dbname=regression --host=localhost --port=7000 --init-file=init_file --schedule=./minimal_schedule || true
+                # On Cloudberry main (PG16 kernel) the shared test tables
+                # (char_tbl, int2_tbl, ...) are created by test_setup, which
+                # minimal_schedule does not list; without it most tests fail
+                # and the regression database ends up nearly empty.  Run it
+                # first wherever it exists; on REL_2_STABLE it is harmless.
+                regress_schedule=./minimal_schedule
+                if [ -f sql/test_setup.sql ]; then
+                  regress_schedule=/tmp/regression_minimal_schedule
+                  { echo "test: test_setup"; cat ./minimal_schedule; } > "${regress_schedule}"
+                fi
+                ./pg_regress --dbname=regression --host=localhost --port=7000 --init-file=init_file --schedule="${regress_schedule}" || true
                 cat regression.diffs 2>/dev/null || true
                 popd
 
@@ -569,6 +595,7 @@ jobs:
 
           {
             echo "## Cloudberry-backup Test Summary"
+            echo "- Cloudberry: ${CLOUDBERRY_REF}"
             echo "- Target: ${TEST_TARGET}"
             if [ ${status} -eq 0 ]; then
               echo "- Result: PASS"
@@ -584,7 +611,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: cloudberry-backup-logs-${{ matrix.test_target }}
+          name: cloudberry-backup-logs-${{ matrix.cloudberry_ref }}-${{ matrix.test_target }}
           path: test-logs/${{ matrix.test_target }}
           if-no-files-found: warn
           retention-days: 7
