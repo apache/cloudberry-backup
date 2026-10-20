@@ -402,11 +402,16 @@ AS $$ BEGIN RAISE EXCEPTION 'exception'; END; $$;`)
 				DROP TABLE public.view_base_table CASCADE;
 			`)
 
+			viewDef := " SELECT view_base_table.key,\n    (view_base_table.data COLLATE \"C\") AS data\n   FROM public.view_base_table\n  GROUP BY view_base_table.key;"
+			if testutils.IsCBDB3OrLater(connectionPool) {
+				// PG16 no longer qualifies columns of a single-table query.
+				viewDef = " SELECT key,\n    (data COLLATE \"C\") AS data\n   FROM public.view_base_table\n  GROUP BY key;"
+			}
 			view1 := backup.View{
 				Schema: "public",
 				Name:   "key_dependent_view",
 				Definition: sql.NullString{
-					String: " SELECT view_base_table.key,\n    (view_base_table.data COLLATE \"C\") AS data\n   FROM public.view_base_table\n  GROUP BY view_base_table.key;",
+					String: viewDef,
 					Valid:  true,
 				},
 				ColumnDefs: []backup.ColumnDefinition{

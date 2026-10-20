@@ -506,6 +506,17 @@ CREATEEXTTABLE (protocol='gphdfs', type='writable')`
 		})
 	})
 	Describe("GetRoleMembers", func() {
+		/*
+		 * Since PG16 (Cloudberry 3.x) a superuser that grants a membership
+		 * without GRANTED BY is recorded as the bootstrap superuser rather
+		 * than as itself.
+		 */
+		implicitGrantor := func(currentRole string) string {
+			if testutils.IsCBDB3OrLater(connectionPool) {
+				return testutils.GetUserByID(connectionPool, 10)
+			}
+			return currentRole
+		}
 		BeforeEach(func() {
 			testhelper.AssertQueryRuns(connectionPool, `CREATE ROLE usergroup`)
 			testhelper.AssertQueryRuns(connectionPool, `CREATE ROLE testuser`)
@@ -516,7 +527,7 @@ CREATEEXTTABLE (protocol='gphdfs', type='writable')`
 		})
 		It("returns a role without ADMIN OPTION", func() {
 			testhelper.AssertQueryRuns(connectionPool, "GRANT usergroup TO testuser")
-			expectedRoleMember := backup.RoleMember{Role: "usergroup", Member: "testuser", Grantor: "testrole", IsAdmin: false}
+			expectedRoleMember := backup.RoleMember{Role: "usergroup", Member: "testuser", Grantor: implicitGrantor("testrole"), IsAdmin: false}
 
 			roleMembers := backup.GetRoleMembers(connectionPool)
 
@@ -529,13 +540,14 @@ CREATEEXTTABLE (protocol='gphdfs', type='writable')`
 			Fail("Role 'testuser' is not a member of role 'usergroup'")
 		})
 		It("returns a role WITH ADMIN OPTION", func() {
+			testutils.GrantAdminToGrantorIfRequired(connectionPool, "usergroup", "testrole")
 			testhelper.AssertQueryRuns(connectionPool, "GRANT usergroup TO testuser WITH ADMIN OPTION GRANTED BY testrole")
 			expectedRoleMember := backup.RoleMember{Role: "usergroup", Member: "testuser", Grantor: "testrole", IsAdmin: true}
 
 			roleMembers := backup.GetRoleMembers(connectionPool)
 
 			for _, roleMember := range roleMembers {
-				if roleMember.Role == "usergroup" {
+				if roleMember.Role == "usergroup" && roleMember.Member == "testuser" {
 					structmatcher.ExpectStructsToMatch(&expectedRoleMember, &roleMember)
 					return
 				}
@@ -552,7 +564,7 @@ CREATEEXTTABLE (protocol='gphdfs', type='writable')`
 			testhelper.AssertQueryRuns(connectionPool, `CREATE ROLE "1testuser"`)
 			defer testhelper.AssertQueryRuns(connectionPool, `DROP ROLE "1testuser"`)
 			testhelper.AssertQueryRuns(connectionPool, `GRANT "1usergroup" TO "1testuser"`)
-			expectedRoleMember := backup.RoleMember{Role: `"1usergroup"`, Member: `"1testuser"`, Grantor: `"1testrole"`, IsAdmin: false}
+			expectedRoleMember := backup.RoleMember{Role: `"1usergroup"`, Member: `"1testuser"`, Grantor: implicitGrantor(`"1testrole"`), IsAdmin: false}
 
 			roleMembers := backup.GetRoleMembers(connectionPool)
 
@@ -565,6 +577,12 @@ CREATEEXTTABLE (protocol='gphdfs', type='writable')`
 			Fail(`Role "1testuser" is not a member of role "1usergroup"`)
 		})
 		It("handles dropped granter", func() {
+			if testutils.IsCBDB3OrLater(connectionPool) {
+				// Since PG16 a role that granted a membership cannot be
+				// dropped while that membership exists, so a membership
+				// with a dropped grantor can no longer be produced.
+				Skip("Test not applicable to Cloudberry 3.x and later")
+			}
 			testhelper.AssertQueryRuns(connectionPool, `CREATE ROLE testdropgranter_role`)
 			defer testhelper.AssertQueryRuns(connectionPool, `DROP ROLE testdropgranter_role`)
 			testhelper.AssertQueryRuns(connectionPool, `CREATE ROLE testdropgranter_member`)
@@ -583,7 +601,7 @@ CREATEEXTTABLE (protocol='gphdfs', type='writable')`
 			testhelper.AssertQueryRuns(connectionPool, "CREATE CAST (oid AS text) WITH FUNCTION pg_catalog.text(oid) AS IMPLICIT;")
 			defer testhelper.AssertQueryRuns(connectionPool, "DROP FUNCTION pg_catalog.text(oid) CASCADE;")
 			testhelper.AssertQueryRuns(connectionPool, "GRANT usergroup TO testuser")
-			expectedRoleMember := backup.RoleMember{Role: "usergroup", Member: "testuser", Grantor: "testrole", IsAdmin: false}
+			expectedRoleMember := backup.RoleMember{Role: "usergroup", Member: "testuser", Grantor: implicitGrantor("testrole"), IsAdmin: false}
 
 			roleMembers := backup.GetRoleMembers(connectionPool)
 
