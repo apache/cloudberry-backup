@@ -559,6 +559,26 @@ func SkipIfBefore7(connectionPool *dbconn.DBConn) {
 	}
 }
 
+/*
+ * Cloudberry 3.x is built on the PostgreSQL 16 kernel.  Compare the major
+ * version directly: a development build reports a version such as
+ * "3.0.0-devel", which sorts before "3.0.0" under semver and so fails
+ * Version.AtLeast("3").
+ */
+func IsCBDB3OrLater(connectionPool *dbconn.DBConn) bool {
+	return connectionPool.Version.IsCBDB() && connectionPool.Version.SemVer.Major >= 3
+}
+
+/*
+ * Since PG16 (Cloudberry 3.x) the role named in GRANTED BY must hold ADMIN
+ * OPTION on the granted role, even when that role is a superuser.
+ */
+func GrantAdminToGrantorIfRequired(connectionPool *dbconn.DBConn, role string, grantor string) {
+	if IsCBDB3OrLater(connectionPool) {
+		testhelper.AssertQueryRuns(connectionPool, fmt.Sprintf("GRANT %s TO %s WITH ADMIN OPTION", role, grantor))
+	}
+}
+
 func InitializeTestTOC(buffer io.Writer, which string) (*toc.TOC, *utils.FileWithByteCount) {
 	tocfile := &toc.TOC{}
 	tocfile.InitializeMetadataEntryMap()
