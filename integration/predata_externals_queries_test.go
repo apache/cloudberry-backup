@@ -32,6 +32,31 @@ FORMAT 'TEXT'`)
 				Writable: false, URIs: []string{"file://tmp/myfile.txt"}}
 			structmatcher.ExpectStructsToMatchExcluding(&extTable, &result, "Oid")
 		})
+		It("returns a slice for an external table with no format options (NULL fmtopts)", func() {
+			// On GPDB 7+ and Cloudberry, pg_exttable derives fmttype/fmtopts
+			// from the foreign table options. An external table whose options
+			// omit delimiter/null/escape (e.g. a legacy or minimally-defined
+			// table) has a NULL fmtopts. GetExternalTableDefinitions scans
+			// fmtopts into a plain string, so a NULL used to abort the backup
+			// with "converting NULL to string is unsupported". Strip those
+			// options to reproduce that catalog state.
+			testutils.SkipIfBefore7(connectionPool)
+			testhelper.AssertQueryRuns(connectionPool, `CREATE READABLE EXTERNAL TABLE public.ext_table(i int)
+LOCATION ('file://tmp/myfile.txt')
+FORMAT 'TEXT'`)
+			defer testhelper.AssertQueryRuns(connectionPool, "DROP EXTERNAL TABLE public.ext_table")
+			testhelper.AssertQueryRuns(connectionPool, `ALTER FOREIGN TABLE public.ext_table OPTIONS (DROP delimiter, DROP "null", DROP escape)`)
+			oid := testutils.OidFromObjectName(connectionPool, "public", "ext_table", backup.TYPE_RELATION)
+
+			results := backup.GetExternalTableDefinitions(connectionPool)
+			result := results[oid]
+
+			extTable := backup.ExternalTableDefinition{Oid: 0, Type: 0, Protocol: 0, Location: sql.NullString{String: "file://tmp/myfile.txt", Valid: true},
+				ExecLocation: "ALL_SEGMENTS", FormatType: "t", FormatOpts: "",
+				Command: "", RejectLimit: 0, RejectLimitType: "", ErrTableName: "", ErrTableSchema: "", Encoding: "UTF8",
+				Writable: false, URIs: []string{"file://tmp/myfile.txt"}}
+			structmatcher.ExpectStructsToMatchExcluding(&extTable, &result, "Oid")
+		})
 		It("returns a slice for a basic external web table definition", func() {
 			testhelper.AssertQueryRuns(connectionPool, "CREATE TABLE public.simple_table(i int)")
 			defer testhelper.AssertQueryRuns(connectionPool, "DROP TABLE public.simple_table")
