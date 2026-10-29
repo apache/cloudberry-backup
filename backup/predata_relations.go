@@ -41,12 +41,15 @@ func SplitTablesByPartitionType(tables []Table, includeList []options.Relation) 
 		}
 
 		for _, table := range tables {
-			if table.IsExternal && table.PartitionLevelInfo.Level == "l" {
-				if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("7") {
-					// GPDB7+ has different conventions for external partitions
-					// and does not need the suffix added
-					table.Name = AppendExtPartSuffix(table.Name)
-				}
+			if table.IsExternal && table.PartitionLevelInfo.Level == "l" &&
+				connectionPool.Version.IsGPDB() && connectionPool.Version.Before("7") {
+				// GPDB6 and earlier: external leaf partitions need the
+				// _ext_part_ suffix and are emitted as their own metadata table
+				// here. GPDB7+/CBDB have different conventions for external
+				// partitions and emit every table (including external leaf
+				// partitions) in the block below, so they must not also be
+				// appended here or they would be duplicated.
+				table.Name = AppendExtPartSuffix(table.Name)
 				metadataTables = append(metadataTables, table)
 			}
 			partType := table.PartitionLevelInfo.Level

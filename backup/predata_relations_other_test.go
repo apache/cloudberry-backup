@@ -592,6 +592,37 @@ GRANT ALL ON TABLE shamwow.shazam TO testrole;`}
 				structmatcher.ExpectStructsToMatch(&expectedTables[1], &metadataTables[1])
 			})
 		})
+		Context("leafPartitionData with an external leaf partition", func() {
+			It("adds an external leaf partition to the metadata list exactly once on GPDB7+/CBDB", func() {
+				// On GPDB7+/CBDB every table (including external leaf
+				// partitions) is emitted once by the common branch. The
+				// external leaf partition must not also be appended by the
+				// GPDB6-only external-partition branch, or it would appear
+				// twice and later break dependency sorting with a spurious
+				// "Dependency resolution failed" error.
+				testhelper.SetDBVersion(connectionPool, "7.0.0")
+				includeList = []options.Relation{}
+				tables = []backup.Table{
+					{
+						Relation:        backup.Relation{Oid: 1, Schema: "public", Name: "part_parent1_prt_ext"},
+						TableDefinition: backup.TableDefinition{PartitionLevelInfo: backup.PartitionLevelInfo{Level: "l"}, IsExternal: true},
+					},
+					{
+						Relation:        backup.Relation{Oid: 2, Schema: "public", Name: "part_parent1_prt_normal"},
+						TableDefinition: backup.TableDefinition{PartitionLevelInfo: backup.PartitionLevelInfo{Level: "l"}},
+					},
+				}
+				_ = cmdFlags.Set(options.LEAF_PARTITION_DATA, "true")
+				_ = cmdFlags.Set(options.INCLUDE_RELATION, "")
+
+				metadataTables, _ := backup.SplitTablesByPartitionType(tables, includeList)
+
+				Expect(metadataTables).To(HaveLen(2))
+				names := []string{metadataTables[0].FQN(), metadataTables[1].FQN()}
+				sort.Strings(names)
+				Expect(names).To(Equal([]string{"public.part_parent1_prt_ext", "public.part_parent1_prt_normal"}))
+			})
+		})
 	})
 	Describe("AppendExtPartSuffix", func() {
 		It("adds a suffix to an unquoted external partition table", func() {
