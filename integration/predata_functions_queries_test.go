@@ -997,6 +997,30 @@ LANGUAGE SQL`)
 			Expect(resultServers).To(HaveLen(1))
 			structmatcher.ExpectStructsToMatchExcluding(&expectedServer, &resultServers[0], "Oid")
 		})
+		It("dumps an extension-member server a foreign table depends on, but not an unreferenced one", func() {
+			// A server registered under an extension (e.g. by a migration tool
+			// via ALTER EXTENSION ... ADD SERVER) is normally filtered out. It
+			// must still be dumped when a non-extension foreign table depends on
+			// it, otherwise that dumped foreign table cannot be restored. A
+			// server no dumped foreign table references stays filtered.
+			testhelper.AssertQueryRuns(connectionPool, "CREATE SERVER referencedserver FOREIGN DATA WRAPPER foreigndatawrapper")
+			testhelper.AssertQueryRuns(connectionPool, "CREATE FOREIGN TABLE public.ref_ftable (i int) SERVER referencedserver")
+			defer testhelper.AssertQueryRuns(connectionPool, "DROP FOREIGN TABLE public.ref_ftable")
+			testhelper.AssertQueryRuns(connectionPool, "ALTER EXTENSION plpgsql ADD SERVER referencedserver")
+			defer testhelper.AssertQueryRuns(connectionPool, "ALTER EXTENSION plpgsql DROP SERVER referencedserver")
+			testhelper.AssertQueryRuns(connectionPool, "CREATE SERVER orphanserver FOREIGN DATA WRAPPER foreigndatawrapper")
+			testhelper.AssertQueryRuns(connectionPool, "ALTER EXTENSION plpgsql ADD SERVER orphanserver")
+			defer testhelper.AssertQueryRuns(connectionPool, "ALTER EXTENSION plpgsql DROP SERVER orphanserver")
+
+			resultServers := backup.GetForeignServers(connectionPool)
+
+			serverNames := make([]string, len(resultServers))
+			for i, server := range resultServers {
+				serverNames[i] = server.Name
+			}
+			Expect(serverNames).To(ContainElement("referencedserver"))
+			Expect(serverNames).ToNot(ContainElement("orphanserver"))
+		})
 	})
 	Describe("GetUserMappings", func() {
 		BeforeEach(func() {

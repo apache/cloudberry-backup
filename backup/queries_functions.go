@@ -879,6 +879,15 @@ func (fs ForeignServer) FQN() string {
 
 func GetForeignServers(connectionPool *dbconn.DBConn) []ForeignServer {
 	results := make([]ForeignServer, 0)
+	// A foreign server that belongs to an extension (pg_depend deptype 'e') is
+	// normally skipped, since CREATE EXTENSION is expected to recreate it.
+	// However, gpbackup still dumps the user's foreign tables, which are not
+	// extension members. When such a table depends on an extension-member
+	// server -- e.g. a migration tool registered the server under the FDW
+	// extension with ALTER EXTENSION ... ADD SERVER -- skipping the server
+	// leaves the dumped foreign table unrestorable ("server ... does not
+	// exist"). Also dump an extension-member server when a to-be-dumped foreign
+	// table depends on it, so the backup is self-contained.
 	query := fmt.Sprintf(`
 	SELECT fs.oid,
 		quote_ident(fs.srvname) AS name,
@@ -890,8 +899,16 @@ func GetForeignServers(connectionPool *dbconn.DBConn) []ForeignServer {
 			FROM pg_options_to_table(fs.srvoptions) ORDER BY option_name), ', ') AS options
 	FROM pg_foreign_server fs
 		LEFT JOIN pg_foreign_data_wrapper fdw ON fdw.oid = srvfdw
-	WHERE fs.oid >= %d AND %s
-	ORDER BY fs.oid`, FIRST_NORMAL_OBJECT_ID, ExtensionFilterClause("fs"))
+	WHERE fs.oid >= %d
+		AND (%s
+			OR fs.oid IN (
+				SELECT ft.ftserver
+				FROM pg_foreign_table ft
+					JOIN pg_class c ON c.oid = ft.ftrelid
+					JOIN pg_namespace n ON n.oid = c.relnamespace
+				WHERE %s AND %s))
+	ORDER BY fs.oid`, FIRST_NORMAL_OBJECT_ID, ExtensionFilterClause("fs"),
+		relationAndSchemaFilterClause(), ExtensionFilterClause("c"))
 
 	err := connectionPool.Select(&results, query)
 	gplog.FatalOnError(err)
