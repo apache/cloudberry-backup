@@ -850,6 +850,41 @@ var _ = Describe("backup and restore end to end tests", func() {
 			Expect(tocStruct.GlobalEntries[0].ObjectType).To(Equal(toc.OBJ_SESSION_GUC))
 		})
 	})
+	Describe("foreign data wrapper objects tests", func() {
+		It("backs up and restores foreign data wrappers, servers, user mappings and foreign tables", func() {
+			// Regression test for a bug where retrieveFDWObjects skipped FDW
+			// objects on Cloudberry: the foreign table was backed up but its
+			// server was not, so the restore failed with "server does not exist".
+			if !((backupConn.Version.IsGPDB() && backupConn.Version.AtLeast("6")) || backupConn.Version.IsCBDB()) {
+				Skip("Foreign data wrappers require GPDB 6+ or Cloudberry")
+			}
+			testhelper.AssertQueryRuns(backupConn, "CREATE FOREIGN DATA WRAPPER fdw;")
+			defer testhelper.AssertQueryRuns(backupConn, "DROP FOREIGN DATA WRAPPER fdw CASCADE;")
+			testhelper.AssertQueryRuns(backupConn, "CREATE SERVER fdw_server FOREIGN DATA WRAPPER fdw;")
+			testhelper.AssertQueryRuns(backupConn, "CREATE USER MAPPING FOR CURRENT_USER SERVER fdw_server;")
+			testhelper.AssertQueryRuns(backupConn, "CREATE FOREIGN TABLE public.fdw_table (i int) SERVER fdw_server;")
+
+			output := gpbackup(gpbackupPath, backupHelperPath, "--backup-dir", backupDir, "--metadata-only")
+			timestamp := getBackupTimestamp(string(output))
+
+			gprestore(gprestorePath, restoreHelperPath, timestamp,
+				"--backup-dir", backupDir,
+				"--redirect-db", "restoredb",
+				"--metadata-only")
+			defer testhelper.AssertQueryRuns(restoreConn, "DROP FOREIGN DATA WRAPPER fdw CASCADE;")
+
+			// Without the fix the server (and its dependents) would be missing.
+			serverCount := dbconn.MustSelectString(restoreConn,
+				"SELECT count(*) FROM pg_foreign_server WHERE srvname = 'fdw_server'")
+			Expect(serverCount).To(Equal("1"))
+			mappingCount := dbconn.MustSelectString(restoreConn,
+				"SELECT count(*) FROM pg_user_mappings WHERE srvname = 'fdw_server'")
+			Expect(mappingCount).To(Equal("1"))
+			foreignTableCount := dbconn.MustSelectString(restoreConn,
+				"SELECT count(*) FROM pg_class WHERE relname = 'fdw_table' AND relkind = 'f'")
+			Expect(foreignTableCount).To(Equal("1"))
+		})
+	})
 	Describe(`On Error Continue`, func() {
 		It(`gprestore continues when encountering errors during data load with --single-data-file and --on-error-continue`, func() {
 			if segmentCount != 3 {

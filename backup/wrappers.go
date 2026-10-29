@@ -418,7 +418,14 @@ func retrieveCasts(sortables *[]Sortable, metadataMap MetadataMap) {
 }
 
 func retrieveFDWObjects(sortables *[]Sortable, metadataMap MetadataMap) {
-	if !(connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("6")) || connectionPool.Version.IsCBDB() {
+	// Foreign data wrappers, servers and user mappings exist on GPDB 6+ and on
+	// Cloudberry. The condition must skip only when the server is neither, i.e.
+	// negate the whole "GPDB 6+ OR Cloudberry" predicate. A misplaced negation
+	// here previously skipped these objects on Cloudberry, so their CREATE
+	// SERVER / FOREIGN DATA WRAPPER / USER MAPPING statements were omitted from
+	// the backup and any foreign table that depended on them failed to restore
+	// with "server ... does not exist".
+	if !((connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("6")) || connectionPool.Version.IsCBDB()) {
 		return
 	}
 	retrieveForeignDataWrappers(sortables, metadataMap)
