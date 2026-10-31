@@ -861,6 +861,9 @@ var _ = Describe("backup and restore end to end tests", func() {
 			testhelper.AssertQueryRuns(backupConn, "CREATE FOREIGN DATA WRAPPER fdw;")
 			defer testhelper.AssertQueryRuns(backupConn, "DROP FOREIGN DATA WRAPPER fdw CASCADE;")
 			testhelper.AssertQueryRuns(backupConn, "CREATE SERVER fdw_server FOREIGN DATA WRAPPER fdw;")
+			// A server comment must be emitted as "COMMENT ON SERVER", not
+			// "COMMENT ON FOREIGN SERVER", or the restore aborts with a syntax error.
+			testhelper.AssertQueryRuns(backupConn, "COMMENT ON SERVER fdw_server IS 'fdw server comment';")
 			testhelper.AssertQueryRuns(backupConn, "CREATE USER MAPPING FOR CURRENT_USER SERVER fdw_server;")
 			testhelper.AssertQueryRuns(backupConn, "CREATE FOREIGN TABLE public.fdw_table (i int) SERVER fdw_server;")
 
@@ -883,6 +886,11 @@ var _ = Describe("backup and restore end to end tests", func() {
 			foreignTableCount := dbconn.MustSelectString(restoreConn,
 				"SELECT count(*) FROM pg_class WHERE relname = 'fdw_table' AND relkind = 'f'")
 			Expect(foreignTableCount).To(Equal("1"))
+			// The server comment must survive restore; a "COMMENT ON FOREIGN
+			// SERVER" statement would have aborted the restore instead.
+			serverComment := dbconn.MustSelectString(restoreConn,
+				"SELECT coalesce(obj_description(oid, 'pg_foreign_server'), '') FROM pg_foreign_server WHERE srvname = 'fdw_server'")
+			Expect(serverComment).To(Equal("fdw server comment"))
 		})
 	})
 	Describe(`On Error Continue`, func() {

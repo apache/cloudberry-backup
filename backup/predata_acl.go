@@ -488,6 +488,12 @@ func (obj ObjectMetadata) GetOwnerStatement(objectName string, objectType string
 }
 
 func (obj ObjectMetadata) GetCommentStatement(objectName string, objectType string, owningTable string) string {
+	typeStr := objectType
+	// COMMENT uses "SERVER", not "FOREIGN SERVER" (mirrors GetOwnerStatement).
+	// Emitting "COMMENT ON FOREIGN SERVER ..." is a syntax error on restore.
+	if objectType == toc.OBJ_FOREIGN_SERVER {
+		typeStr = toc.OBJ_SERVER
+	}
 	commentStr := ""
 	tableStr := ""
 	if owningTable != "" {
@@ -495,7 +501,7 @@ func (obj ObjectMetadata) GetCommentStatement(objectName string, objectType stri
 	}
 	if obj.Comment != "" {
 		escapedComment := utils.EscapeSingleQuotes(obj.Comment)
-		commentStr = fmt.Sprintf("COMMENT ON %s %s%s IS '%s';", objectType, objectName, tableStr, escapedComment)
+		commentStr = fmt.Sprintf("COMMENT ON %s %s%s IS '%s';", typeStr, objectName, tableStr, escapedComment)
 	}
 	return commentStr
 }
