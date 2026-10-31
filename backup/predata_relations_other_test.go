@@ -662,6 +662,18 @@ GRANT ALL ON TABLE schema1.mview1 TO testrole;`}
 WITH NO DATA
 DISTRIBUTED BY (tablename);`)
 		})
+		It("can print an incremental materialized view", func() {
+			// A Cloudberry incremental materialized view must be recreated with
+			// the INCREMENTAL keyword so the kernel re-establishes its maintenance
+			// triggers; otherwise it would be restored as a plain matview.
+			mview.IsIncremental = true
+			backup.PrintCreateViewStatement(backupfile, tocfile, mview, emptyMetadata)
+			testutils.ExpectEntry(tocfile.PredataEntries, 0, "schema1", "", "mview1", toc.OBJ_MATERIALIZED_VIEW)
+			testutils.AssertBufferContents(tocfile.PredataEntries, buffer,
+				`CREATE INCREMENTAL MATERIALIZED VIEW schema1.mview1 AS SELECT count(*) FROM pg_tables
+WITH NO DATA
+DISTRIBUTED BY (tablename);`)
+		})
 	})
 	Describe("PrintCreateDummyViewStatement", func() {
 		var emptyMetadata backup.ObjectMetadata

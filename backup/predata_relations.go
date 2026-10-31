@@ -444,12 +444,20 @@ func PrintCreateViewStatement(metadataFile *utils.FileWithByteCount, objToc *toc
 	if !view.IsMaterialized {
 		metadataFile.MustPrintf("\n\nCREATE VIEW %s%s AS %s\n", view.FQN(), view.Options, view.Definition.String)
 	} else {
+		// Cloudberry incremental materialized views (relisivm) must be recreated
+		// as INCREMENTAL so the kernel re-establishes their maintenance triggers;
+		// restoring them as a plain MATERIALIZED VIEW would silently drop the
+		// incremental behavior.
+		matviewKeyword := "MATERIALIZED VIEW"
+		if view.IsIncremental {
+			matviewKeyword = "INCREMENTAL MATERIALIZED VIEW"
+		}
 		accessMethodClause := ""
 		if view.AccessMethodName != "" {
 			accessMethodClause = fmt.Sprintf(" USING %s", view.AccessMethodName)
 		}
-		metadataFile.MustPrintf("\n\nCREATE MATERIALIZED VIEW %s%s%s%s AS %s\nWITH NO DATA\n%s;\n",
-			view.FQN(), accessMethodClause, view.Options, tablespaceClause, view.Definition.String[:len(view.Definition.String)-1], view.DistPolicy.Policy)
+		metadataFile.MustPrintf("\n\nCREATE %s %s%s%s%s AS %s\nWITH NO DATA\n%s;\n",
+			matviewKeyword, view.FQN(), accessMethodClause, view.Options, tablespaceClause, view.Definition.String[:len(view.Definition.String)-1], view.DistPolicy.Policy)
 	}
 	section, entry := view.GetMetadataEntry()
 	tier := globalTierMap[view.GetUniqueID()]

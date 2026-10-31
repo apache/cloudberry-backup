@@ -351,6 +351,7 @@ type View struct {
 	Definition       sql.NullString
 	Tablespace       string
 	IsMaterialized   bool
+	IsIncremental    bool
 	DistPolicy       DistPolicy
 	NeedsDummy       bool
 	ColumnDefs       []ColumnDefinition
@@ -429,6 +430,13 @@ func GetAllViews(connectionPool *dbconn.DBConn) []View {
 		AND %s
 		AND %s`, relationAndSchemaFilterClause(), ExtensionFilterClause("c"))
 
+	// relisivm (incremental materialized view flag) is a Cloudberry-only column;
+	// GPDB does not have it, so only reference it on Cloudberry.
+	incrementalExpr := "false"
+	if connectionPool.Version.IsCBDB() {
+		incrementalExpr = "c.relisivm"
+	}
+
 	atLeast7Query := fmt.Sprintf(`
 	SELECT
 		c.oid AS oid,
@@ -438,6 +446,7 @@ func GetAllViews(connectionPool *dbconn.DBConn) []View {
 		coalesce(' WITH (' || array_to_string(c.reloptions, ', ') || ')', '') AS options,
 		coalesce(quote_ident(t.spcname), '') AS tablespace,
 		c.relkind='m' AS ismaterialized,
+		%s AS isincremental,
 		coalesce(quote_ident(am.amname), '') AS accessmethodname
 	FROM pg_class c
 		LEFT JOIN pg_namespace n ON n.oid = c.relnamespace
@@ -445,7 +454,7 @@ func GetAllViews(connectionPool *dbconn.DBConn) []View {
 		LEFT JOIN pg_am am ON am.oid = c.relam
 	WHERE c.relkind IN ('m', 'v')
 		AND %s
-		AND %s`, relationAndSchemaFilterClause(), ExtensionFilterClause("c"))
+		AND %s`, incrementalExpr, relationAndSchemaFilterClause(), ExtensionFilterClause("c"))
 
 	query := ""
 	if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("6") {
