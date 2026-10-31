@@ -439,6 +439,18 @@ func GetTriggers(connectionPool *dbconn.DBConn) []TriggerDefinition {
 	if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("6") {
 		constraintClause = "tgisconstraint = 'f'"
 	}
+	// Cloudberry incremental materialized views own maintenance triggers on their
+	// base tables that call pg_catalog.ivm_immediate_before /
+	// ivm_immediate_maintenance. They are re-created automatically when the
+	// incremental matview is repopulated (REFRESH) after restore, and their names
+	// and function arguments embed the matview's pre-restore OID, so backing them
+	// up would duplicate them with stale OIDs. Exclude them. The subquery is empty
+	// on systems without IVM, so this is a no-op there (not just Cloudberry).
+	ivmTriggerClause := `t.tgfoid NOT IN (
+		SELECT p.oid FROM pg_proc p
+			JOIN pg_namespace pn ON pn.oid = p.pronamespace
+		WHERE pn.nspname = 'pg_catalog'
+			AND p.proname IN ('ivm_immediate_before', 'ivm_immediate_maintenance'))`
 	query := fmt.Sprintf(`
 	SELECT t.oid AS oid,
 		quote_ident(t.tgname) AS name,
@@ -452,8 +464,9 @@ func GetTriggers(connectionPool *dbconn.DBConn) []TriggerDefinition {
 		AND tgname NOT LIKE 'pg_%%'
 		AND %s
 		AND %s
+		AND %s
 	ORDER BY tgname`,
-		relationAndSchemaFilterClause(), constraintClause, ExtensionFilterClause("c"))
+		relationAndSchemaFilterClause(), constraintClause, ExtensionFilterClause("c"), ivmTriggerClause)
 
 	results := make([]TriggerDefinition, 0)
 	err := connectionPool.Select(&results, query)

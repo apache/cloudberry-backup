@@ -553,5 +553,34 @@ PARTITION BY LIST (gender)
 			Expect(results).To(HaveLen(1))
 			structmatcher.ExpectStructsToMatchExcluding(&materialView, &results[0], "Oid", "ColumnDefs", "DistPolicy.Oid")
 		})
+		It("sets IsIncremental for an incremental materialized view", func() {
+			// Cloudberry incremental materialized views (relisivm) must be flagged
+			// so they are recreated with CREATE INCREMENTAL MATERIALIZED VIEW; a
+			// plain materialized view must not be flagged.
+			if !connectionPool.Version.IsCBDB() {
+				Skip("Incremental materialized views are only available on Cloudberry")
+			}
+			testhelper.AssertQueryRuns(connectionPool, "CREATE TABLE public.ivm_base(id int, val int) DISTRIBUTED BY (id)")
+			defer testhelper.AssertQueryRuns(connectionPool, "DROP TABLE public.ivm_base CASCADE")
+			testhelper.AssertQueryRuns(connectionPool, "CREATE INCREMENTAL MATERIALIZED VIEW public.ivm_mv AS SELECT id, val FROM public.ivm_base DISTRIBUTED BY (id)")
+			defer testhelper.AssertQueryRuns(connectionPool, "DROP MATERIALIZED VIEW public.ivm_mv")
+			testhelper.AssertQueryRuns(connectionPool, "CREATE MATERIALIZED VIEW public.plain_mv AS SELECT id, val FROM public.ivm_base DISTRIBUTED BY (id)")
+			defer testhelper.AssertQueryRuns(connectionPool, "DROP MATERIALIZED VIEW public.plain_mv")
+
+			results := backup.GetAllViews(connectionPool)
+			var ivm, plain backup.View
+			for _, v := range results {
+				switch v.Name {
+				case "ivm_mv":
+					ivm = v
+				case "plain_mv":
+					plain = v
+				}
+			}
+			Expect(ivm.IsMaterialized).To(BeTrue())
+			Expect(ivm.IsIncremental).To(BeTrue())
+			Expect(plain.IsMaterialized).To(BeTrue())
+			Expect(plain.IsIncremental).To(BeFalse())
+		})
 	})
 })
