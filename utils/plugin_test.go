@@ -13,7 +13,7 @@ import (
 	"github.com/apache/cloudberry-go-libs/iohelper"
 	"github.com/apache/cloudberry-go-libs/operating"
 	"github.com/apache/cloudberry-go-libs/testhelper"
-	"github.com/blang/semver"
+	"github.com/blang/semver/v4"
 	"github.com/pkg/errors"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -157,6 +157,7 @@ options:
     field3: 567
 `
 				err := os.WriteFile(testConfigPath, []byte(testConfigContents), 0777)
+				Expect(err).ToNot(HaveOccurred())
 				subject.Options["password_encryption"] = "on"
 				mdd := testCluster.GetDirForContent(-1)
 				_ = os.MkdirAll(mdd, 0777)
@@ -372,7 +373,7 @@ options:
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(Equal("ERROR: Failed to get plugin name. Failed with error: error executing plugin"))
 		})
-		It("did not recieve expected information from plugin", func() {
+		It("did not receive expected information from plugin", func() {
 			executor.LocalOutput = "bad output"
 			pluginName, err := subject.GetPluginName(testCluster)
 

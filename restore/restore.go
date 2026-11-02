@@ -250,21 +250,15 @@ func verifyIncrementalState() {
 
 	var schemasToCreate []string
 	var tableFQNsToCreate []string
-	var schemasExcludedByUserInput []string
-	var tablesExcludedByUserInput []string
 	for _, table := range tableFQNsToRestore {
 		schemaName := strings.Split(table, ".")[0]
 		if utils.SchemaIsExcludedByUser(opts.IncludedSchemas, opts.ExcludedSchemas, schemaName) {
-			if !utils.Exists(schemasExcludedByUserInput, schemaName) {
-				schemasExcludedByUserInput = append(schemasExcludedByUserInput, schemaName)
-			}
-			tablesExcludedByUserInput = append(tablesExcludedByUserInput, table)
 			continue
 		}
 
 		if _, exists := existingTablesMap[table]; !exists {
 			if utils.RelationIsExcludedByUser(opts.IncludedRelations, opts.ExcludedRelations, table) {
-				tablesExcludedByUserInput = append(tablesExcludedByUserInput, table)
+				continue
 			} else {
 				_, schemaExists := existingSchemasMap[schemaName]
 				preFilteredToCreate := utils.Exists(schemasToCreate, schemaName)
@@ -352,7 +346,7 @@ func restorePredata(metadataFilename string) {
 		}
 		numErrors = ExecuteRestoreMetadataStatements("predata", statements, "Pre-data objects", progressBar, utils.PB_VERBOSE, false)
 		if !MustGetFlagBool(options.ON_ERROR_CONTINUE) {
-			connectionPool.Commit(0)
+			_ = connectionPool.Commit(0)
 		}
 	}
 
@@ -691,7 +685,7 @@ func writeErrorTables(isMetadata bool) {
 		}
 		_, _ = errorWriter.WriteString(table)
 	}
-	err = errorWriter.Flush()
+	_ = errorWriter.Flush()
 	err = errorFile.Close()
 	if err != nil {
 		gplog.Warn("Could not close error tables file: %v", err)

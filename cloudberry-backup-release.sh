@@ -25,7 +25,7 @@
 # tarball assembly.
 #
 # Supported Features:
-#   - Validates version consistency between release tag and VERSION file
+#   - Validates version consistency between release tag, VERSION file and pom.xml
 #   - Supports both final releases and release candidates (e.g., 2.0.0-incubating, 2.0.0-incubating-rc1)
 #   - Optionally reuses existing annotated Git tags if they match the current HEAD
 #   - Verifies that Git submodules are initialized (if defined in .gitmodules)
@@ -399,6 +399,20 @@ if [[ "$VERSION_FILE" != "$BASE_VERSION" ]]; then
   exit 1
 fi
 
+# The Maven project version in pom.xml is used by the Apache RAT check and
+# ships in the source tarball, so it must match the release version.
+POM_VERSION=$(xmllint --xpath '//*[local-name()="project"]/*[local-name()="version"]/text()' pom.xml 2>/dev/null || true)
+if [[ -z "$POM_VERSION" ]]; then
+  echo "ERROR: Could not extract <version> from pom.xml"
+  exit 1
+fi
+
+if [[ "$POM_VERSION" != "${BASE_VERSION}-incubating" ]]; then
+  echo "ERROR: Version in pom.xml ($POM_VERSION) does not match ${BASE_VERSION}-incubating."
+  echo "For RC tags like '$TAG', pom.xml should contain '${BASE_VERSION}-incubating'."
+  exit 1
+fi
+
 
 # Ensure working tree is clean
 if ! git diff-index --quiet HEAD --; then
@@ -410,6 +424,7 @@ echo "Version consistency verified"
 printf "    %-14s: %s\n" "Release Tag"   "$TAG"
 printf "    %-14s: %s\n" "Base Version"  "$BASE_VERSION"
 printf "    %-14s: %s\n" "VERSION file"  "$VERSION_FILE"
+printf "    %-14s: %s\n" "pom.xml"  "$POM_VERSION"
 confirm_next_step
 
 section "Checking the state of the Tag"

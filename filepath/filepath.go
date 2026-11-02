@@ -273,7 +273,7 @@ func GetTimestampFromBackupDirectory(backupDir string) (string, error) {
 		return "", fmt.Errorf("Multiple timestamp directories found under %s, please specify a timestamp using the --timestamp flag", backupDir)
 	}
 
-	timestamp := path.Base(string(timestampDirs[0]))
+	timestamp := path.Base(timestampDirs[0])
 	return timestamp, nil
 }
 

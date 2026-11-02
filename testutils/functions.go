@@ -118,7 +118,7 @@ func SetupTestDBConnSegment(dbname string, port int, host string, gpVersion dbco
 		gpRoleGuc = "gp_role"
 	}
 
-	connStr := fmt.Sprintf("postgres://%s@%s:%d/%s?sslmode=disable&statement_cache_capacity=0&%s=utility", conn.User, conn.Host, conn.Port, conn.DBName, gpRoleGuc)
+	connStr := fmt.Sprintf("postgres://%s@%s:%d/%s?sslmode=disable&default_query_exec_mode=exec&%s=utility", conn.User, conn.Host, conn.Port, conn.DBName, gpRoleGuc)
 
 	segConn, err := conn.Driver.Connect("pgx", connStr)
 	if err != nil {
@@ -556,6 +556,26 @@ func SkipIfBefore6(connectionPool *dbconn.DBConn) {
 func SkipIfBefore7(connectionPool *dbconn.DBConn) {
 	if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("7") {
 		Skip("Test only applicable to GPDB7 and above")
+	}
+}
+
+/*
+ * Cloudberry 3.x is built on the PostgreSQL 16 kernel.  Compare the major
+ * version directly: a development build reports a version such as
+ * "3.0.0-devel", which sorts before "3.0.0" under semver and so fails
+ * Version.AtLeast("3").
+ */
+func IsCBDB3OrLater(connectionPool *dbconn.DBConn) bool {
+	return connectionPool.Version.IsCBDB() && connectionPool.Version.SemVer.Major >= 3
+}
+
+/*
+ * Since PG16 (Cloudberry 3.x) the role named in GRANTED BY must hold ADMIN
+ * OPTION on the granted role, even when that role is a superuser.
+ */
+func GrantAdminToGrantorIfRequired(connectionPool *dbconn.DBConn, role string, grantor string) {
+	if IsCBDB3OrLater(connectionPool) {
+		testhelper.AssertQueryRuns(connectionPool, fmt.Sprintf("GRANT %s TO %s WITH ADMIN OPTION", role, grantor))
 	}
 }
 

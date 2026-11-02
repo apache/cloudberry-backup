@@ -26,8 +26,8 @@ type ReaderType string
 
 const (
 	SEEKABLE    ReaderType = "seekable" // reader which supports seek
-	NONSEEKABLE            = "discard"  // reader which is not seekable
-	SUBSET                 = "subset"   // reader which operates on pre filtered data
+	NONSEEKABLE ReaderType = "discard"  // reader which is not seekable
+	SUBSET      ReaderType = "subset"   // reader which operates on pre filtered data
 )
 
 var (
@@ -214,7 +214,7 @@ func doRestoreAgent() error {
 				// Close file before it gets overwritten. Free up these
 				// resources when the reader is not needed anymore.
 				if reader, ok := readers[contentToRestore]; ok {
-					reader.fileHandle.Close()
+					_ = reader.fileHandle.Close()
 				}
 				// We pre-create readers above for the sake of not re-opening SDF readers.  For MDF we can't
 				// re-use them but still having them in a map simplifies overall code flow.  We repeatedly assign
@@ -242,7 +242,6 @@ func doRestoreAgent() error {
 					// invocation from gprestore (e.g. create a --db-version flag option).
 					if *onErrorContinue && utils.FileExists(fmt.Sprintf("%s_skip_%d", *pipeFile, tableOid)) {
 						logWarn(fmt.Sprintf("Oid %d, Batch %d: Skip file discovered, skipping this relation.", tableOid, batchNum))
-						err = nil
 						goto LoopEnd
 					} else {
 						// keep trying to open the pipe
@@ -260,7 +259,7 @@ func doRestoreAgent() error {
 				// the writer for the pipe. To avoid having to write complex buffer
 				// logic for when os.write() returns EAGAIN due to full buffer, set
 				// the file descriptor to block on IO.
-				unix.SetNonblock(int(writeHandle.Fd()), false)
+				_ = unix.SetNonblock(int(writeHandle.Fd()), false)
 				logVerbose(fmt.Sprintf("Oid %d, Batch %d: Reader connected to pipe %s", tableOid, batchNum, path.Base(currentPipe)))
 				break
 			}
@@ -299,11 +298,6 @@ func doRestoreAgent() error {
 			// copied before it errored out
 			if *singleDataFile {
 				lastByte[contentToRestore] += uint64(bytesRead)
-			}
-			if errBuf.Len() > 0 {
-				err = errors.Wrap(err, strings.Trim(errBuf.String(), "\x00"))
-			} else {
-				err = errors.Wrap(err, "Error copying data")
 			}
 			goto LoopEnd
 		}
@@ -368,7 +362,7 @@ func getRestoreDataReader(fileToRead string, objToc *toc.SegmentTOC, oidList []i
 	var gzipReader *gzip.Reader
 	var zstdReader *zstd.Decoder
 	var isSubset bool
-	var err error = nil
+	var err error
 	restoreReader := new(RestoreReader)
 
 	if *pluginConfigFile != "" {
@@ -458,15 +452,15 @@ func startRestorePluginCommand(fileToRead string, objToc *toc.SegmentTOC, oidLis
 	if objToc != nil && pluginConfig.CanRestoreSubset() && *isFiltered && !strings.HasSuffix(fileToRead, ".gz") && !strings.HasSuffix(fileToRead, ".zst") {
 		offsetsFile, _ := os.CreateTemp("/tmp", "gprestore_offsets_")
 		defer func() {
-			offsetsFile.Close()
+			_ = offsetsFile.Close()
 		}()
 		w := bufio.NewWriter(offsetsFile)
-		w.WriteString(fmt.Sprintf("%v", len(oidList)))
+		_, _ = w.WriteString(fmt.Sprintf("%v", len(oidList)))
 
 		for _, oid := range oidList {
-			w.WriteString(fmt.Sprintf(" %v %v", objToc.DataEntries[uint(oid)].StartByte, objToc.DataEntries[uint(oid)].EndByte))
+			_, _ = w.WriteString(fmt.Sprintf(" %v %v", objToc.DataEntries[uint(oid)].StartByte, objToc.DataEntries[uint(oid)].EndByte))
 		}
-		w.Flush()
+		_ = w.Flush()
 		cmdStr = fmt.Sprintf("%s restore_data_subset %s %s %s", pluginConfig.ExecutablePath, pluginConfig.ConfigPath, fileToRead, offsetsFile.Name())
 		isSubset = true
 	} else {

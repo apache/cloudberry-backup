@@ -10,7 +10,7 @@ import (
 	"github.com/apache/cloudberry-backup/restore"
 	"github.com/apache/cloudberry-backup/utils"
 	"github.com/apache/cloudberry-go-libs/cluster"
-	"github.com/jackc/pgconn"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"

@@ -37,7 +37,7 @@ func ValidateExcludeSchemasInBackupSet(schemaList []string) {
 	}
 }
 
-/* This only checks the globalTOC, but will still succesfully validate tables
+/* This only checks the globalTOC, but will still successfully validate tables
  * in incremental backups since incremental backups will always take backups of
  * the metadata (--incremental and --data-only backup flags are not compatible)
  */
@@ -304,7 +304,7 @@ func ValidateSafeToResizeCluster() {
 			timestamp := MustGetFlagString(options.TIMESTAMP)
 			gplog.Fatal(errors.Errorf("Segment count for backup with timestamp %s is unknown, cannot restore using --resize-cluster flag.", timestamp), "")
 		} else if origSize == destSize {
-			cmdFlags.Set(options.RESIZE_CLUSTER, "false")
+			_ = cmdFlags.Set(options.RESIZE_CLUSTER, "false")
 			gplog.Warn("Backup segment count matches restore segment count; the --resize-cluster flag is not needed.  Proceeding with a normal restore.")
 		} else {
 			gplog.Info("Resize restore specified, will restore a backup set from a %d-segment cluster to a %d-segment cluster", origSize, destSize)

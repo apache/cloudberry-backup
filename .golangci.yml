@@ -22,7 +22,12 @@ linters:
   enable:
     - errcheck
     - govet
+    - ineffassign
+    - misspell
+    - nakedret
     - revive
+    - staticcheck
+    - unconvert
     - unparam
     - unused
   settings:
@@ -31,6 +36,12 @@ linters:
         - shadow
     revive:
       confidence: 0.1
+    misspell:
+      locale: US
+    staticcheck:
+      checks:
+        - "SA*"
+        - "-SA1019"
   exclusions:
     generated: lax
     rules:
@@ -67,3 +78,4 @@ linters:
 
 run:
   timeout: 5m
+  modules-download-mode: readonly

@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# ======================================================================
+#
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# ======================================================================
+
+set -e
+
+# Use GPHOME if set, otherwise use default path
+if [ -n "$GPHOME" ]; then
+    INSTALL_DIR="$GPHOME"
+elif [ -n "$INSTALL_DIR" ]; then
+    INSTALL_DIR="$INSTALL_DIR"
+else
+    INSTALL_DIR="/usr/local"
+fi
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+echo "Installing __PACKAGE_NAME__ to $INSTALL_DIR..."
+
+# Install binary files
+sudo cp "${SCRIPT_DIR}/bin/"* "${INSTALL_DIR}/bin/"
+
+# Set permissions
+sudo chmod 755 "${INSTALL_DIR}/bin/__BACKUP__"
+sudo chmod 755 "${INSTALL_DIR}/bin/__RESTORE__"
+sudo chmod 755 "${INSTALL_DIR}/bin/__HELPER__"
+sudo chmod 755 "${INSTALL_DIR}/bin/__S3PLUGIN__"
+sudo chmod 755 "${INSTALL_DIR}/bin/__GPBACKMAN__"
+sudo chmod 755 "${INSTALL_DIR}/bin/__EXPORTER__"
+
+echo "Installation complete!"
+echo "__PACKAGE_NAME__ binaries installed to ${INSTALL_DIR}/bin/"

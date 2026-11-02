@@ -29,7 +29,7 @@ import (
 	"github.com/apache/cloudberry-go-libs/operating"
 	"github.com/apache/cloudberry-go-libs/structmatcher"
 	"github.com/apache/cloudberry-go-libs/testhelper"
-	"github.com/blang/semver"
+	"github.com/blang/semver/v4"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/pkg/errors"
 	"github.com/spf13/pflag"
@@ -71,12 +71,14 @@ var (
 	backupDir               string
 	segmentCount            int
 	gpbackmanPath           string
+	exporterPath            string
 )
 
 const (
 	TOTAL_RELATIONS               = 37
 	TOTAL_RELATIONS_AFTER_EXCLUDE = 21
 	TOTAL_CREATE_STATEMENTS       = 9
+	gpbackmanFilterDatabase       = "gpbackman_filter_db"
 )
 
 // This function is run automatically by ginkgo before any tests are run.
@@ -89,15 +91,39 @@ func init() {
  * to allow checking its output.
  */
 func gpbackup(gpbackupPath string, backupHelperPath string, args ...string) []byte {
+	return gpbackupForDatabase("testdb", gpbackupPath, backupHelperPath, args...)
+}
+
+func gpbackupWithHistoryStandbySync(gpbackupPath string, backupHelperPath string, args ...string) []byte {
+	return runGpbackupForDatabase("testdb", gpbackupPath, backupHelperPath, false, args...)
+}
+
+func gpbackupForDatabase(databaseName string, gpbackupPath string, backupHelperPath string, args ...string) []byte {
+	return runGpbackupForDatabase(databaseName, gpbackupPath, backupHelperPath, true, args...)
+}
+
+func runGpbackupForDatabase(databaseName string, gpbackupPath string, backupHelperPath string, disableHistoryStandbySync bool, args ...string) []byte {
 	if useOldBackupVersion {
 		_ = os.Chdir("..")
 		command := exec.Command("make", "install", fmt.Sprintf("helper_path=%s", backupHelperPath))
 		mustRunCommand(command)
 		_ = os.Chdir("end_to_end")
 	}
-	args = append([]string{"--verbose", "--dbname", "testdb"}, args...)
+	if disableHistoryStandbySync && !useOldBackupVersion && !hasCommandArgument(args, "--no-history-sync-standby") {
+		args = append(args, "--no-history-sync-standby")
+	}
+	args = append([]string{"--verbose", "--dbname", databaseName}, args...)
 	command := exec.Command(gpbackupPath, args...)
 	return mustRunCommand(command)
+}
+
+func hasCommandArgument(args []string, expected string) bool {
+	for _, arg := range args {
+		if arg == expected {
+			return true
+		}
+	}
+	return false
 }
 
 func gprestore(gprestorePath string, restoreHelperPath string, timestamp string, args ...string) []byte {
@@ -468,13 +494,35 @@ func moveSegmentBackupFiles(tarBaseName string, extractDirectory string, isMulti
 // gpbackman helpers
 
 func gpbackman(args ...string) []byte {
+	return runGpbackman(true, args...)
+}
+
+func gpbackmanWithHistoryStandbySync(args ...string) []byte {
+	return runGpbackman(false, args...)
+}
+
+func runGpbackman(disableHistoryStandbySync bool, args ...string) []byte {
+	args = gpbackmanArgsWithHistoryStandbySyncPolicy(disableHistoryStandbySync, args)
 	command := exec.Command(gpbackmanPath, args...)
 	return mustRunCommand(command)
 }
 
 func gpbackmanWithError(args ...string) ([]byte, error) {
+	args = gpbackmanArgsWithHistoryStandbySyncPolicy(true, args)
 	command := exec.Command(gpbackmanPath, args...)
 	return command.CombinedOutput()
+}
+
+func gpbackmanArgsWithHistoryStandbySyncPolicy(disabled bool, args []string) []string {
+	if !disabled || len(args) == 0 || hasCommandArgument(args, "--no-history-sync-standby") {
+		return args
+	}
+	switch args[0] {
+	case "backup-delete", "backup-clean", "history-clean":
+		return append(args, "--no-history-sync-standby")
+	default:
+		return args
+	}
 }
 
 func getHistoryDBPathForCluster() string {
@@ -558,7 +606,6 @@ options:
 		oldBackupVersionStr := os.Getenv("OLD_BACKUP_VERSION")
 
 		_, restoreHelperPath, gprestorePath = buildAndInstallBinaries()
-		gpbackmanPath = fmt.Sprintf("%s/go/bin/gpbackman", operating.System.Getenv("HOME"))
 
 		// Precompiled binaries will exist when running the ci job, `backward-compatibility`
 		if _, err := os.Stat(fmt.Sprintf("/tmp/%s", oldBackupVersionStr)); err == nil {
@@ -580,6 +627,7 @@ options:
 		backupHelperPath = fmt.Sprintf("%s/gpbackup_helper", binDir)
 		restoreHelperPath = backupHelperPath
 		gpbackmanPath = fmt.Sprintf("%s/gpbackman", binDir)
+		exporterPath = fmt.Sprintf("%s/gpbackup_exporter", binDir)
 	}
 	segConfig := cluster.MustGetSegmentConfiguration(backupConn)
 	backupCluster = cluster.NewCluster(segConfig)
@@ -699,6 +747,23 @@ func end_to_end_setup() {
 
 func end_to_end_teardown() {
 	_ = os.RemoveAll(backupDir)
+}
+
+func setupGpbackmanFilterDatabase() {
+	_ = exec.Command("dropdb", gpbackmanFilterDatabase).Run()
+	Expect(exec.Command("createdb", gpbackmanFilterDatabase).Run()).To(Succeed())
+
+	filterConn := testutils.SetupTestDbConn(gpbackmanFilterDatabase)
+	defer filterConn.Close()
+	testhelper.AssertQueryRuns(filterConn, `
+		CREATE TABLE public.e2e_data (id integer, value text) DISTRIBUTED BY (id);
+		INSERT INTO public.e2e_data (id, value)
+		SELECT i, 'e2e-value-' || i FROM generate_series(1, 100) AS i;
+	`)
+}
+
+func teardownGpbackmanFilterDatabase() {
+	_ = exec.Command("dropdb", gpbackmanFilterDatabase).Run()
 }
 
 var _ = Describe("backup and restore end to end tests", func() {
@@ -862,13 +927,13 @@ var _ = Describe("backup and restore end to end tests", func() {
 			helperLogs, _ := path.Glob(path.Join(homeDir, "gpAdminLogs/gprestore_*"))
 			cmdStr := fmt.Sprintf("tail -n 40 %s | grep \"Creating skip file\" || true", helperLogs[len(helperLogs)-1])
 
-			attemts := 1000
+			attempts := 1000
 			err = errors.New("Timeout to discover skip file")
-			for attemts > 0 {
+			for attempts > 0 {
 				output := mustRunCommand(exec.Command("bash", "-c", cmdStr))
 				if strings.TrimSpace(string(output)) == "" {
 					time.Sleep(5 * time.Millisecond)
-					attemts--
+					attempts--
 				} else {
 					err = nil
 					break
@@ -1992,7 +2057,16 @@ LANGUAGE plpgsql NO SQL;`)
 					Skip("This test is not needed for old backup versions")
 				}
 				// Block on pg_trigger, which gpbackup queries after gp_segment_configuration
-				backupConn.MustExec("BEGIN; LOCK TABLE pg_trigger IN ACCESS EXCLUSIVE MODE")
+				lockConn := testutils.SetupTestDbConn("testdb")
+				defer lockConn.Close()
+				lockConn.MustBegin()
+				lockReleased := false
+				defer func() {
+					if !lockReleased {
+						_ = lockConn.Rollback()
+					}
+				}()
+				lockConn.MustExec("LOCK TABLE pg_catalog.pg_trigger IN ACCESS EXCLUSIVE MODE")
 
 				args := []string{
 					"--dbname", "testdb",
@@ -2000,19 +2074,54 @@ LANGUAGE plpgsql NO SQL;`)
 					"--verbose"}
 				cmd := exec.Command(gpbackupPath, args...)
 
-				backupConn.MustExec("COMMIT")
-				anotherConn := testutils.SetupTestDbConn("testdb")
-				defer anotherConn.Close()
-				var lockCount int
+				type commandResult struct {
+					output []byte
+					err    error
+				}
+				gpbackupResultChan := make(chan commandResult, 1)
 				go func() {
-					gpSegConfigQuery := `SELECT * FROM pg_locks l, pg_class c, pg_namespace n WHERE l.relation = c.oid AND n.oid = c.relnamespace AND c.relname = 'gp_segment_configuration';`
-					_ = anotherConn.Get(&lockCount, gpSegConfigQuery)
+					output, err := cmd.CombinedOutput()
+					gpbackupResultChan <- commandResult{output: output, err: err}
 				}()
 
+				pollConn := testutils.SetupTestDbConn("testdb")
+				defer pollConn.Close()
+
+				triggerLockQuery := `SELECT count(*) FROM pg_locks l, pg_class c, pg_namespace n WHERE l.relation = c.oid AND n.oid = c.relnamespace AND n.nspname = 'pg_catalog' AND c.relname = 'pg_trigger' AND l.granted = 'f' AND l.mode = 'AccessShareLock'`
+				var gpbackupBlockedLockCount int
+				var earlyResult *commandResult
+				for iterations := 100; iterations > 0; iterations-- {
+					select {
+					case result := <-gpbackupResultChan:
+						earlyResult = &result
+					default:
+					}
+					if earlyResult != nil {
+						break
+					}
+
+					Expect(pollConn.Get(&gpbackupBlockedLockCount, triggerLockQuery)).To(Succeed())
+					if gpbackupBlockedLockCount > 0 {
+						break
+					}
+					time.Sleep(100 * time.Millisecond)
+				}
+				if earlyResult != nil {
+					Fail(fmt.Sprintf("gpbackup finished before blocking on pg_trigger: %v\n%s", earlyResult.err, string(earlyResult.output)))
+				}
+				Expect(gpbackupBlockedLockCount).To(BeNumerically(">", 0), "gpbackup did not block on pg_trigger")
+
+				var lockCount int
+				gpSegConfigQuery := `SELECT count(*) FROM pg_locks l, pg_class c, pg_namespace n WHERE l.relation = c.oid AND n.oid = c.relnamespace AND n.nspname = 'pg_catalog' AND c.relname = 'gp_segment_configuration'`
+				Expect(pollConn.Get(&lockCount, gpSegConfigQuery)).To(Succeed())
 				Expect(lockCount).To(Equal(0))
 
-				output, _ := cmd.CombinedOutput()
-				stdout := string(output)
+				lockConn.MustCommit()
+				lockReleased = true
+
+				result := <-gpbackupResultChan
+				stdout := string(result.output)
+				Expect(result.err).ToNot(HaveOccurred(), "%s", stdout)
 				Expect(stdout).To(ContainSubstring("Backup completed successfully"))
 			})
 			It("properly handles various implicit casts on pg_catalog.text", func() {
@@ -2049,8 +2158,14 @@ LANGUAGE plpgsql NO SQL;`)
 				Expect(contents).To(ContainSubstring("CREATE VIEW public.key_dependent_view AS \nSELECT\n\tNULL::integer AS key,\n\tNULL::character varying(20) COLLATE pg_catalog.\"C\" AS data;"))
 				Expect(contents).To(ContainSubstring("CREATE VIEW public.key_dependent_view_no_cols AS \nSELECT;"))
 				Expect(contents).To(ContainSubstring("ALTER TABLE ONLY public.view_base_table ADD CONSTRAINT view_base_table_pkey PRIMARY KEY (key);"))
-				Expect(contents).To(ContainSubstring("CREATE OR REPLACE VIEW public.key_dependent_view AS  SELECT view_base_table.key,\n    (view_base_table.data COLLATE \"C\") AS data\n   FROM public.view_base_table\n  GROUP BY view_base_table.key;"))
-				Expect(contents).To(ContainSubstring("CREATE OR REPLACE VIEW public.key_dependent_view_no_cols AS  SELECT\n   FROM public.view_base_table\n  GROUP BY view_base_table.key\n HAVING (length((view_base_table.data)::text) > 0);"))
+				if testutils.IsCBDB3OrLater(backupConn) {
+					// PG16 no longer qualifies columns of a single-table query.
+					Expect(contents).To(ContainSubstring("CREATE OR REPLACE VIEW public.key_dependent_view AS  SELECT key,\n    (data COLLATE \"C\") AS data\n   FROM public.view_base_table\n  GROUP BY key;"))
+					Expect(contents).To(ContainSubstring("CREATE OR REPLACE VIEW public.key_dependent_view_no_cols AS  SELECT\n   FROM public.view_base_table\n  GROUP BY key\n HAVING (length((data)::text) > 0);"))
+				} else {
+					Expect(contents).To(ContainSubstring("CREATE OR REPLACE VIEW public.key_dependent_view AS  SELECT view_base_table.key,\n    (view_base_table.data COLLATE \"C\") AS data\n   FROM public.view_base_table\n  GROUP BY view_base_table.key;"))
+					Expect(contents).To(ContainSubstring("CREATE OR REPLACE VIEW public.key_dependent_view_no_cols AS  SELECT\n   FROM public.view_base_table\n  GROUP BY view_base_table.key\n HAVING (length((view_base_table.data)::text) > 0);"))
+				}
 
 				gprestore(gprestorePath, restoreHelperPath, timestamp,
 					"--redirect-db", "restoredb",
@@ -2402,7 +2517,7 @@ LANGUAGE plpgsql NO SQL;`)
 			Expect(err).To(HaveOccurred())
 			Expect(string(output)).To(MatchRegexp("Segment count for backup with timestamp [0-9]+ is unknown, cannot restore using --resize-cluster flag"))
 		})
-		It("Will not restore to a different-size cluster without the approprate flag", func() {
+		It("Will not restore to a different-size cluster without the appropriate flag", func() {
 			command := exec.Command("tar", "-xzf", "resources/5-segment-db.tar.gz", "-C", backupDir)
 			mustRunCommand(command)
 

@@ -38,6 +38,8 @@ var _ = Describe("info tests", func() {
 				{"InfoTextBackupAlreadyDeleted", "TestBackup", InfoTextBackupAlreadyDeleted, "Backup TestBackup has already been deleted"},
 				{"InfoTextBackupDirPath", "/test/path", InfoTextBackupDirPath, "Path to backup directory: /test/path"},
 				{"InfoTextSegmentPrefix", "TestValue", InfoTextSegmentPrefix, "Segment Prefix: TestValue"},
+				{"InfoTextHistoryStandbySyncStart", "/data/gpbackup_history.db", InfoTextHistoryStandbySyncStart, "Sync history db to standby coordinator: /data/gpbackup_history.db"},
+				{"InfoTextHistoryStandbySyncSkip", "no up standby coordinator found", InfoTextHistoryStandbySyncSkip, "Skipping history db sync to standby coordinator: no up standby coordinator found"},
 			}
 			for _, tt := range tests {
 				Expect(tt.function(tt.value)).To(Equal(tt.want), tt.name)
@@ -55,6 +57,7 @@ var _ = Describe("info tests", func() {
 				want     string
 			}{
 				{"InfoTextBackupStatus", "TestBackup", "In Progress", InfoTextBackupStatus, "Backup TestBackup has status: In Progress"},
+				{"InfoTextHistoryStandbySyncSuccess", "sdw-standby", "/standby/gpbackup_history.db", InfoTextHistoryStandbySyncSuccess, "History db sync to standby coordinator succeeded: sdw-standby:/standby/gpbackup_history.db"},
 			}
 			for _, tt := range tests {
 				Expect(tt.function(tt.value1, tt.value2)).To(Equal(tt.want), tt.name)

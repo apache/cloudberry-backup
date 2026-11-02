@@ -76,6 +76,7 @@ var _ = Describe("gpbackman end to end tests", func() {
 
 		BeforeEach(func() {
 			end_to_end_setup()
+			setupGpbackmanFilterDatabase()
 			historyDB = getHistoryDBPathForCluster()
 			timestampMap = make(map[string]string)
 
@@ -109,9 +110,15 @@ var _ = Describe("gpbackman end to end tests", func() {
 				"--backup-dir", backupDir,
 				"--metadata-only")
 			timestampMap["metadata_only"] = getBackupTimestamp(string(output))
+
+			output = gpbackupForDatabase(gpbackmanFilterDatabase, gpbackupPath, backupHelperPath,
+				"--backup-dir", backupDir,
+				"--include-table", "public.e2e_data")
+			timestampMap["filter_database"] = getBackupTimestamp(string(output))
 		})
 
 		AfterEach(func() {
+			teardownGpbackmanFilterDatabase()
 			end_to_end_teardown()
 		})
 
@@ -121,9 +128,35 @@ var _ = Describe("gpbackman end to end tests", func() {
 				"--history-db", historyDB,
 			)
 			lines := countBackupInfoLines(output)
-			Expect(lines).To(BeNumerically(">=", 5),
-				fmt.Sprintf("Expected at least 5 backup entries, got %d.\nOutput:\n%s",
+			Expect(lines).To(BeNumerically(">=", 6),
+				fmt.Sprintf("Expected at least 6 backup entries, got %d.\nOutput:\n%s",
 					lines, string(output)))
+			Expect(string(output)).To(ContainSubstring("testdb"))
+			Expect(string(output)).To(ContainSubstring(gpbackmanFilterDatabase))
+		})
+
+		It("filters by database and composes with detail and table filters", func() {
+			output := gpbackman(
+				"backup-info",
+				"--history-db", historyDB,
+				"--database", gpbackmanFilterDatabase,
+				"--type", "full",
+				"--table", "public.e2e_data",
+				"--detail",
+			)
+			Expect(countBackupInfoLines(output)).To(Equal(1))
+			Expect(string(output)).To(ContainSubstring(timestampMap["filter_database"]))
+			Expect(string(output)).To(ContainSubstring(gpbackmanFilterDatabase))
+			Expect(string(output)).To(ContainSubstring("e2e_data"))
+		})
+
+		It("returns no rows for an unknown database", func() {
+			output := gpbackman(
+				"backup-info",
+				"--history-db", historyDB,
+				"--database", "gpbackman_unknown_db",
+			)
+			Expect(countBackupInfoLines(output)).To(Equal(0))
 		})
 
 		It("filters by type full", func() {
@@ -222,6 +255,17 @@ var _ = Describe("gpbackman end to end tests", func() {
 				"--history-db", historyDB,
 				"--timestamp", timestampMap["full_local"],
 				"--type", "full",
+			)
+			Expect(err).To(HaveOccurred())
+		})
+
+		It("rejects incompatible flags --timestamp with --database", func() {
+			_, err := gpbackmanWithError(
+				"backup-info",
+				"--history-db", historyDB,
+				"--timestamp", timestampMap["filter_database"],
+				"--database", gpbackmanFilterDatabase,
+				"--detail",
 			)
 			Expect(err).To(HaveOccurred())
 		})
@@ -614,6 +658,32 @@ var _ = Describe("gpbackman end to end tests", func() {
 			)
 			// Success if no error was thrown
 		})
+
+		It("cleans only the selected database's eligible backups", func() {
+			setupGpbackmanFilterDatabase()
+			DeferCleanup(teardownGpbackmanFilterDatabase)
+
+			primaryOutput := gpbackup(gpbackupPath, backupHelperPath,
+				"--backup-dir", backupDir)
+			primaryTimestamp := getBackupTimestamp(string(primaryOutput))
+			filterOutput := gpbackupForDatabase(gpbackmanFilterDatabase, gpbackupPath, backupHelperPath,
+				"--backup-dir", backupDir)
+			filterTimestamp := getBackupTimestamp(string(filterOutput))
+
+			gpbackman(
+				"backup-clean",
+				"--history-db", historyDB,
+				"--before-timestamp", "99991231235959",
+				"--database", gpbackmanFilterDatabase,
+			)
+
+			primaryActive := queryHistoryDB(historyDB,
+				fmt.Sprintf("SELECT count(*) FROM backups WHERE timestamp = '%s' AND date_deleted = ''", primaryTimestamp))
+			Expect(primaryActive).To(Equal("1"), "backup for the default database should remain active")
+			filterDeleted := queryHistoryDB(historyDB,
+				fmt.Sprintf("SELECT count(*) FROM backups WHERE timestamp = '%s' AND date_deleted != ''", filterTimestamp))
+			Expect(filterDeleted).To(Equal("1"), "backup for the selected database should be deleted")
+		})
 	})
 
 	// ------------------------------------------------------------------ //
@@ -715,6 +785,46 @@ var _ = Describe("gpbackman end to end tests", func() {
 				fmt.Sprintf("SELECT count(*) FROM backups WHERE timestamp = '%s'", timestamp2))
 			Expect(count2).To(Equal("1"),
 				"Non-deleted backup should remain in history")
+		})
+
+		It("cleans deleted history and related rows only for the selected database", func() {
+			setupGpbackmanFilterDatabase()
+			DeferCleanup(teardownGpbackmanFilterDatabase)
+
+			primaryOutput := gpbackup(gpbackupPath, backupHelperPath,
+				"--backup-dir", backupDir)
+			primaryTimestamp := getBackupTimestamp(string(primaryOutput))
+			filterOutput := gpbackupForDatabase(gpbackmanFilterDatabase, gpbackupPath, backupHelperPath,
+				"--backup-dir", backupDir,
+				"--include-table", "public.e2e_data")
+			filterTimestamp := getBackupTimestamp(string(filterOutput))
+
+			gpbackman(
+				"backup-delete",
+				"--history-db", historyDB,
+				"--timestamp", primaryTimestamp,
+			)
+			gpbackman(
+				"backup-delete",
+				"--history-db", historyDB,
+				"--timestamp", filterTimestamp,
+			)
+			Expect(queryHistoryDB(historyDB,
+				fmt.Sprintf("SELECT count(*) FROM include_relations WHERE timestamp = '%s'", filterTimestamp))).To(Equal("1"))
+
+			gpbackman(
+				"history-clean",
+				"--history-db", historyDB,
+				"--before-timestamp", "99991231235959",
+				"--database", gpbackmanFilterDatabase,
+			)
+
+			Expect(queryHistoryDB(historyDB,
+				fmt.Sprintf("SELECT count(*) FROM backups WHERE timestamp = '%s'", primaryTimestamp))).To(Equal("1"))
+			Expect(queryHistoryDB(historyDB,
+				fmt.Sprintf("SELECT count(*) FROM backups WHERE timestamp = '%s'", filterTimestamp))).To(Equal("0"))
+			Expect(queryHistoryDB(historyDB,
+				fmt.Sprintf("SELECT count(*) FROM include_relations WHERE timestamp = '%s'", filterTimestamp))).To(Equal("0"))
 		})
 	})
 

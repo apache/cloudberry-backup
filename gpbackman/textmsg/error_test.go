@@ -42,6 +42,7 @@ var _ = Describe("error tests", func() {
 				{"ErrorTextUnableCheckPath", ErrorTextUnableCheckPath, "Unable to check path. Error: test error"},
 				{"ErrorTextUnableDeleteLocalBackup", ErrorTextUnableDeleteLocalBackup, "Unable to delete local backup. Error: test error"},
 				{"ErrorTextUnableCleanDB", ErrorTextUnableCleanDB, "Unable to clean db. Error: test error"},
+				{"ErrorTextUnableSyncHistoryDBToStandby", ErrorTextUnableSyncHistoryDBToStandby, "Unable to sync history db to standby coordinator. Error: test error"},
 			}
 			for _, tt := range tests {
 				Expect(tt.function(testError)).To(Equal(tt.want), tt.name)
@@ -159,6 +160,17 @@ var _ = Describe("error tests", func() {
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(Equal(tt.want), tt.name)
 			}
+		})
+	})
+
+	Describe("history standby sync errors", func() {
+		It("returns accepted text without environment values", func() {
+			err := ErrorHistoryStandbySyncSkippedError("no up standby coordinator found")
+
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(Equal("history db sync to standby coordinator skipped: no up standby coordinator found"))
+			Expect(err.Error()).ToNot(ContainSubstring("PGPASSWORD"))
+			Expect(err.Error()).ToNot(ContainSubstring("secret"))
 		})
 	})
 })

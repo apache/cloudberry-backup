@@ -20,9 +20,11 @@ under the License.
 package cmd
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -35,6 +37,14 @@ import (
 )
 
 var execOSExit = os.Exit
+
+type combinedOutputCommand interface {
+	CombinedOutput() ([]byte, error)
+}
+
+var execCombinedOutputCommand = func(ctx context.Context, name string, args ...string) combinedOutputCommand {
+	return exec.CommandContext(ctx, name, args...)
+}
 
 func logHeadersDebug() {
 	gplog.Debug("Start %s version %s", commandName, getVersion())
@@ -87,7 +97,7 @@ func setLogLevelFile(level string) error {
 // COORDINATOR_DATA_DIRECTORY environment variable exported by the standard
 // Cloudberry environment scripts. As a final fallback, return the bare
 // filename so it is resolved against the current working directory,
-// preserving the original behaviour for the default invocation.
+// preserving the original behavior for the default invocation.
 func getHistoryDBPath(historyDBPath string, autoLoad bool) string {
 	if historyDBPath != "" {
 		return historyDBPath
@@ -120,6 +130,14 @@ func formatBackupDuration(value float64) string {
 	minutes := (int(value) % 3600) / 60
 	seconds := int(value) % 60
 	return fmt.Sprintf("%02d:%02d:%02d", hours, minutes, seconds)
+}
+
+var runHistoryMutationWithStandbySync = func(work func() error, disabled bool) {
+	if err := work(); err != nil {
+		execOSExit(exitErrorCode)
+		return
+	}
+	_ = syncHistoryStandbyBestEffort(disabled)
 }
 
 // The backup can be used in one of the cases for local and plugin backups:
@@ -234,7 +252,9 @@ func getBackupMasterDirClusterInfo(dbName string) string {
 		gplog.Error("%s", textmsg.ErrorTextUnableConnectLocalCluster(err))
 		return ""
 	}
-	defer db.Close()
+	defer func() {
+		_ = db.Close()
+	}()
 	sqlQuery := "SELECT datadir FROM gp_segment_configuration WHERE content = -1 AND role = 'p';"
 	queryResult, err := gpbckpconfig.ExecuteQueryLocalClusterConn[string](db, sqlQuery)
 	if err != nil {
@@ -252,7 +272,9 @@ func getSegmentConfigurationClusterInfo(dbName string) ([]gpbckpconfig.SegmentCo
 		gplog.Error("%s", textmsg.ErrorTextUnableConnectLocalCluster(err))
 		return queryResult, err
 	}
-	defer db.Close()
+	defer func() {
+		_ = db.Close()
+	}()
 	sqlQuery := "SELECT content as contentid, hostname, datadir FROM gp_segment_configuration WHERE role = 'p' and content != -1 ORDER BY content;"
 	queryResult, err = gpbckpconfig.ExecuteQueryLocalClusterConn[[]gpbckpconfig.SegmentConfig](db, sqlQuery)
 	if err != nil {

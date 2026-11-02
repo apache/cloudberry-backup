@@ -416,6 +416,7 @@ var _ = Describe("backup integration create statement tests", func() {
 			defer testhelper.AssertQueryRuns(connectionPool, `DROP ROLE testuser`)
 		})
 		It("grants a role without ADMIN OPTION", func() {
+			testutils.GrantAdminToGrantorIfRequired(connectionPool, "usergroup", "testrole")
 			numRoleMembers := len(backup.GetRoleMembers(connectionPool))
 			expectedRoleMember := backup.RoleMember{Role: "usergroup", Member: "testuser", Grantor: "testrole", IsAdmin: false}
 			backup.PrintRoleMembershipStatements(backupfile, tocfile, []backup.RoleMember{expectedRoleMember})
@@ -425,7 +426,7 @@ var _ = Describe("backup integration create statement tests", func() {
 			resultRoleMembers := backup.GetRoleMembers(connectionPool)
 			Expect(resultRoleMembers).To(HaveLen(numRoleMembers + 1))
 			for _, roleMember := range resultRoleMembers {
-				if roleMember.Role == "usergroup" {
+				if roleMember.Role == "usergroup" && roleMember.Member == "testuser" {
 					structmatcher.ExpectStructsToMatch(&expectedRoleMember, &roleMember)
 					return
 				}
@@ -433,6 +434,7 @@ var _ = Describe("backup integration create statement tests", func() {
 			Fail("Role 'testuser' is not a member of role 'usergroup'")
 		})
 		It("grants a role WITH ADMIN OPTION", func() {
+			testutils.GrantAdminToGrantorIfRequired(connectionPool, "usergroup", "testrole")
 			numRoleMembers := len(backup.GetRoleMembers(connectionPool))
 			expectedRoleMember := backup.RoleMember{Role: "usergroup", Member: "testuser", Grantor: "testrole", IsAdmin: true}
 			backup.PrintRoleMembershipStatements(backupfile, tocfile, []backup.RoleMember{expectedRoleMember})
@@ -442,7 +444,7 @@ var _ = Describe("backup integration create statement tests", func() {
 			resultRoleMembers := backup.GetRoleMembers(connectionPool)
 			Expect(resultRoleMembers).To(HaveLen(numRoleMembers + 1))
 			for _, roleMember := range resultRoleMembers {
-				if roleMember.Role == "usergroup" {
+				if roleMember.Role == "usergroup" && roleMember.Member == "testuser" {
 					structmatcher.ExpectStructsToMatch(&expectedRoleMember, &roleMember)
 					return
 				}

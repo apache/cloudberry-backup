@@ -282,19 +282,19 @@ func ShouldEnableEncryption(encryption string) bool {
 	return !isOff
 }
 
-func isDirectoryGetSize(path string) (bool, int64) {
+func isDirectory(path string) bool {
 	fd, err := os.Stat(path)
 	if err != nil {
 		gplog.FatalOnError(err)
 	}
 	switch mode := fd.Mode(); {
 	case mode.IsDir():
-		return true, 0
+		return true
 	case mode.IsRegular():
-		return false, fd.Size()
+		return false
 	}
 	gplog.FatalOnError(errors.New(fmt.Sprintf("INVALID file %s", path)))
-	return false, 0
+	return false
 }
 
 func getFileSize(S3 s3iface.S3API, bucket string, fileKey string) (int64, error) {

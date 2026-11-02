@@ -25,13 +25,16 @@
 #   and runs Cloudberry-backup tests against a demo Cloudberry cluster.
 #
 # Workflow Overview:
-# 1. Build Cloudberry from source and upload the installation as an artifact.
-# 2. For each test target (unit, integration, end_to_end), restore the
-#    Cloudberry installation, create a demo cluster, and run tests.
+# 1. For each Cloudberry branch (REL_2_STABLE, main), build Cloudberry
+#    from source and upload the installation as an artifact.
+# 2. For each Cloudberry branch and test target (unit, integration,
+#    end_to_end, ...), restore the matching Cloudberry installation,
+#    create a demo cluster, and run tests.
 #
 # Notes:
 # - Each test job runs in an isolated environment and creates its own demo cluster.
 # - Artifacts are used to avoid rebuilding Cloudberry for every test target.
+# - Artifact names carry the Cloudberry branch so the two builds never mix.
 # --------------------------------------------------------------------
 
 name: cloudberry-backup-ci
@@ -53,13 +56,16 @@ permissions:
 
 env:
   CLOUDBERRY_REPO: apache/cloudberry
-  CLOUDBERRY_REF: main
+  # The Cloudberry branches to test against are set by the
+  # `cloudberry_ref` matrix of each job:
+  #   - REL_2_STABLE: Cloudberry 2.x (PG14 kernel), the current stable line.
+  #   - main:         the future Cloudberry 3.x (PG16 kernel).
   CLOUDBERRY_DIR: cloudberry
   CLOUDBERRY_BACKUP_DIR: cloudberry-backup
 
 jobs:
   build_cloudberry:
-    name: Build Cloudberry From Source
+    name: Build Cloudberry From Source (${{ matrix.cloudberry_ref }})
     runs-on: ubuntu-22.04
     timeout-minutes: 180
     container:
@@ -70,6 +76,11 @@ jobs:
         -v /usr/share:/host_usr_share
         -v /usr/local:/host_usr_local
         -v /opt:/host_opt
+
+    strategy:
+      fail-fast: false
+      matrix:
+        cloudberry_ref: [REL_2_STABLE, main]
 
     steps:
       - name: Free Disk Space
@@ -97,7 +108,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: ${{ env.CLOUDBERRY_REPO }}
-          ref: ${{ env.CLOUDBERRY_REF }}
+          ref: ${{ matrix.cloudberry_ref }}
           fetch-depth: 1
           submodules: true
           path: ${{ env.CLOUDBERRY_DIR }}
@@ -157,7 +168,7 @@ jobs:
       - name: Upload Cloudberry Installation
         uses: actions/upload-artifact@v4
         with:
-          name: cloudberry-db-install
+          name: cloudberry-db-install-${{ matrix.cloudberry_ref }}
           path: cloudberry-db.tgz
           if-no-files-found: error
           retention-days: 7
@@ -165,14 +176,19 @@ jobs:
       - name: Upload Cloudberry Source
         uses: actions/upload-artifact@v4
         with:
-          name: cloudberry-source
+          name: cloudberry-source-${{ matrix.cloudberry_ref }}
           path: cloudberry-src.tgz
           if-no-files-found: error
           retention-days: 7
 
   test_cloudberry_backup:
-    name: Cloudberry-backup Tests (${{ matrix.test_target }})
+    name: Cloudberry-backup Tests (${{ matrix.cloudberry_ref }}, ${{ matrix.test_target }})
     needs: [build_cloudberry]
+    # `needs` on a matrix job fails as soon as any one of its legs fails, so
+    # run anyway and let each leg fail on its own if the Cloudberry build it
+    # downloads is missing.  That keeps a broken main build from hiding the
+    # REL_2_STABLE results.
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-22.04
     timeout-minutes: 180
     container:
@@ -187,7 +203,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        test_target: [smoke, unit, integration, end_to_end, s3_plugin_e2e, regression, scale]
+        cloudberry_ref: [REL_2_STABLE, main]
+        test_target: [smoke, unit, integration, end_to_end, s3_plugin_e2e, regression, scale, package_install]
 
     steps:
       - name: Free Disk Space
@@ -220,12 +237,12 @@ jobs:
       - name: Download Cloudberry Installation
         uses: actions/download-artifact@v4
         with:
-          name: cloudberry-db-install
+          name: cloudberry-db-install-${{ matrix.cloudberry_ref }}
 
       - name: Download Cloudberry Source
         uses: actions/download-artifact@v4
         with:
-          name: cloudberry-source
+          name: cloudberry-source-${{ matrix.cloudberry_ref }}
 
       - name: Restore Cloudberry Installation
         run: |
@@ -279,6 +296,7 @@ jobs:
           CLOUDBERRY_BACKUP_SRC: ${{ github.workspace }}/${{ env.CLOUDBERRY_BACKUP_DIR }}
           CLOUDBERRY_SRC: ${{ github.workspace }}/${{ env.CLOUDBERRY_DIR }}
           TEST_TARGET: ${{ matrix.test_target }}
+          CLOUDBERRY_REF: ${{ matrix.cloudberry_ref }}
         run: |
           set -euo pipefail
           TEST_LOG_ROOT="${GITHUB_WORKSPACE}/test-logs/${TEST_TARGET}"
@@ -334,6 +352,9 @@ jobs:
                 echo "=== Testing gpbackman ==="
                 ${GPHOME}/bin/gpbackman --version
                 ${GPHOME}/bin/gpbackman --help > /dev/null
+                echo "=== Testing gpbackup_exporter ==="
+                ${GPHOME}/bin/gpbackup_exporter --version
+                ${GPHOME}/bin/gpbackup_exporter --help > /dev/null
                 echo "=== All smoke tests passed ===" | tee "${TEST_LOG_ROOT}/cloudberry-backup-smoke.log"
                 ;;
               unit)
@@ -346,7 +367,22 @@ jobs:
                 make end_to_end 2>&1 | tee "${TEST_LOG_ROOT}/cloudberry-backup-end_to_end.log"
                 ;;
               s3_plugin_e2e)
-                curl -fsSL https://dl.min.io/server/minio/release/linux-amd64/minio -o /tmp/minio
+                # dl.min.io now returns HTTP 410: MinIO archived the
+                # open-source Server and Client and no longer serves them from
+                # that host.  The final open-source releases are still
+                # published as GitHub release assets, so pin them there and
+                # verify the checksums MinIO publishes next to each binary.
+                #
+                # These are plain shell variables on purpose: anything
+                # exported with a MINIO_ prefix would be picked up as
+                # configuration by the server started below.
+                minio_release="RELEASE.2025-09-07T16-13-09Z"
+                minio_sha256="7c5bd8512c6e966455b1d198209358b2d191c77a83ab377c4073281065fb855f"
+                mc_release="RELEASE.2025-08-13T08-35-41Z"
+                mc_sha256="01f866e9c5f9b87c2b09116fa5d7c06695b106242d829a8bb32990c00312e891"
+
+                curl -fsSL "https://github.com/minio/minio/releases/download/${minio_release}/minio.linux-amd64.${minio_release}" -o /tmp/minio
+                echo "${minio_sha256}  /tmp/minio" | sha256sum -c -
                 chmod +x /tmp/minio
                 mkdir -p /tmp/minio-data
                 /tmp/minio server --address ":9000" /tmp/minio-data > "${TEST_LOG_ROOT}/minio.log" 2>&1 &
@@ -357,7 +393,8 @@ jobs:
                   sleep 1
                 done
 
-                curl -fsSL https://dl.min.io/client/mc/release/linux-amd64/mc -o /tmp/mc
+                curl -fsSL "https://github.com/minio/mc/releases/download/${mc_release}/mc.linux-amd64.${mc_release}" -o /tmp/mc
+                echo "${mc_sha256}  /tmp/mc" | sha256sum -c -
                 chmod +x /tmp/mc
                 /tmp/mc alias set local http://127.0.0.1:9000 minioadmin minioadmin
                 /tmp/mc mb --ignore-existing local/cloudberry-backup-s3-test
@@ -413,7 +450,17 @@ jobs:
                 ;;
               regression)
                 pushd ${CLOUDBERRY_SRC}/src/test/regress
-                ./pg_regress --dbname=regression --host=localhost --port=7000 --init-file=init_file --schedule=./minimal_schedule || true
+                # On Cloudberry main (PG16 kernel) the shared test tables
+                # (char_tbl, int2_tbl, ...) are created by test_setup, which
+                # minimal_schedule does not list; without it most tests fail
+                # and the regression database ends up nearly empty.  Run it
+                # first wherever it exists; on REL_2_STABLE it is harmless.
+                regress_schedule=./minimal_schedule
+                if [ -f sql/test_setup.sql ]; then
+                  regress_schedule=/tmp/regression_minimal_schedule
+                  { echo "test: test_setup"; cat ./minimal_schedule; } > "${regress_schedule}"
+                fi
+                ./pg_regress --dbname=regression --host=localhost --port=7000 --init-file=init_file --schedule="${regress_schedule}" || true
                 cat regression.diffs 2>/dev/null || true
                 popd
 
@@ -474,6 +521,53 @@ jobs:
                 chmod +x "${CLOUDBERRY_BACKUP_SRC}/.github/workflows/scale-tests-cloudberry-ci.bash"
                 "${CLOUDBERRY_BACKUP_SRC}/.github/workflows/scale-tests-cloudberry-ci.bash" 2>&1 | tee "${TEST_LOG_ROOT}/cloudberry-backup-scale.log"
                 ;;
+              package_install)
+                set -e
+                echo "Running package and install tests..."
+                
+                # Clean up previously installed binaries
+                echo "=== Cleaning up existing installations ==="
+                for binary in gpbackup gprestore gpbackup_helper gpbackup_s3_plugin gpbackman gpbackup_exporter; do
+                  rm -f "${GPHOME}/bin/${binary}"
+                done
+                echo "Cleanup complete"
+                
+                # Create package
+                echo "=== Creating package ==="
+                make package 2>&1 | tee "${TEST_LOG_ROOT}/cloudberry-backup-package.log"
+                
+                # Find and extract package
+                package_file=$(ls -1 build/*.tar.gz 2>/dev/null | head -n 1)
+                if [ -z "${package_file}" ]; then
+                  echo "ERROR: Package file not found"
+                  exit 1
+                fi
+                echo "Package created: ${package_file}"
+                
+                tar -xzf "${package_file}"
+                extracted_dir=$(ls -1d apache-cloudberry-backup-incubating-*/ 2>/dev/null | head -n 1)
+                echo "Package extracted"
+                ls -lh "${extracted_dir}"
+                
+                # Install using install.sh
+                echo "=== Installing via install.sh ==="
+                cd "${extracted_dir}"
+                chmod +x install.sh
+                GPHOME="${GPHOME}" ./install.sh 2>&1 | tee "${TEST_LOG_ROOT}/cloudberry-backup-install.log"
+                
+                # Test installed binaries
+                echo "=== Testing installed binaries ==="
+                for binary in gpbackup gprestore gpbackup_helper gpbackup_s3_plugin gpbackman gpbackup_exporter; do
+                  version_output=$("${GPHOME}/bin/${binary}" --version 2>&1)
+                  if [ $? -ne 0 ]; then
+                    echo "ERROR: ${binary} --version failed"
+                    exit 1
+                  fi
+                  echo "${binary}: ${version_output}"
+                done
+                
+                echo "=== Package and install tests passed ==="
+                ;;
               *)
                 echo "unknown test target: ${TEST_TARGET}"
                 exit 2
@@ -501,6 +595,7 @@ jobs:
 
           {
             echo "## Cloudberry-backup Test Summary"
+            echo "- Cloudberry: ${CLOUDBERRY_REF}"
             echo "- Target: ${TEST_TARGET}"
             if [ ${status} -eq 0 ]; then
               echo "- Result: PASS"
@@ -516,7 +611,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: cloudberry-backup-logs-${{ matrix.test_target }}
+          name: cloudberry-backup-logs-${{ matrix.cloudberry_ref }}-${{ matrix.test_target }}
           path: test-logs/${{ matrix.test_target }}
           if-no-files-found: warn
           retention-days: 7

@@ -56,7 +56,7 @@ func NewGZipBackupPipeWriterCloser(writeHandle io.WriteCloser, compressLevel int
 	gzPipe.cPipe = NewCommonBackupPipeWriterCloser(writeHandle)
 	gzPipe.gzipWriter, err = gzip.NewWriterLevel(gzPipe.cPipe.bufIoWriter, compressLevel)
 	if err != nil {
-		gzPipe.cPipe.Close()
+		_ = gzPipe.cPipe.Close()
 	}
 	return
 }
@@ -80,7 +80,7 @@ func NewZSTDBackupPipeWriterCloser(writeHandle io.WriteCloser, compressLevel int
 	zstdPipe.cPipe = NewCommonBackupPipeWriterCloser(writeHandle)
 	zstdPipe.zstdEncoder, err = zstd.NewWriter(zstdPipe.cPipe.bufIoWriter, zstd.WithEncoderLevel(zstd.EncoderLevelFromZstd(compressLevel)))
 	if err != nil {
-		zstdPipe.cPipe.Close()
+		_ = zstdPipe.cPipe.Close()
 	}
 	return
 }

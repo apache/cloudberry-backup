@@ -16,7 +16,7 @@ import (
 	"github.com/apache/cloudberry-go-libs/cluster"
 	"github.com/apache/cloudberry-go-libs/dbconn"
 	"github.com/apache/cloudberry-go-libs/gplog"
-	"github.com/jackc/pgconn"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/pkg/errors"
 	"gopkg.in/cheggaaa/pb.v1"
 )
@@ -60,7 +60,8 @@ func CopyTableIn(connectionPool *dbconn.DBConn, tableName string, tableAttribute
 		errStr := fmt.Sprintf("Error loading data into table %s", tableName)
 
 		// The COPY ON SEGMENT error might contain useful CONTEXT output
-		if pgErr, ok := err.(*pgconn.PgError); ok && pgErr.Where != "" {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Where != "" {
 			errStr = fmt.Sprintf("%s: %s", errStr, pgErr.Where)
 		}
 

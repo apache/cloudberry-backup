@@ -21,6 +21,7 @@ package cmd
 
 import (
 	"fmt"
+	"strconv"
 
 	"github.com/apache/cloudberry-backup/gpbackman/gpbckpconfig"
 	"github.com/apache/cloudberry-backup/gpbackman/textmsg"
@@ -92,6 +93,16 @@ func getVersion() string {
 // These flag checks are applied for all commands:
 func doRootFlagValidation(flags *pflag.FlagSet, checkFileExists bool) {
 	var err error
+	if flags.Lookup(historySyncStandbyTimeoutFlagName) != nil {
+		timeoutSeconds, timeoutErr := flags.GetInt(historySyncStandbyTimeoutFlagName)
+		if timeoutErr == nil && (timeoutSeconds <= 0 || timeoutSeconds > historySyncStandbyTimeoutMax) {
+			timeoutErr = fmt.Errorf("must be between 1 and %d seconds", historySyncStandbyTimeoutMax)
+		}
+		if timeoutErr != nil {
+			gplog.Error("%s", textmsg.ErrorTextUnableValidateFlag(strconv.Itoa(timeoutSeconds), historySyncStandbyTimeoutFlagName, timeoutErr))
+			execOSExit(exitErrorCode)
+		}
+	}
 	// If history-db flag is specified and full path.
 	// The existence of the file is checked by condition from each specific command.
 	// Not all commands require a history db file to exist.

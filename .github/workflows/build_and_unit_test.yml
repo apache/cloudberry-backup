@@ -21,7 +21,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: "1.24"
+        go-version: "1.25"
 
     - name: Set Environment
       run: |
@@ -32,6 +32,12 @@ jobs:
       run: |
         cd ${GOPATH}/src/github.com/apache/cloudberry-backup
         make depend
+
+    - name: Run linters
+      uses: golangci/golangci-lint-action@v9
+      with:
+        version: v2.12.2
+        working-directory: go/src/github.com/apache/cloudberry-backup
 
     - name: Build
       run: |
@@ -58,6 +64,9 @@ jobs:
         echo "=== Testing gpbackman ==="
         ${GOPATH}/bin/gpbackman --version
         ${GOPATH}/bin/gpbackman --help > /dev/null
+        echo "=== Testing gpbackup_exporter ==="
+        ${GOPATH}/bin/gpbackup_exporter --version
+        ${GOPATH}/bin/gpbackup_exporter --help > /dev/null
         echo "=== All smoke tests passed ==="
 
     - name: Unit Test

@@ -86,7 +86,7 @@ var _ = Describe("backup/dependencies tests", func() {
 				testhelper.ExpectRegexp(logfile, "\tpublic.relation2 {ClassID:1259 Oid:2}")
 			}()
 			defer testhelper.ShouldPanicWithMessage("Dependency resolution failed; see log file gbytes.Buffer for details. This is a bug, please report.")
-			sortable, _ = backup.TopologicalSort(sortable, depMap)
+			_, _ = backup.TopologicalSort(sortable, depMap)
 		})
 		It("aborts if dependencies are not met", func() {
 			depMap[backup.UniqueID{ClassID: backup.PG_CLASS_OID, Oid: 1}] = map[backup.UniqueID]bool{{ClassID: backup.PG_CLASS_OID, Oid: 2}: true}
@@ -94,7 +94,7 @@ var _ = Describe("backup/dependencies tests", func() {
 			sortable := []backup.Sortable{relation1, relation2}
 
 			defer testhelper.ShouldPanicWithMessage("Dependency resolution failed; see log file gbytes.Buffer for details. This is a bug, please report.")
-			sortable, _ = backup.TopologicalSort(sortable, depMap)
+			_, _ = backup.TopologicalSort(sortable, depMap)
 		})
 	})
 	Describe("PrintDependentObjectStatements", func() {

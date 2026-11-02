@@ -905,7 +905,7 @@ LANGUAGE SQL`)
 		BeforeEach(func() {
 			testutils.SkipIfBefore7(connectionPool)
 		})
-		It("returns a slice of transfroms", func() {
+		It("returns a slice of transforms", func() {
 			testhelper.AssertQueryRuns(connectionPool, "CREATE TRANSFORM FOR pg_catalog.int4 LANGUAGE c (FROM SQL WITH FUNCTION numeric_support(internal), TO SQL WITH FUNCTION int4recv(internal));")
 			defer testhelper.AssertQueryRuns(connectionPool, "DROP TRANSFORM FOR int4 LANGUAGE c")
 

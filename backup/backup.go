@@ -182,7 +182,7 @@ func DoBackup() {
 			gplog.FatalOnError(err)
 		} else {
 			err = history.StoreBackupHistory(historyDB, &backupReport.BackupConfig)
-			historyDB.Close()
+			_ = historyDB.Close()
 			gplog.FatalOnError(err)
 		}
 	}
@@ -255,7 +255,6 @@ func backupPredata(metadataFile *utils.FileWithByteCount, tables []Table, tableO
 	}
 	gplog.Info("Writing pre-data metadata")
 
-	var protocols []ExternalProtocol
 	var functions []Function
 	var funcInfoMap map[uint32]FunctionInfo
 	objects := make([]Sortable, 0)
@@ -269,7 +268,7 @@ func backupPredata(metadataFile *utils.FileWithByteCount, tables []Table, tableO
 	addToMetadataMap(relationMetadata, metadataMap)
 
 	if !tableOnly {
-		protocols = retrieveProtocols(&objects, metadataMap)
+		retrieveProtocols(&objects, metadataMap)
 		backupSchemas(metadataFile, createAlteredPartitionSchemaSet(tables))
 		backupExtensions(metadataFile)
 		backupCollations(metadataFile)
@@ -293,7 +292,7 @@ func backupPredata(metadataFile *utils.FileWithByteCount, tables []Table, tableO
 	sequences := retrieveAndBackupSequences(metadataFile, relationMetadata)
 	domainConstraints, nonDomainConstraints, conMetadata := retrieveConstraints(&objects, metadataMap)
 
-	viewsDependingOnConstraints := backupDependentObjects(metadataFile, tables, protocols, metadataMap, domainConstraints, objects, sequences, funcInfoMap, tableOnly)
+	viewsDependingOnConstraints := backupDependentObjects(metadataFile, tables, metadataMap, domainConstraints, objects, sequences, funcInfoMap)
 
 	backupConversions(metadataFile)
 
@@ -519,6 +518,7 @@ func DoCleanup(backupFailed bool) {
 	// failure; in either case, update the end time to the actual value. Between our signal handler and recovering
 	// panics, there should be no way for gpbackup to exit that leaves the entry in the initial status.
 
+	historyUpdated := false
 	if !MustGetFlagBool(options.NO_HISTORY) {
 		var statusString string
 		if backupFailed {
@@ -532,12 +532,15 @@ func DoCleanup(backupFailed bool) {
 			gplog.Error("Unable to update history database. Error: %v", err)
 		} else {
 			_, err := historyDB.Exec(fmt.Sprintf("UPDATE backups SET status='%s', end_time='%s' WHERE timestamp='%s'", statusString, backupReport.BackupConfig.EndTime, globalFPInfo.Timestamp))
-			historyDB.Close()
+			_ = historyDB.Close()
 			if err != nil {
 				gplog.Error("Unable to update history database. Error: %v", err)
+			} else {
+				historyUpdated = true
 			}
 		}
 	}
+	syncBackupHistoryToStandbyAfterCleanup(backupFailed, historyUpdated)
 
 	err := backupLockFile.Unlock()
 	if err != nil && backupLockFile != "" {
@@ -634,7 +637,7 @@ type TableLocks struct {
 }
 
 func getTableLocks(table Table) []TableLocks {
-	conn := dbconn.NewDBConnFromEnvironment(MustGetFlagString(options.DBNAME))
+	conn := dbconn.NewDBConnFromEnvironment(connectionPool.DBName)
 	conn.MustConnect(1)
 	var query string
 	defer conn.Close()
@@ -689,7 +692,7 @@ func getTableLocks(table Table) []TableLocks {
 	return locksResults
 }
 
-func logTableLocks(table Table, whichConn int) {
+func logTableLocks(table Table) {
 	locks := getTableLocks(table)
 	jsonData, _ := json.Marshal(&locks)
 	gplog.Warn("Locks held on table %s: %s", table.FQN(), jsonData)

@@ -215,6 +215,10 @@ var _ = Describe("backup/validate tests", func() {
 				}
 			},
 			Entry("--backup-dir combo", "--backup-dir /tmp --plugin-config /tmp/config", false),
+			Entry("standby history sync timeout must be positive", "--history-sync-standby-timeout 0", false),
+			Entry("standby history sync timeout must not be negative", "--history-sync-standby-timeout -1", false),
+			Entry("standby history sync timeout accepts one day", "--history-sync-standby-timeout 86400", true),
+			Entry("standby history sync timeout must not exceed one day", "--history-sync-standby-timeout 86401", false),
 
 			/*
 			 * Below are all the different filter combinations
