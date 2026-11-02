@@ -49,6 +49,12 @@ func DoSetup() {
 	utils.CheckGpexpandRunning(utils.BackupPreventedByGpexpandMessage)
 	timestamp := history.CurrentTimestamp()
 	createBackupLockFile(timestamp)
+	// Heap file hashes must be read before initializeConnectionPool takes the
+	// backup snapshot; see CollectHeapFileHashes.
+	if MustGetFlagBool(options.HEAP_FILE_HASH) && collectsIncrementalMetadata() {
+		gplog.Info("Collecting heap table file hashes")
+		heapFileHashes = CollectHeapFileHashes(MustGetFlagString(options.DBNAME))
+	}
 	initializeConnectionPool(timestamp)
 	gplog.Info("Apache Cloudberry Version = %s", connectionPool.Version.VersionString)
 
@@ -105,6 +111,11 @@ func DoSetup() {
 	}
 }
 
+// This must be a full backup with --leaf-parition-data to query for incremental metadata
+func collectsIncrementalMetadata() bool {
+	return !(MustGetFlagBool(options.METADATA_ONLY) || MustGetFlagBool(options.DATA_ONLY)) && MustGetFlagBool(options.LEAF_PARTITION_DATA)
+}
+
 func DoBackup() {
 	gplog.Info("Backup Timestamp = %s", globalFPInfo.Timestamp)
 	gplog.Info("Backup Database = %s", connectionPool.DBName)
@@ -134,8 +145,7 @@ func DoBackup() {
 		gplog.Warn("No tables in backup set contain data. Performing metadata-only backup instead.")
 		backupReport.MetadataOnly = true
 	}
-	// This must be a full backup with --leaf-parition-data to query for incremental metadata
-	if !(MustGetFlagBool(options.METADATA_ONLY) || MustGetFlagBool(options.DATA_ONLY)) && MustGetFlagBool(options.LEAF_PARTITION_DATA) {
+	if collectsIncrementalMetadata() {
 		backupIncrementalMetadata()
 	} else {
 		gplog.Verbose("Skipping query for incremental metadata.")

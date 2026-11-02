@@ -60,11 +60,11 @@ type IncrementalEntries struct {
 type AOEntry struct {
 	Modcount         int64
 	LastDDLTimestamp string
-	FileHashMD5      string `yaml:"fileHashMD5,omitempty"`
 }
 
 type HeapEntry struct {
-	FileHashMD5 string `yaml:"fileHashMD5,omitempty"`
+	FileHashMD5      string `yaml:"fileHashMD5,omitempty"`
+	LastDDLTimestamp string `yaml:"lastddltimestamp,omitempty"`
 }
 
 type UniqueID struct {

@@ -48,6 +48,7 @@ var (
 	filterRelationClause string
 	quotedRoleNames      map[string]string
 	backupSnapshot       string
+	heapFileHashes       map[string]string
 	/*
 	 * Used for synchronizing DoCleanup.  In DoInit() we increment the group
 	 * and then wait for at least one DoCleanup to finish, either in DoTeardown

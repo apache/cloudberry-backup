@@ -2,7 +2,9 @@ package backup
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/apache/cloudberry-backup/toc"
 	"github.com/apache/cloudberry-go-libs/dbconn"
@@ -187,91 +189,121 @@ type heapTable struct {
 	FQN string
 }
 
-// getFileHashesForTables collects file timestamp+size MD5 hashes for the given
-// heap tables using the provided connection. The connection must be reused
-// across all tables so gp_segment_id mapping stays consistent.
-func getFileHashesForTables(hashConn *dbconn.DBConn, tables []heapTable) map[string]string {
-	result := make(map[string]string)
-	for _, t := range tables {
-		hash := getTableFileHash(hashConn, t.Oid, t.FQN)
-		if hash != "" {
-			result[t.FQN] = hash
-		}
+// heapFileHashBatchSize bounds the number of oids hashed per query.
+const heapFileHashBatchSize = 1000
+
+// CollectHeapFileHashes returns a per-table hash of the on-disk state of every
+// heap table in the database. It must run before the backup snapshot is taken:
+// a change committed after the hash was read always moves the data files on,
+// so the next incremental sees a different hash and backs the table up. Hashing
+// after the snapshot would let changes the backup cannot see slip into the hash.
+//
+// A nil result means the hashes could not be collected; every heap table is
+// then included in the next incremental, as without --heap-file-hash.
+func CollectHeapFileHashes(dbName string) map[string]string {
+	hashConn := dbconn.NewDBConnFromEnvironment(dbName)
+	hashConn.MustConnect(1)
+	defer hashConn.Close()
+
+	if !ensureFileStatFunction(hashConn) {
+		return nil
 	}
-	return result
+
+	// CHECKPOINT flushes dirty pages so pg_stat_file sees up-to-date mtime/size.
+	// Without it a committed change may still sit in shared buffers, and the
+	// hash would match the previous backup's.
+	gplog.Verbose("Executing CHECKPOINT before heap file hash collection")
+	if _, err := hashConn.Exec("CHECKPOINT;", 0); err != nil {
+		gplog.Warn("CHECKPOINT failed, skipping heap file hash collection: %v", err)
+		return nil
+	}
+	// pg_stat_file reports mtime in whole seconds, so gpbackup_file_info refuses
+	// to hash a file modified in the current second. Wait out the second the
+	// CHECKPOINT wrote in, so only files written during collection are refused.
+	time.Sleep(time.Second)
+
+	heapTables := getHeapTables(hashConn, SchemaFilterClause("n"))
+	return getFileHashesForTables(hashConn, heapTables)
 }
 
-// ensureFileStatFunction creates a plpgsql function (gp_toolkit.gpbackup_file_info)
-// that uses pg_relation_filepath() + pg_stat_file() to read each segment's
-// data-file mtime+size. Pure SQL, no plpython/shell. Uses a separate connection
-// so a failed setup does not abort the backup transaction.
+// ensureFileStatFunction (re)creates gp_toolkit.gpbackup_file_info, a plpgsql
+// function that describes the main fork of a relation on the local segment:
+// its path and the mtime+size of each of its segment files. Pure SQL, no
+// plpython/shell.
 //
-// pg_relation_filepath is used because manual path construction is fragile:
-// custom tablespaces live under pg_tblspc/<tsp>/PG_<major>_<catver>/<db>/<rfn>,
-// and that PG_<major>_<catver> segment varies by server version. Letting the
-// server compute the path keeps us correct across versions and tablespace
-// configurations.
-func ensureFileStatFunction(connectionPool *dbconn.DBConn) bool {
-	gplog.Verbose("Setting up file hash detection function (plpgsql + pg_stat_file)")
+// pg_relation_filepath only returns the first segment file; a relation larger
+// than RELSEG_SIZE (1GB by default) continues in path.1, path.2, ... (see
+// md.c), so the function walks them until one is missing. The path itself
+// carries the relfilenode, which catches rewrites (TRUNCATE, VACUUM FULL,
+// CLUSTER). The function returns ” when a file was modified in the current
+// second, since a later write in that same second would not move the mtime;
+// the caller then records no hash, forcing the table into the next incremental.
+//
+// The function is replaced on every run so a body left by an older gpbackup
+// is never reused.
+func ensureFileStatFunction(hashConn *dbconn.DBConn) bool {
+	gplog.Verbose("Creating gp_toolkit.gpbackup_file_info function")
 
-	setupConn := dbconn.NewDBConnFromEnvironment(connectionPool.DBName)
-	setupConn.MustConnect(1)
-	defer setupConn.Close()
+	// Drop the (text, text) signature from earlier versions of this feature.
+	_, _ = hashConn.Exec("DROP FUNCTION IF EXISTS gp_toolkit.gpbackup_file_info(text, text);", 0)
 
-	checkSQL := `SELECT 1 AS val FROM pg_proc
-		WHERE proname = 'gpbackup_file_info'
-		AND pronargs = 1
-		AND pronamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'gp_toolkit');`
-	var checkResult []struct{ Val int }
-	err := setupConn.Select(&checkResult, checkSQL)
-
-	if err != nil || len(checkResult) == 0 {
-		gplog.Verbose("Creating gp_toolkit.gpbackup_file_info function")
-
-		// Drop any older (text, text) signature from a previous gpbackup version
-		// before recreating with the new (oid) signature.
-		_, _ = setupConn.Exec("DROP FUNCTION IF EXISTS gp_toolkit.gpbackup_file_info(text, text);", 0)
-
-		createSQL := `
+	createSQL := `
 CREATE OR REPLACE FUNCTION gp_toolkit.gpbackup_file_info(p_oid oid)
 RETURNS text AS $BODY$
 DECLARE
-    v_path text;
-    v_mod  text;
-    v_size text;
+    v_base   text;
+    v_path   text;
+    v_mod    timestamptz;
+    v_size   bigint;
+    v_now    timestamptz;
+    v_segno  int := 0;
+    v_result text;
 BEGIN
-    v_path := pg_relation_filepath(p_oid);
-    IF v_path IS NULL THEN
+    v_base := pg_relation_filepath(p_oid);
+    IF v_base IS NULL THEN
         RETURN '';
     END IF;
+    v_result := v_base;
+    v_now := date_trunc('second', clock_timestamp());
 
-    BEGIN
-        SELECT (pg_stat_file(v_path)).modification::text,
-               (pg_stat_file(v_path)).size::text
-        INTO v_mod, v_size;
-    EXCEPTION WHEN OTHERS THEN
+    LOOP
+        IF v_segno = 0 THEN
+            v_path := v_base;
+        ELSE
+            v_path := v_base || '.' || v_segno;
+        END IF;
+
+        BEGIN
+            SELECT s.modification, s.size INTO v_mod, v_size FROM pg_stat_file(v_path) s;
+        EXCEPTION WHEN undefined_file THEN
+            EXIT;
+        END;
+
+        IF v_mod >= v_now THEN
+            RETURN '';
+        END IF;
+        v_result := v_result || ';' || v_segno || ':' || v_mod::text || '|' || v_size;
+        v_segno := v_segno + 1;
+    END LOOP;
+
+    IF v_segno = 0 THEN
         RETURN '';
-    END;
-
-    RETURN COALESCE(v_mod, '') || '|' || COALESCE(v_size, '0');
+    END IF;
+    RETURN v_result;
 END;
 $BODY$ LANGUAGE plpgsql;`
 
-		_, createErr := setupConn.Exec(createSQL, 0)
-		if createErr != nil {
-			gplog.Warn("Could not create gpbackup_file_info function: %v", createErr)
-			return false
-		}
-		gplog.Verbose("gpbackup_file_info function created successfully")
+	if _, err := hashConn.Exec(createSQL, 0); err != nil {
+		gplog.Warn("Could not create gpbackup_file_info function, skipping heap file hash collection: %v", err)
+		return false
 	}
-
 	return true
 }
 
-// getHeapTables returns (oid, FQN) pairs of heap tables eligible for incremental backup.
-func getHeapTables(connectionPool *dbconn.DBConn) []heapTable {
+// getHeapTables returns (oid, FQN) pairs of heap tables, leaf partitions included.
+func getHeapTables(conn *dbconn.DBConn, filterClause string) []heapTable {
 	var query string
-	if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("7") {
+	if conn.Version.IsGPDB() && conn.Version.Before("7") {
 		query = fmt.Sprintf(`
 			SELECT c.oid,
 				quote_ident(n.nspname) || '.' || quote_ident(c.relname) AS tablefqn
@@ -279,8 +311,7 @@ func getHeapTables(connectionPool *dbconn.DBConn) []heapTable {
 			JOIN pg_namespace n ON c.relnamespace = n.oid
 			WHERE c.relstorage = 'h'
 			AND c.relkind = 'r'
-			AND c.oid NOT IN (SELECT inhrelid FROM pg_inherits)
-			AND %s`, relationAndSchemaFilterClause())
+			AND %s`, filterClause)
 	} else {
 		query = fmt.Sprintf(`
 			SELECT c.oid,
@@ -290,15 +321,14 @@ func getHeapTables(connectionPool *dbconn.DBConn) []heapTable {
 			JOIN pg_am a ON c.relam = a.oid
 			WHERE a.amname = 'heap'
 			AND c.relkind = 'r'
-			AND c.oid NOT IN (SELECT inhrelid FROM pg_inherits)
-			AND %s`, relationAndSchemaFilterClause())
+			AND %s`, filterClause)
 	}
 
 	var results []struct {
 		Oid      uint32
 		TableFQN string
 	}
-	err := connectionPool.Select(&results, query)
+	err := conn.Select(&results, query)
 	gplog.FatalOnError(err)
 	out := make([]heapTable, len(results))
 	for i, r := range results {
@@ -307,107 +337,88 @@ func getHeapTables(connectionPool *dbconn.DBConn) []heapTable {
 	return out
 }
 
-// getTableFileHash computes an MD5 hash of per-segment data-file mtime+size for
-// a heap table, using gp_toolkit.gpbackup_file_info(oid). gp_dist_random('gp_id')
-// runs the function locally on each segment; pg_relation_filepath on the segment
-// resolves the local path, so each segment hashes its own copy of the table.
-func getTableFileHash(hashConn *dbconn.DBConn, oid uint32, fqn string) string {
-	// oid is interpolated as an integer literal -- no string-escaping concerns.
-	query := fmt.Sprintf(`
-		SELECT COALESCE(md5(string_agg(
-			gp_segment_id::text || ',' || info, chr(10) ORDER BY gp_segment_id
-		)), '') AS filehash
-		FROM (
-			SELECT gp_segment_id,
-				gp_toolkit.gpbackup_file_info(%d::oid) AS info
-			FROM gp_dist_random('gp_id')
-		) x
-		WHERE info <> ''`, oid)
-
-	var results []struct{ FileHash string }
-	err := hashConn.Select(&results, query)
-	if err != nil {
-		gplog.Warn("Could not get file hash for %s: %v", fqn, err)
-		return ""
-	}
-	if len(results) == 0 || results[0].FileHash == "" {
-		return ""
-	}
-	return results[0].FileHash
-}
-
-// GetAOContentHashes returns a per-table aoseg content hash for every AO/AOCS table.
-// In GP5, parent modcount changes when any child partition is modified, but each
-// child's aoseg table only changes when that specific child receives data — so
-// hashing the aoseg rows gives partition-level granularity.
-// Uses a dedicated connection to avoid transaction abort propagation.
-func GetAOContentHashes(connectionPool *dbconn.DBConn) map[string]string {
-	segTableFQNs := getAOSegTableFQNs(connectionPool)
-
-	hashConn := dbconn.NewDBConnFromEnvironment(connectionPool.DBName)
-	hashConn.MustConnect(1)
-	defer hashConn.Close()
-
+// getFileHashesForTables hashes gpbackup_file_info over every segment for each
+// table, in batches. A table gets a hash only if every segment described its
+// files; otherwise it is left out and the next incremental includes it.
+func getFileHashesForTables(hashConn *dbconn.DBConn, tables []heapTable) map[string]string {
 	result := make(map[string]string)
-	for aoTableFQN, aosegTableFQN := range segTableFQNs {
-		hash := getAOSegContentHash(hashConn, aosegTableFQN)
-		if hash != "" {
-			result[aoTableFQN] = hash
+	for start := 0; start < len(tables); start += heapFileHashBatchSize {
+		end := start + heapFileHashBatchSize
+		if end > len(tables) {
+			end = len(tables)
+		}
+		batch := tables[start:end]
+		fqnByOid := make(map[uint32]string, len(batch))
+		oids := make([]string, len(batch))
+		for i, t := range batch {
+			fqnByOid[t.Oid] = t.FQN
+			oids[i] = strconv.FormatUint(uint64(t.Oid), 10)
+		}
+
+		// gp_dist_random runs gpbackup_file_info on each segment, where
+		// pg_relation_filepath resolves that segment's own copy of the table.
+		query := fmt.Sprintf(`
+			SELECT oid,
+				md5(string_agg(gp_segment_id::text || ',' || info, chr(10) ORDER BY gp_segment_id)) AS filehash
+			FROM (
+				SELECT gp_segment_id, c.oid, gp_toolkit.gpbackup_file_info(c.oid) AS info
+				FROM gp_dist_random('pg_class') c
+				WHERE c.oid IN (%s)
+			) x
+			GROUP BY oid
+			HAVING bool_and(info <> '')`, strings.Join(oids, ","))
+
+		var results []struct {
+			Oid      uint32
+			FileHash string
+		}
+		if err := hashConn.Select(&results, query); err != nil {
+			gplog.Warn("Could not get file hashes for %d heap tables: %v", len(batch), err)
+			continue
+		}
+		for _, r := range results {
+			result[fqnByOid[r.Oid]] = r.FileHash
 		}
 	}
 	return result
 }
 
-// getAOSegContentHash hashes content-bearing columns of the aoseg metadata table —
-// deliberately excluding modcount, which in GP5 propagates across sibling partitions
-// even when only one is modified.
-//
-//   - AO row (pg_aoseg_*): segno + eof + tupcount.
-//   - AOCS column store (pg_aocsseg_*): layout differs by product / version.
-//     Cloudberry AOCS exposes vpinfo (vertical-partition info, a bytea containing
-//     per-column eofs); GPDB 6+ exposes column_num + physical_segno +
-//     eof_uncompressed; pre-GP6 only has segno + tupcount. If a column is missing
-//     on a given version, the query fails and getAOSegContentHash returns "",
-//     and FilterTablesForIncremental falls back to modcount comparison for that
-//     table.
-func getAOSegContentHash(hashConn *dbconn.DBConn, aosegTableFQN string) string {
-	isColumnStore := strings.Contains(aosegTableFQN, "pg_aocsseg")
+// getHeapLastDDLTimestamps returns the last DDL timestamp of every heap table
+// in the backup set (” if none is recorded). A DDL that does not rewrite the
+// table, e.g. DROP COLUMN, leaves the data files untouched, so the file hash
+// alone would reuse data dumped with the old column list.
+func getHeapLastDDLTimestamps(connectionPool *dbconn.DBConn) map[string]string {
+	heapFilter := "a.amname = 'heap'"
+	amJoin := "JOIN pg_am a ON c.relam = a.oid"
+	if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("7") {
+		heapFilter = "c.relstorage = 'h'"
+		amJoin = ""
+	}
+	query := fmt.Sprintf(`
+		SELECT quote_ident(n.nspname) || '.' || quote_ident(c.relname) AS tablefqn,
+			COALESCE(lastop.lastddltimestamp::text, '') AS lastddltimestamp
+		FROM pg_class c
+			JOIN pg_namespace n ON c.relnamespace = n.oid
+			%s
+			LEFT JOIN ( SELECT lo.objid,
+					MAX(lo.statime) AS lastddltimestamp
+				FROM pg_stat_last_operation lo
+				WHERE lo.staactionname IN ('CREATE', 'ALTER', 'TRUNCATE')
+				GROUP BY lo.objid
+			) lastop ON c.oid = lastop.objid
+		WHERE %s
+			AND c.relkind = 'r'
+			AND %s`, amJoin, heapFilter, relationAndSchemaFilterClause())
 
-	var cols string
-	if isColumnStore {
-		switch {
-		case !hashConn.Version.IsGPDB():
-			// Cloudberry AOCS: segno, tupcount, vpinfo (bytea with per-column EOFs)
-			cols = "segno::text || ',' || tupcount::text || ',' || encode(vpinfo, 'hex')"
-		case hashConn.Version.Before("6"):
-			cols = "segno::text || ',' || tupcount::text"
-		default:
-			// GPDB 6+ AOCS
-			cols = "segno::text || ',' || column_num::text || ',' || physical_segno::text || ',' || tupcount::text || ',' || eof_uncompressed::text"
-		}
-	} else {
-		cols = "segno::text || ',' || eof::text || ',' || tupcount::text"
+	var results []struct {
+		TableFQN         string
+		LastDDLTimestamp string
 	}
-
-	var query string
-	if hashConn.Version.IsGPDB() && hashConn.Version.Before("7") {
-		query = fmt.Sprintf(`SELECT COALESCE(md5(string_agg(%s,
-			chr(10) ORDER BY segno)), '') AS contenthash FROM %s`, cols, aosegTableFQN)
-	} else {
-		query = fmt.Sprintf(`SELECT COALESCE(md5(string_agg(
-			gp_segment_id::text || ',' || %s,
-			chr(10) ORDER BY gp_segment_id, segno)), '') AS contenthash FROM gp_dist_random('%s')`,
-			cols, aosegTableFQN)
+	err := connectionPool.Select(&results, query)
+	gplog.FatalOnError(err)
+	resultMap := make(map[string]string)
+	for _, result := range results {
+		resultMap[result.TableFQN] = result.LastDDLTimestamp
 	}
-
-	var results []struct{ ContentHash string }
-	err := hashConn.Select(&results, query)
-	if err != nil {
-		gplog.Warn("Could not get aoseg content hash for %s: %v", aosegTableFQN, err)
-		return ""
-	}
-	if len(results) == 0 {
-		return ""
-	}
-	return results[0].ContentHash
+	return resultMap
 }

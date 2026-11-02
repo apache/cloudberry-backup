@@ -156,11 +156,8 @@ func validateFlagCombinations(flags *pflag.FlagSet) {
 	if MustGetFlagBool(options.INCREMENTAL) && !MustGetFlagBool(options.LEAF_PARTITION_DATA) {
 		gplog.Fatal(errors.Errorf("--leaf-partition-data must be specified with --incremental"), "")
 	}
-	if MustGetFlagBool(options.HEAP_FILE_HASH) && !MustGetFlagBool(options.INCREMENTAL) && !MustGetFlagBool(options.LEAF_PARTITION_DATA) {
-		gplog.Fatal(errors.Errorf("--heap-file-hash requires --leaf-partition-data (for full backup baseline) or --incremental"), "")
-	}
-	if MustGetFlagBool(options.AO_FILE_HASH) && !MustGetFlagBool(options.INCREMENTAL) && !MustGetFlagBool(options.LEAF_PARTITION_DATA) {
-		gplog.Fatal(errors.Errorf("--ao-file-hash requires --leaf-partition-data (for full backup baseline) or --incremental"), "")
+	if MustGetFlagBool(options.HEAP_FILE_HASH) && !MustGetFlagBool(options.LEAF_PARTITION_DATA) {
+		gplog.Fatal(errors.Errorf("--leaf-partition-data must be specified with --heap-file-hash"), "")
 	}
 	if MustGetFlagBool(options.NO_INHERITS) && !(FlagChanged(options.INCLUDE_RELATION) || FlagChanged(options.INCLUDE_RELATION_FILE)) {
 		gplog.Fatal(errors.Errorf("--no-inherits must be specified with either --include-table or --include-table-file"), "")
