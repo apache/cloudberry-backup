@@ -241,7 +241,7 @@ The Greenplum Database Backup software includes:
 - gpbackup_helper.go
 - gpbackup_s3_plugin.go
 - tools.go
-- show_coverage.go
+- show_coverage.sh
 
 The Greenplum Database Backup software also includes code derived from
 PostgreSQL, under the PostgreSQL License.  Some catalog queries and helper
