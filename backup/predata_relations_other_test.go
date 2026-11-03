@@ -10,6 +10,7 @@ import (
 	"github.com/apache/cloudberry-backup/options"
 	"github.com/apache/cloudberry-backup/testutils"
 	"github.com/apache/cloudberry-backup/toc"
+	"github.com/apache/cloudberry-go-libs/dbconn"
 	"github.com/apache/cloudberry-go-libs/structmatcher"
 	"github.com/apache/cloudberry-go-libs/testhelper"
 
@@ -590,6 +591,69 @@ GRANT ALL ON TABLE shamwow.shazam TO testrole;`}
 				Expect(metadataTables).To(HaveLen(2))
 				structmatcher.ExpectStructsToMatch(&expectedTables[0], &metadataTables[0])
 				structmatcher.ExpectStructsToMatch(&expectedTables[1], &metadataTables[1])
+			})
+		})
+		Context("leafPartitionData with an external leaf partition", func() {
+			// On GPDB7+/CBDB every table (including external leaf partitions) is
+			// emitted once by the common branch. The external leaf partition must
+			// not also be appended by the GPDB6-only external-partition branch, or
+			// it would appear twice and later break dependency sorting with a
+			// spurious "Dependency resolution failed" error. This affects any
+			// backup that enters the LEAF_PARTITION_DATA || len(includeList) > 0
+			// branch, i.e. --leaf-partition-data OR --include-table.
+			var extLeafTables []backup.Table
+			BeforeEach(func() {
+				extLeafTables = []backup.Table{
+					{
+						Relation:        backup.Relation{Oid: 1, Schema: "public", Name: "part_parent1_prt_ext"},
+						TableDefinition: backup.TableDefinition{PartitionLevelInfo: backup.PartitionLevelInfo{Level: "l"}, IsExternal: true},
+					},
+					{
+						Relation:        backup.Relation{Oid: 2, Schema: "public", Name: "part_parent1_prt_normal"},
+						TableDefinition: backup.TableDefinition{PartitionLevelInfo: backup.PartitionLevelInfo{Level: "l"}},
+					},
+				}
+			})
+			// assertEmittedOnce runs SplitTablesByPartitionType and asserts the
+			// external leaf partition appears exactly once (length 2, not 3).
+			// Before the fix this fails with length 3 (the external leaf twice).
+			assertEmittedOnce := func(includeList []options.Relation) {
+				metadataTables, _ := backup.SplitTablesByPartitionType(extLeafTables, includeList)
+
+				Expect(metadataTables).To(HaveLen(2))
+				names := []string{metadataTables[0].FQN(), metadataTables[1].FQN()}
+				sort.Strings(names)
+				Expect(names).To(Equal([]string{"public.part_parent1_prt_ext", "public.part_parent1_prt_normal"}))
+			}
+			It("adds an external leaf partition to the metadata list exactly once on GPDB7+ with --leaf-partition-data", func() {
+				testhelper.SetDBVersion(connectionPool, "7.0.0")
+				_ = cmdFlags.Set(options.LEAF_PARTITION_DATA, "true")
+				_ = cmdFlags.Set(options.INCLUDE_RELATION, "")
+
+				assertEmittedOnce([]options.Relation{})
+			})
+			It("adds an external leaf partition to the metadata list exactly once on Cloudberry with --leaf-partition-data", func() {
+				// The bug was reported on Cloudberry (IsCBDB), which takes the
+				// same GPDB7+ code path; cover it explicitly, not just GPDB 7.0.0.
+				cbdbVersion := dbconn.NewVersion("2.0.0")
+				cbdbVersion.Type = dbconn.CBDB
+				connectionPool.Version = cbdbVersion
+				_ = cmdFlags.Set(options.LEAF_PARTITION_DATA, "true")
+				_ = cmdFlags.Set(options.INCLUDE_RELATION, "")
+
+				assertEmittedOnce([]options.Relation{})
+			})
+			It("adds an external leaf partition to the metadata list exactly once on GPDB7+ with a non-empty includeList and --leaf-partition-data off", func() {
+				// The same branch is entered via len(includeList) > 0, so the bug
+				// is not specific to --leaf-partition-data: --include-table alone
+				// triggered it too.
+				testhelper.SetDBVersion(connectionPool, "7.0.0")
+				_ = cmdFlags.Set(options.LEAF_PARTITION_DATA, "false")
+				_ = cmdFlags.Set(options.INCLUDE_RELATION, "public.part_parent1_prt_ext")
+
+				assertEmittedOnce([]options.Relation{
+					{Oid: 1, Schema: "public", Name: "part_parent1_prt_ext"},
+				})
 			})
 		})
 	})
