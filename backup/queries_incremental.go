@@ -223,7 +223,51 @@ func CollectHeapFileHashes(dbName string) map[string]string {
 	time.Sleep(time.Second)
 
 	heapTables := getHeapTables(hashConn, SchemaFilterClause("n"))
-	return getFileHashesForTables(hashConn, heapTables)
+	hashes := getFileHashesForTables(hashConn, heapTables)
+
+	// The data files also hold rows of transactions still in progress, and
+	// their COMMIT only touches the commit log, not the files. Such a table
+	// must not keep its hash, or the commit would never show up as a change.
+	// Checking after the hashes are read and before the snapshot is enough:
+	// a writer that committed in between is visible to the backup, and one
+	// still in progress still holds its lock here.
+	writtenOids, err := getTablesWithActiveWriters(hashConn)
+	if err != nil {
+		gplog.Warn("Could not check for in-progress writers, skipping heap file hash collection: %v", err)
+		return nil
+	}
+	for _, t := range heapTables {
+		if _, ok := hashes[t.FQN]; ok && writtenOids[t.Oid] {
+			gplog.Verbose("Not recording a file hash for %s: a transaction writing to it is in progress", t.FQN)
+			delete(hashes, t.FQN)
+		}
+	}
+	return hashes
+}
+
+// getTablesWithActiveWriters returns the oids of relations on which another
+// transaction holds a lock taken by data-modifying commands (INSERT, UPDATE,
+// DELETE, COPY FROM, TRUNCATE, ...). Such a lock is held until the writing
+// transaction ends.
+func getTablesWithActiveWriters(hashConn *dbconn.DBConn) (map[uint32]bool, error) {
+	query := `
+		SELECT DISTINCT l.relation AS oid
+		FROM pg_catalog.pg_locks l
+		WHERE l.locktype = 'relation'
+			AND l.granted
+			AND l.pid IS DISTINCT FROM pg_catalog.pg_backend_pid()
+			AND l.database = (SELECT oid FROM pg_catalog.pg_database WHERE datname = pg_catalog.current_database())
+			AND l.mode IN ('RowExclusiveLock', 'ShareRowExclusiveLock', 'ExclusiveLock', 'AccessExclusiveLock')`
+
+	var results []struct{ Oid uint32 }
+	if err := hashConn.Select(&results, query); err != nil {
+		return nil, err
+	}
+	oids := make(map[uint32]bool, len(results))
+	for _, r := range results {
+		oids[r.Oid] = true
+	}
+	return oids, nil
 }
 
 // ensureFileStatFunction (re)creates gp_toolkit.gpbackup_file_info, a plpgsql
