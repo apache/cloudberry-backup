@@ -348,5 +348,24 @@ PARTITION BY RANGE (date)
 			structmatcher.ExpectStructsToMatchExcluding(&accessMethodIndex, &accessMethods[1], "Oid")
 
 		})
+		It("does not return access methods that belong to an extension", func() {
+			testutils.SkipIfBefore7(connectionPool)
+
+			// An access method provided by an extension is recreated by
+			// CREATE EXTENSION on restore, so it must not be dumped on its
+			// own (otherwise restore fails with "access method already exists").
+			testhelper.AssertQueryRuns(connectionPool, "CREATE EXTENSION plperl")
+			defer testhelper.AssertQueryRuns(connectionPool, "DROP EXTENSION plperl CASCADE")
+
+			testhelper.AssertQueryRuns(connectionPool, "CREATE ACCESS METHOD test_extension_am TYPE INDEX HANDLER gisthandler")
+			// The access method is dropped together with the extension via CASCADE.
+			testhelper.AssertQueryRuns(connectionPool, "ALTER EXTENSION plperl ADD ACCESS METHOD test_extension_am")
+
+			accessMethods := backup.GetAccessMethods(connectionPool)
+
+			for _, am := range accessMethods {
+				Expect(am.Name).ToNot(Equal("test_extension_am"))
+			}
+		})
 	})
 })

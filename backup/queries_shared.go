@@ -367,7 +367,8 @@ func GetAccessMethods(connectionPool *dbconn.DBConn) []AccessMethod {
        amtype AS type
 	FROM pg_am
 	WHERE oid > %d
-	ORDER BY oid;`, FIRST_NORMAL_OBJECT_ID)
+	  AND %s
+	ORDER BY oid;`, FIRST_NORMAL_OBJECT_ID, ExtensionFilterClause(""))
 
 	err := connectionPool.Select(&results, query)
 	gplog.FatalOnError(err)
