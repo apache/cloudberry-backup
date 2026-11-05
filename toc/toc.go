@@ -65,6 +65,7 @@ type AOEntry struct {
 type HeapEntry struct {
 	FileHashMD5      string `yaml:"fileHashMD5,omitempty"`
 	LastDDLTimestamp string `yaml:"lastddltimestamp,omitempty"`
+	EnumLabelsMD5    string `yaml:"enumlabelsmd5,omitempty"`
 }
 
 type UniqueID struct {

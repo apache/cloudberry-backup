@@ -88,6 +88,7 @@ var _ = Describe("backup/incremental tests", func() {
 					"public.heap_unchanged":    heapEntry,
 					"public.heap_changed_hash": heapEntry,
 					"public.heap_changed_ddl":  heapEntry,
+					"public.heap_changed_enum": heapEntry,
 					"public.heap_no_curr_hash": heapEntry,
 					"public.heap_empty_prev":   {LastDDLTimestamp: "ddl1"},
 				},
@@ -99,6 +100,7 @@ var _ = Describe("backup/incremental tests", func() {
 					"public.heap_unchanged":    heapEntry,
 					"public.heap_changed_hash": {FileHashMD5: "hash2", LastDDLTimestamp: "ddl1"},
 					"public.heap_changed_ddl":  {FileHashMD5: "hash1", LastDDLTimestamp: "ddl2"},
+					"public.heap_changed_enum": {FileHashMD5: "hash1", LastDDLTimestamp: "ddl1", EnumLabelsMD5: "enum2"},
 					"public.heap_no_prev":      heapEntry,
 					"public.heap_empty_prev":   heapEntry,
 				},
@@ -108,10 +110,11 @@ var _ = Describe("backup/incremental tests", func() {
 		tblUnchanged := backup.Table{Relation: backup.Relation{Schema: "public", Name: "heap_unchanged"}}
 		tblChangedHash := backup.Table{Relation: backup.Relation{Schema: "public", Name: "heap_changed_hash"}}
 		tblChangedDDL := backup.Table{Relation: backup.Relation{Schema: "public", Name: "heap_changed_ddl"}}
+		tblChangedEnum := backup.Table{Relation: backup.Relation{Schema: "public", Name: "heap_changed_enum"}}
 		tblNoCurrHash := backup.Table{Relation: backup.Relation{Schema: "public", Name: "heap_no_curr_hash"}}
 		tblNoPrev := backup.Table{Relation: backup.Relation{Schema: "public", Name: "heap_no_prev"}}
 		tblEmptyPrev := backup.Table{Relation: backup.Relation{Schema: "public", Name: "heap_empty_prev"}}
-		tables := []backup.Table{tblUnchanged, tblChangedHash, tblChangedDDL, tblNoCurrHash, tblNoPrev, tblEmptyPrev}
+		tables := []backup.Table{tblUnchanged, tblChangedHash, tblChangedDDL, tblChangedEnum, tblNoCurrHash, tblNoPrev, tblEmptyPrev}
 
 		filteredTables := backup.FilterTablesForIncremental(&prevTOC, &currTOC, tables)
 
@@ -125,6 +128,10 @@ var _ = Describe("backup/incremental tests", func() {
 
 		It("Should include the heap table having a modified last DDL timestamp", func() {
 			Expect(filteredTables).To(ContainElement(tblChangedDDL))
+		})
+
+		It("Should include the heap table having modified enum labels", func() {
+			Expect(filteredTables).To(ContainElement(tblChangedEnum))
 		})
 
 		It("Should include heap tables missing a hash in either backup", func() {

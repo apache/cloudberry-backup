@@ -50,12 +50,16 @@ func DoSetup() {
 	timestamp := history.CurrentTimestamp()
 	createBackupLockFile(timestamp)
 	// Heap file hashes must be read before initializeConnectionPool takes the
-	// backup snapshot; see CollectHeapFileHashes.
+	// backup snapshot, and verified after it; see CollectHeapFileHashes.
+	var hashedHeapTables []heapTable
 	if MustGetFlagBool(options.HEAP_FILE_HASH) && collectsIncrementalMetadata() {
 		gplog.Info("Collecting heap table file hashes")
-		heapFileHashes = CollectHeapFileHashes(MustGetFlagString(options.DBNAME))
+		hashedHeapTables, heapFileHashes = CollectHeapFileHashes(MustGetFlagString(options.DBNAME))
 	}
 	initializeConnectionPool(timestamp)
+	if heapFileHashes != nil {
+		heapFileHashes = VerifyHeapFileHashes(MustGetFlagString(options.DBNAME), hashedHeapTables, heapFileHashes)
+	}
 	gplog.Info("Apache Cloudberry Version = %s", connectionPool.Version.VersionString)
 
 	gplog.Info("Starting backup of database %s", MustGetFlagString(options.DBNAME))

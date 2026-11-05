@@ -193,20 +193,21 @@ type heapTable struct {
 const heapFileHashBatchSize = 1000
 
 // CollectHeapFileHashes returns a per-table hash of the on-disk state of every
-// heap table in the database. It must run before the backup snapshot is taken:
-// a change committed after the hash was read always moves the data files on,
-// so the next incremental sees a different hash and backs the table up. Hashing
-// after the snapshot would let changes the backup cannot see slip into the hash.
+// heap table in the database, along with the tables it looked at. It must run
+// before the backup snapshot is taken, and VerifyHeapFileHashes after it: a
+// change committed after the hash was read either is flushed by the next
+// backup's CHECKPOINT, moving the data files on, or, if committed before the
+// snapshot, is caught by VerifyHeapFileHashes.
 //
-// A nil result means the hashes could not be collected; every heap table is
+// A nil map means the hashes could not be collected; every heap table is
 // then included in the next incremental, as without --heap-file-hash.
-func CollectHeapFileHashes(dbName string) map[string]string {
+func CollectHeapFileHashes(dbName string) ([]heapTable, map[string]string) {
 	hashConn := dbconn.NewDBConnFromEnvironment(dbName)
 	hashConn.MustConnect(1)
 	defer hashConn.Close()
 
 	if !ensureFileStatFunction(hashConn) {
-		return nil
+		return nil, nil
 	}
 
 	// CHECKPOINT flushes dirty pages so pg_stat_file sees up-to-date mtime/size.
@@ -215,7 +216,7 @@ func CollectHeapFileHashes(dbName string) map[string]string {
 	gplog.Verbose("Executing CHECKPOINT before heap file hash collection")
 	if _, err := hashConn.Exec("CHECKPOINT;", 0); err != nil {
 		gplog.Warn("CHECKPOINT failed, skipping heap file hash collection: %v", err)
-		return nil
+		return nil, nil
 	}
 	// pg_stat_file reports mtime in whole seconds, so gpbackup_file_info refuses
 	// to hash a file modified in the current second. Wait out the second the
@@ -234,7 +235,7 @@ func CollectHeapFileHashes(dbName string) map[string]string {
 	writtenOids, err := getTablesWithActiveWriters(hashConn)
 	if err != nil {
 		gplog.Warn("Could not check for in-progress writers, skipping heap file hash collection: %v", err)
-		return nil
+		return nil, nil
 	}
 	for _, t := range heapTables {
 		if _, ok := hashes[t.FQN]; ok && writtenOids[t.Oid] {
@@ -242,7 +243,42 @@ func CollectHeapFileHashes(dbName string) map[string]string {
 			delete(hashes, t.FQN)
 		}
 	}
-	return hashes
+	return heapTables, hashes
+}
+
+// VerifyHeapFileHashes runs after the backup snapshot is taken and keeps only
+// the hashes of tables whose files did not change since CollectHeapFileHashes
+// read them. A change committed after the first CHECKPOINT may still sit in
+// shared buffers, invisible to that hash but visible to the snapshot; a
+// second CHECKPOINT flushes it, so the table's files no longer match and its
+// hash is dropped.
+func VerifyHeapFileHashes(dbName string, heapTables []heapTable, hashes map[string]string) map[string]string {
+	hashConn := dbconn.NewDBConnFromEnvironment(dbName)
+	hashConn.MustConnect(1)
+	defer hashConn.Close()
+
+	gplog.Verbose("Executing CHECKPOINT to verify heap file hashes")
+	if _, err := hashConn.Exec("CHECKPOINT;", 0); err != nil {
+		gplog.Warn("CHECKPOINT failed, skipping heap file hash collection: %v", err)
+		return nil
+	}
+
+	hashedTables := make([]heapTable, 0, len(hashes))
+	for _, t := range heapTables {
+		if _, ok := hashes[t.FQN]; ok {
+			hashedTables = append(hashedTables, t)
+		}
+	}
+	current := getFileHashesForTables(hashConn, hashedTables)
+	verified := make(map[string]string, len(hashes))
+	for fqn, hash := range hashes {
+		if current[fqn] == hash {
+			verified[fqn] = hash
+		} else {
+			gplog.Verbose("Not recording a file hash for %s: its files changed while the backup started", fqn)
+		}
+	}
+	return verified
 }
 
 // getTablesWithActiveWriters returns the oids of relations on which another
@@ -279,9 +315,10 @@ func getTablesWithActiveWriters(hashConn *dbconn.DBConn) (map[uint32]bool, error
 // than RELSEG_SIZE (1GB by default) continues in path.1, path.2, ... (see
 // md.c), so the function walks them until one is missing. The path itself
 // carries the relfilenode, which catches rewrites (TRUNCATE, VACUUM FULL,
-// CLUSTER). The function returns ” when a file was modified in the current
-// second, since a later write in that same second would not move the mtime;
-// the caller then records no hash, forcing the table into the next incremental.
+// CLUSTER). The function returns an empty string when a file was modified in
+// the current second, since a later write in that same second would not move
+// the mtime; the caller then records no hash, forcing the table into the next
+// incremental.
 //
 // The function is replaced on every run so a body left by an older gpbackup
 // is never reused.
@@ -427,20 +464,64 @@ func getFileHashesForTables(hashConn *dbconn.DBConn, tables []heapTable) map[str
 	return result
 }
 
-// getHeapLastDDLTimestamps returns the last DDL timestamp of every heap table
-// in the backup set (” if none is recorded). A DDL that does not rewrite the
-// table, e.g. DROP COLUMN, leaves the data files untouched, so the file hash
-// alone would reuse data dumped with the old column list.
-func getHeapLastDDLTimestamps(connectionPool *dbconn.DBConn) map[string]string {
+// getHeapIncrementalEntries returns, for every heap table in the backup set,
+// what besides the file hash decides whether the table changed:
+//
+//   - its last DDL timestamp (empty if none is recorded). A DDL that does not
+//     rewrite the table, e.g. DROP COLUMN, leaves the data files untouched, so
+//     the file hash alone would reuse data dumped with the old column list.
+//   - a hash of the labels of the enum types its columns use, directly or
+//     through domains, arrays, composite and range types. Enum values are
+//     stored by oid, so ALTER TYPE ... RENAME VALUE changes the dumped text but
+//     neither the data files nor the table's DDL timestamp.
+//
+// FileHashMD5 is left empty.
+func getHeapIncrementalEntries(connectionPool *dbconn.DBConn) map[string]toc.HeapEntry {
 	heapFilter := "a.amname = 'heap'"
 	amJoin := "JOIN pg_am a ON c.relam = a.oid"
+	// Enum labels cannot be renamed before PostgreSQL 10, i.e. GPDB 7.
+	enumLabels := `
+			LEFT JOIN (
+				WITH RECURSIVE type_deps(typid, deptypid) AS (
+					SELECT oid, typbasetype FROM pg_type WHERE typtype = 'd'
+					UNION ALL
+					SELECT oid, typelem FROM pg_type WHERE typelem <> 0
+					UNION ALL
+					SELECT t.oid, ta.atttypid
+					FROM pg_type t
+						JOIN pg_attribute ta ON ta.attrelid = t.typrelid
+					WHERE t.typtype = 'c' AND ta.attnum > 0 AND NOT ta.attisdropped
+					UNION ALL
+					SELECT rngtypid, rngsubtype FROM pg_range
+				), column_types(relid, typid) AS (
+					SELECT ta.attrelid, ta.atttypid
+					FROM pg_attribute ta
+						JOIN pg_class tc ON tc.oid = ta.attrelid
+						JOIN pg_am tam ON tam.oid = tc.relam
+					WHERE tam.amname = 'heap' AND tc.relkind = 'r'
+						AND ta.attnum > 0 AND NOT ta.attisdropped
+					UNION
+					SELECT ct.relid, d.deptypid
+					FROM column_types ct
+						JOIN type_deps d ON d.typid = ct.typid
+				)
+				SELECT ct.relid,
+					md5(string_agg(e.enumtypid::text || ':' || e.enumlabel, ',' ORDER BY e.enumtypid, e.enumsortorder)) AS enumlabelsmd5
+				FROM column_types ct
+					JOIN pg_enum e ON e.enumtypid = ct.typid
+				GROUP BY ct.relid
+			) enums ON c.oid = enums.relid`
+	enumColumn := "COALESCE(enums.enumlabelsmd5, '')"
 	if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("7") {
 		heapFilter = "c.relstorage = 'h'"
 		amJoin = ""
+		enumLabels = ""
+		enumColumn = "''"
 	}
 	query := fmt.Sprintf(`
 		SELECT quote_ident(n.nspname) || '.' || quote_ident(c.relname) AS tablefqn,
-			COALESCE(lastop.lastddltimestamp::text, '') AS lastddltimestamp
+			COALESCE(lastop.lastddltimestamp::text, '') AS lastddltimestamp,
+			%s AS enumlabelsmd5
 		FROM pg_class c
 			JOIN pg_namespace n ON c.relnamespace = n.oid
 			%s
@@ -449,20 +530,24 @@ func getHeapLastDDLTimestamps(connectionPool *dbconn.DBConn) map[string]string {
 				FROM pg_stat_last_operation lo
 				WHERE lo.staactionname IN ('CREATE', 'ALTER', 'TRUNCATE')
 				GROUP BY lo.objid
-			) lastop ON c.oid = lastop.objid
+			) lastop ON c.oid = lastop.objid%s
 		WHERE %s
 			AND c.relkind = 'r'
-			AND %s`, amJoin, heapFilter, relationAndSchemaFilterClause())
+			AND %s`, enumColumn, amJoin, enumLabels, heapFilter, relationAndSchemaFilterClause())
 
 	var results []struct {
 		TableFQN         string
 		LastDDLTimestamp string
+		EnumLabelsMD5    string
 	}
 	err := connectionPool.Select(&results, query)
 	gplog.FatalOnError(err)
-	resultMap := make(map[string]string)
+	resultMap := make(map[string]toc.HeapEntry)
 	for _, result := range results {
-		resultMap[result.TableFQN] = result.LastDDLTimestamp
+		resultMap[result.TableFQN] = toc.HeapEntry{
+			LastDDLTimestamp: result.LastDDLTimestamp,
+			EnumLabelsMD5:    result.EnumLabelsMD5,
+		}
 	}
 	return resultMap
 }

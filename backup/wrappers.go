@@ -766,15 +766,16 @@ func backupIncrementalMetadata() {
 	if heapFileHashes == nil {
 		return
 	}
-	heapDDLTimestamps := getHeapLastDDLTimestamps(connectionPool)
+	heapTables := getHeapIncrementalEntries(connectionPool)
 	heapEntries := make(map[string]toc.HeapEntry)
-	for fqn, lastDDLTimestamp := range heapDDLTimestamps {
+	for fqn, entry := range heapTables {
 		if hash, ok := heapFileHashes[fqn]; ok {
-			heapEntries[fqn] = toc.HeapEntry{FileHashMD5: hash, LastDDLTimestamp: lastDDLTimestamp}
+			entry.FileHashMD5 = hash
+			heapEntries[fqn] = entry
 		}
 	}
 	globalTOC.IncrementalMetadata.Heap = heapEntries
-	gplog.Verbose("Collected file hashes for %d of %d heap tables", len(heapEntries), len(heapDDLTimestamps))
+	gplog.Verbose("Collected file hashes for %d of %d heap tables", len(heapEntries), len(heapTables))
 }
 
 func backupStorageServers(metadataFile *utils.FileWithByteCount) {

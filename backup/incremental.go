@@ -35,7 +35,8 @@ func FilterTablesForIncremental(lastBackupTOC, currentTOC *toc.TOC, tables []Tab
 
 // heapTableUnchanged reports whether a non-AO table can be skipped. That needs a
 // file hash in both backups (recorded only with --heap-file-hash) and matching
-// hashes and DDL timestamps; anything else includes the table, as before.
+// hashes, DDL timestamps and enum labels; anything else includes the table, as
+// before.
 func heapTableUnchanged(lastBackupTOC, currentTOC *toc.TOC, fqn string) bool {
 	currentEntry, ok := currentTOC.IncrementalMetadata.Heap[fqn]
 	if !ok || currentEntry.FileHashMD5 == "" {
@@ -46,7 +47,8 @@ func heapTableUnchanged(lastBackupTOC, currentTOC *toc.TOC, fqn string) bool {
 		return false
 	}
 	return previousEntry.FileHashMD5 == currentEntry.FileHashMD5 &&
-		previousEntry.LastDDLTimestamp == currentEntry.LastDDLTimestamp
+		previousEntry.LastDDLTimestamp == currentEntry.LastDDLTimestamp &&
+		previousEntry.EnumLabelsMD5 == currentEntry.EnumLabelsMD5
 }
 
 func GetTargetBackupTimestamp() string {
