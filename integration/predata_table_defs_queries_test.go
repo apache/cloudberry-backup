@@ -838,13 +838,95 @@ SET SUBPARTITION TEMPLATE
 
 			_, result := backup.GetTableStorage(connectionPool)
 
+			// Reloption values are quoted the way the server prints them
+			// (get_reloptions): reserved words (true, none) and numbers are quoted.
 			if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("7") {
-				Expect(result[oid]).To(Equal("appendonly=true"))
+				Expect(result[oid]).To(Equal("appendonly='true'"))
 			} else {
 				// For GPDB 7+, storage options no longer contain appendonly and orientation,
 				// instead populates with default compression values
-				Expect(result[oid]).To(Equal("blocksize=32768, compresslevel=0, compresstype=none, checksum=true"))
+				Expect(result[oid]).To(Equal("blocksize='32768', compresslevel='0', compresstype='none', checksum='true'"))
 			}
+		})
+		It("single-quotes comma-containing storage option values so PAX multi-column options restore correctly ", func() {
+			// PAX minmax_columns/cluster_columns store a comma-separated column
+			// list as a single string value. If that value is emitted unquoted,
+			// the embedded comma is read as an option separator and the restored
+			// DDL fails with `unrecognized parameter "<second column>"`. The value
+			// must be single-quoted so it survives the round trip.
+			if !connectionPool.Version.IsCBDB() {
+				Skip("PAX access method is only available on Cloudberry")
+			}
+			testhelper.AssertQueryRuns(connectionPool,
+				"CREATE TABLE public.pax_mm(a int, b int, c int) USING pax WITH (minmax_columns='a,b', cluster_columns='a,b', cluster_type='lexical') DISTRIBUTED BY (a)")
+			defer testhelper.AssertQueryRuns(connectionPool, "DROP TABLE public.pax_mm")
+			oid := testutils.OidFromObjectName(connectionPool, "public", "pax_mm", backup.TYPE_RELATION)
+
+			_, result := backup.GetTableStorage(connectionPool)
+
+			// The comma-containing list values must be single-quoted ...
+			Expect(result[oid]).To(ContainSubstring("minmax_columns='a,b'"))
+			Expect(result[oid]).To(ContainSubstring("cluster_columns='a,b'"))
+
+			// ... and the emitted WITH clause must restore verbatim. This asserts
+			// the wiring end to end: a failure to quote would make this CREATE fail.
+			testhelper.AssertQueryRuns(connectionPool,
+				fmt.Sprintf("CREATE TABLE public.pax_mm_restored(a int, b int, c int) USING pax WITH (%s) DISTRIBUTED BY (a)", result[oid]))
+			testhelper.AssertQueryRuns(connectionPool, "DROP TABLE public.pax_mm_restored")
+		})
+		It("single-quotes storage option values that are not simple tokens (uppercase, spaces) so they restore correctly", func() {
+			// A storage option value that is not a plain token also breaks the
+			// round trip even without a comma: an uppercase identifier is silently
+			// downcased (minmax_columns=A targets column "a"), and a value with a
+			// space is a syntax error (bloomfilter_columns=x y). Both must be
+			// single-quoted so the value survives verbatim on restore.
+			if !connectionPool.Version.IsCBDB() {
+				Skip("PAX access method is only available on Cloudberry")
+			}
+			testhelper.AssertQueryRuns(connectionPool,
+				`CREATE TABLE public.pax_q(a int, "A" int, "x y" int) USING pax WITH (minmax_columns='A', bloomfilter_columns='x y') DISTRIBUTED BY (a)`)
+			defer testhelper.AssertQueryRuns(connectionPool, "DROP TABLE public.pax_q")
+			oid := testutils.OidFromObjectName(connectionPool, "public", "pax_q", backup.TYPE_RELATION)
+
+			_, result := backup.GetTableStorage(connectionPool)
+
+			// The non-token values must be single-quoted ...
+			Expect(result[oid]).To(ContainSubstring("minmax_columns='A'"))
+			Expect(result[oid]).To(ContainSubstring("bloomfilter_columns='x y'"))
+
+			// ... and the emitted WITH clause must restore verbatim onto the same
+			// uppercase/spaced columns. Without quoting this CREATE would downcase
+			// "A" to a missing column or fail with a syntax error.
+			testhelper.AssertQueryRuns(connectionPool,
+				fmt.Sprintf(`CREATE TABLE public.pax_q_restored(a int, "A" int, "x y" int) USING pax WITH (%s) DISTRIBUTED BY (a)`, result[oid]))
+			testhelper.AssertQueryRuns(connectionPool, "DROP TABLE public.pax_q_restored")
+		})
+		It("single-quotes a numeric storage option value so it is not re-read as a different column", func() {
+			// A purely numeric value is not a bare identifier either: emitted
+			// unquoted, "minmax_columns=001" is parsed back as the integer 1, so
+			// the restored min/max index would target column "1" instead of the
+			// intended column "001". Quoting the value preserves it verbatim.
+			if !connectionPool.Version.IsCBDB() {
+				Skip("PAX access method is only available on Cloudberry")
+			}
+			testhelper.AssertQueryRuns(connectionPool,
+				`CREATE TABLE public.pax_num("001" int, "1" int) USING pax WITH (minmax_columns='001') DISTRIBUTED BY ("001")`)
+			defer testhelper.AssertQueryRuns(connectionPool, "DROP TABLE public.pax_num")
+			oid := testutils.OidFromObjectName(connectionPool, "public", "pax_num", backup.TYPE_RELATION)
+
+			_, result := backup.GetTableStorage(connectionPool)
+
+			// The numeric value must be single-quoted, not emitted as bare 001 ...
+			Expect(result[oid]).To(Equal("minmax_columns='001'"))
+
+			// ... and the emitted WITH clause must restore onto column "001". The
+			// restored table's reloptions must still read 001, not 1.
+			testhelper.AssertQueryRuns(connectionPool,
+				fmt.Sprintf(`CREATE TABLE public.pax_num_restored("001" int, "1" int) USING pax WITH (%s) DISTRIBUTED BY ("001")`, result[oid]))
+			defer testhelper.AssertQueryRuns(connectionPool, "DROP TABLE public.pax_num_restored")
+			restoredOid := testutils.OidFromObjectName(connectionPool, "public", "pax_num_restored", backup.TYPE_RELATION)
+			_, restored := backup.GetTableStorage(connectionPool)
+			Expect(restored[restoredOid]).To(Equal("minmax_columns='001'"))
 		})
 	})
 	Describe("GetTableInheritance", func() {

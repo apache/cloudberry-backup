@@ -143,18 +143,20 @@ var _ = Describe("backup integration create statement tests", func() {
 
 			// We remove fillfactor from the storage options of appendonly tables, as it has always
 			// been a no-op and is now incompatible with GPDB7+.
-			testTable.StorageOpts = "appendonly=true, orientation=column, compresstype=zlib, blocksize=32768, compresslevel=1"
+			// Reloption values are quoted the way the server prints them (get_reloptions):
+			// reserved words and numbers are quoted, plain identifiers (zlib) are left bare.
+			testTable.StorageOpts = "appendonly='true', orientation='column', compresstype=zlib, blocksize='32768', compresslevel='1'"
 
 			if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 				// For GPDB 7+, the storage options no longer store the appendonly and orientation field
-				testTable.TableDefinition.StorageOpts = "compresstype=zlib, blocksize=32768, compresslevel=1, checksum=true"
+				testTable.TableDefinition.StorageOpts = "compresstype=zlib, blocksize='32768', compresslevel='1', checksum='true'"
 				testTable.TableDefinition.AccessMethodName = "ao_column"
 			}
 			structmatcher.ExpectStructsToMatchExcluding(testTable.TableDefinition, resultTable.TableDefinition, "ColumnDefs.Oid", "ExtTableDef", "DistBy")
 		})
 		It("creates a basic GPDB 7+ append-optimized table", func() {
 			testutils.SkipIfBefore7(connectionPool)
-			testTable.TableDefinition.StorageOpts = "blocksize=32768, compresslevel=0, compresstype=none, checksum=true"
+			testTable.TableDefinition.StorageOpts = "blocksize='32768', compresslevel='0', compresstype='none', checksum='true'"
 			testTable.TableDefinition.AccessMethodName = "ao_column"
 
 			backup.PrintRegularTableCreateStatement(backupfile, tocfile, testTable)
@@ -554,7 +556,7 @@ SET SUBPARTITION TEMPLATE ` + `
 		})
 		It("creates a view with options", func() {
 			testutils.SkipIfBefore6(connectionPool)
-			view := backup.View{Oid: 1, Schema: "public", Name: "simpleview", Options: " WITH (security_barrier=true)", Definition: viewDef}
+			view := backup.View{Oid: 1, Schema: "public", Name: "simpleview", Options: " WITH (security_barrier='true')", Definition: viewDef}
 
 			backup.PrintCreateViewStatement(backupfile, tocfile, view, backup.ObjectMetadata{})
 
@@ -596,7 +598,7 @@ SET SUBPARTITION TEMPLATE ` + `
 			structmatcher.ExpectStructsToMatch(&viewMetadata, &resultMetadata)
 		})
 		It("creates a materialized view with options", func() {
-			view := backup.View{Oid: 1, Schema: "public", Name: "simplemview", Options: " WITH (fillfactor=10)", Definition: sql.NullString{String: " SELECT 1 AS a;", Valid: true}, IsMaterialized: true, DistPolicy: backup.DistPolicy{Policy: "DISTRIBUTED BY (a)"}}
+			view := backup.View{Oid: 1, Schema: "public", Name: "simplemview", Options: " WITH (fillfactor='10')", Definition: sql.NullString{String: " SELECT 1 AS a;", Valid: true}, IsMaterialized: true, DistPolicy: backup.DistPolicy{Policy: "DISTRIBUTED BY (a)"}}
 			if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 				view.AccessMethodName = "heap"
 			}

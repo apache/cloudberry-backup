@@ -2,6 +2,7 @@ package integration
 
 import (
 	"database/sql"
+	"fmt"
 	"math"
 	"sort"
 	"strconv"
@@ -497,7 +498,7 @@ PARTITION BY LIST (gender)
 			defer testhelper.AssertQueryRuns(connectionPool, "DROP VIEW public.simpleview")
 
 			results := backup.GetAllViews(connectionPool)
-			view := backup.View{Oid: 1, Schema: "public", Name: "simpleview", Definition: viewDef, Options: " WITH (security_barrier=true)"}
+			view := backup.View{Oid: 1, Schema: "public", Name: "simpleview", Definition: viewDef, Options: " WITH (security_barrier='true')"}
 
 			view.Oid = testutils.OidFromObjectName(connectionPool, "public", "simpleview", backup.TYPE_RELATION)
 			Expect(results).To(HaveLen(1))
@@ -528,13 +529,39 @@ PARTITION BY LIST (gender)
 			defer testhelper.AssertQueryRuns(connectionPool, "DROP MATERIALIZED VIEW public.simplematerialview")
 
 			results := backup.GetAllViews(connectionPool)
-			materialView := backup.View{Oid: 1, Schema: "public", Name: "simplematerialview", Definition: sql.NullString{String: " SELECT 1 AS a;", Valid: true}, Options: " WITH (fillfactor=50, autovacuum_enabled=false)", IsMaterialized: true, DistPolicy: backup.DistPolicy{Policy: "DISTRIBUTED BY (a)"}}
+			materialView := backup.View{Oid: 1, Schema: "public", Name: "simplematerialview", Definition: sql.NullString{String: " SELECT 1 AS a;", Valid: true}, Options: " WITH (fillfactor='50', autovacuum_enabled='false')", IsMaterialized: true, DistPolicy: backup.DistPolicy{Policy: "DISTRIBUTED BY (a)"}}
 			if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 				materialView.AccessMethodName = "heap"
 			}
 			materialView.Oid = testutils.OidFromObjectName(connectionPool, "public", "simplematerialview", backup.TYPE_RELATION)
 			Expect(results).To(HaveLen(1))
 			structmatcher.ExpectStructsToMatchExcluding(&materialView, &results[0], "ColumnDefs", "DistPolicy.Oid")
+		})
+		It("quotes a comma-containing storage option on a PAX materialized view so it restores", func() {
+			// A materialized view builds its WITH clause through the same path as
+			// a table, so a PAX matview carrying a comma-separated list value
+			// (minmax_columns) is just as prone to being split on the comma and
+			// failing restore with `unrecognized parameter`. Cover it explicitly.
+			if !connectionPool.Version.IsCBDB() {
+				Skip("PAX access method is only available on Cloudberry")
+			}
+			testhelper.AssertQueryRuns(connectionPool, "CREATE MATERIALIZED VIEW public.pax_mv USING pax WITH (minmax_columns='a,b') AS SELECT 1 AS a, 2 AS b DISTRIBUTED BY (a)")
+			defer testhelper.AssertQueryRuns(connectionPool, "DROP MATERIALIZED VIEW public.pax_mv")
+
+			results := backup.GetAllViews(connectionPool)
+			var paxMV backup.View
+			for _, v := range results {
+				if v.Name == "pax_mv" {
+					paxMV = v
+				}
+			}
+			// The comma value must be single-quoted inside the WITH clause ...
+			Expect(paxMV.Options).To(Equal(" WITH (minmax_columns='a,b')"))
+
+			// ... and that WITH clause must restore verbatim onto a PAX matview.
+			testhelper.AssertQueryRuns(connectionPool,
+				fmt.Sprintf("CREATE MATERIALIZED VIEW public.pax_mv_restored USING pax%s AS SELECT 1 AS a, 2 AS b DISTRIBUTED BY (a)", paxMV.Options))
+			testhelper.AssertQueryRuns(connectionPool, "DROP MATERIALIZED VIEW public.pax_mv_restored")
 		})
 		It("returns a slice for materialized views with tablespaces", func() {
 			if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("6.2") {

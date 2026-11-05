@@ -602,16 +602,23 @@ func GetPartitionAlteredSchema(connectionPool *dbconn.DBConn) map[uint32][]Alter
 
 func GetTableStorage(connectionPool *dbconn.DBConn) (map[uint32]string, map[uint32]string) {
 	gplog.Info("Getting storage information")
+	// reloptions is an array of "name=value" strings joined into a WITH clause.
+	// A value may contain characters that break that round trip -- most
+	// importantly a comma, which PAX uses in its minmax_columns /
+	// bloomfilter_columns / cluster_columns column lists, but also upper-case
+	// letters, spaces or digits. relOptionsClause quotes each value exactly the
+	// way the server does so the emitted WITH clause restores verbatim; see its
+	// comment for the rule.
 	query := fmt.Sprintf(`
 	SELECT c.oid,
 		quote_ident(t.spcname) AS tablespace,
-		array_to_string(reloptions, ', ') AS reloptions
+		%s AS reloptions
 	FROM pg_class c
 		JOIN pg_namespace n ON c.relnamespace = n.oid
 		LEFT JOIN pg_tablespace t ON t.oid = c.reltablespace
 	WHERE %s
-		AND (t.spcname IS NOT NULL OR reloptions IS NOT NULL)`,
-		relationAndSchemaFilterClause())
+		AND (t.spcname IS NOT NULL OR c.reloptions IS NOT NULL)`,
+		relOptionsClause("c.reloptions"), relationAndSchemaFilterClause())
 	var results []struct {
 		Oid        uint32
 		Tablespace sql.NullString
