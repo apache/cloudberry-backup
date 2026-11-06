@@ -774,7 +774,7 @@ func setupGpbackmanFilterDatabase() {
 	testhelper.AssertQueryRuns(filterConn, `
 		CREATE TABLE public.e2e_data (id integer, value text) DISTRIBUTED BY (id);
 		INSERT INTO public.e2e_data (id, value)
-		SELECT i, 'e2e-value-' || i FROM generate_series(1, 100) AS i;
+		SELECT i, 'e2e-value-'::text || i FROM generate_series(1, 100) AS i;
 	`)
 }
 

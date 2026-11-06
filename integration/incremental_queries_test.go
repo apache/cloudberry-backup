@@ -447,8 +447,8 @@ var _ = Describe("backup integration tests", func() {
 						JOIN pg_namespace aux_n ON aux_c.relnamespace = aux_n.oid
 					WHERE aux_n.nspname = 'pg_ext_aux'
 						AND aux_c.relkind = 'r'
-						AND aux_c.relname::text IN ('pg_manifest_' || '%s'::regclass::oid,
-							'pg_pax_blocks_' || '%s'::regclass::oid)`, paxTableFQN, paxTableFQN))
+						AND aux_c.relname::text IN ('pg_manifest_'::text || '%s'::regclass::oid,
+						'pg_pax_blocks_'::text || '%s'::regclass::oid)`, paxTableFQN, paxTableFQN))
 				Expect(auxTableFQN).To(Not(BeEmpty()))
 
 				testhelper.AssertQueryRuns(connectionPool, fmt.Sprintf("VACUUM %s", auxTableFQN))

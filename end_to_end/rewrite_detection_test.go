@@ -114,7 +114,7 @@ var _ = Describe("End to End storage rewrite detection tests", func() {
 					"CREATE TABLE %s (id int, v text) USING %s DISTRIBUTED BY (id)",
 					tableFQN, rewriteCase.accessMethod))
 				testhelper.AssertQueryRuns(backupConn, fmt.Sprintf(
-					"INSERT INTO %s SELECT i, 'v' || i FROM generate_series(1, 100000) i", tableFQN))
+					"INSERT INTO %s SELECT i, 'v'::text || i FROM generate_series(1, 100000) i", tableFQN))
 				testhelper.AssertQueryRuns(backupConn, fmt.Sprintf(
 					"CREATE INDEX t_idx ON %s (id)", tableFQN))
 
