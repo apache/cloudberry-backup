@@ -74,13 +74,20 @@ var _ = Describe("backup/queries_incremental tests", func() {
 				AddRow([]driver.Value{"public.pax_blocks", "2026-01-02 00:00:00"}...)
 			mock.ExpectQuery(`pg_stat_last_operation`).WillReturnRows(lastDDLTimestamps)
 
+			relFileNodes := sqlmock.NewRows([]string{"aotablefqn", "relfilenode"}).
+				AddRow([]driver.Value{"public.pax_manifest", "100"}...).
+				AddRow([]driver.Value{"public.pax_blocks", "200"}...)
+			mock.ExpectQuery(`relfilenode`).WillReturnRows(relFileNodes)
+
 			result := backup.GetPAXIncrementalMetadata(connectionPool)
 
 			Expect(result).To(HaveLen(2))
 			Expect(result["public.pax_manifest"]).To(Equal(toc.PAXEntry{
-				Marker: "manifestdigest", LastDDLTimestamp: "2026-01-01 00:00:00"}))
+				Marker: "manifestdigest", LastDDLTimestamp: "2026-01-01 00:00:00",
+				RelFileNode: 100}))
 			Expect(result["public.pax_blocks"]).To(Equal(toc.PAXEntry{
-				Marker: "blocksdigest", LastDDLTimestamp: "2026-01-02 00:00:00"}))
+				Marker: "blocksdigest", LastDDLTimestamp: "2026-01-02 00:00:00",
+				RelFileNode: 200}))
 			Expect(mock.ExpectationsWereMet()).To(Succeed())
 		})
 
@@ -93,6 +100,9 @@ var _ = Describe("backup/queries_incremental tests", func() {
 			mock.ExpectQuery(`pg_stat_last_operation`).
 				WillReturnRows(sqlmock.NewRows([]string{"aotablefqn", "lastddltimestamp"}).
 					AddRow([]driver.Value{"public.pax_empty", "2026-01-03 00:00:00"}...))
+			mock.ExpectQuery(`relfilenode`).
+				WillReturnRows(sqlmock.NewRows([]string{"aotablefqn", "relfilenode"}).
+					AddRow([]driver.Value{"public.pax_empty", "300"}...))
 
 			result := backup.GetPAXIncrementalMetadata(connectionPool)
 

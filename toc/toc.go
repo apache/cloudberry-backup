@@ -58,9 +58,39 @@ type IncrementalEntries struct {
 }
 
 type AOEntry struct {
-	Modcount         int64
 	LastDDLTimestamp string
+	Modcount         int64
+	RelFileNode      int64
 }
+
+/*
+ * RelFileNode, on both entry types, is the table's storage identity, read from
+ * the coordinator.  It changes when and only when the table's storage is
+ * replaced, which is what a rewrite does.
+ *
+ * The coordinator's value is not the one the segments hold -- the two are
+ * allocated independently and never match -- but it tracks them exactly,
+ * because a rewrite is a dispatched DDL that replaces the relation everywhere
+ * at once.  Reading it here rather than through gp_dist_random keeps this to
+ * one local catalog query and avoids depending on an ordered aggregate across
+ * a motion.
+ *
+ * It is here because neither of the other two fields survives a rewrite
+ * intact.  CLUSTER rebuilds an AO table through a fresh pg_aoseg relation, so
+ * its modcount restarts at the segment count -- the same value a bulk-loaded
+ * table reads -- and CLUSTER is not one of the actions pg_stat_last_operation
+ * records, so the DDL timestamp does not move either.  A table backed up after
+ * loading, then modified, then clustered, compares equal on both fields and is
+ * skipped, leaving the restore plan pointing at its pre-CLUSTER contents.
+ *
+ * A TOC written before this field existed has it zero.  Zero is not a value
+ * any entry here can hold: the only relations with relfilenode 0 are
+ * partitioned roots, and a root has neither a pg_appendonly entry nor a PAX
+ * aux relation, so it never reaches these maps.  Zero therefore means "not
+ * recorded", and the first incremental backup after upgrading re-reads every
+ * AO and PAX table once.  That is the safe direction, and it is the only way
+ * to be right about a backup whose storage identity was never recorded.
+ */
 
 /*
  * PAX tables have no modcount, so changes are detected through a digest of the
@@ -71,8 +101,9 @@ type AOEntry struct {
  * which case every PAX table is treated as unknown and backed up in full.
  */
 type PAXEntry struct {
-	Marker           string
 	LastDDLTimestamp string
+	Marker           string
+	RelFileNode      int64
 }
 
 type UniqueID struct {

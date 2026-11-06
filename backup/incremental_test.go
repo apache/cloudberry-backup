@@ -34,11 +34,13 @@ var _ = Describe("backup/incremental tests", func() {
 					"public.ao_changed_modcount":  defaultEntry,
 					"public.ao_changed_timestamp": defaultEntry,
 					"public.ao_unchanged":         defaultEntry,
+					"public.ao_rewritten":         defaultEntry,
 				},
 				PAX: map[string]toc.PAXEntry{
 					"public.pax_changed_marker":    defaultPAXEntry,
 					"public.pax_changed_timestamp": defaultPAXEntry,
 					"public.pax_unchanged":         defaultPAXEntry,
+					"public.pax_rewritten":         defaultPAXEntry,
 				},
 			},
 		}
@@ -55,6 +57,13 @@ var _ = Describe("backup/incremental tests", func() {
 						LastDDLTimestamp: "00001",
 					},
 					"public.ao_unchanged": defaultEntry,
+					// A rewrite leaves the modcount and the DDL timestamp
+					// exactly as they were; only the storage moved.
+					"public.ao_rewritten": {
+						Modcount:         0,
+						RelFileNode:      200,
+						LastDDLTimestamp: "00000",
+					},
 				},
 				PAX: map[string]toc.PAXEntry{
 					"public.pax_changed_marker": {
@@ -66,6 +75,13 @@ var _ = Describe("backup/incremental tests", func() {
 						LastDDLTimestamp: "00001",
 					},
 					"public.pax_unchanged": defaultPAXEntry,
+					// Same here: a rewrite can reproduce an earlier digest,
+					// so the storage identity is what separates them.
+					"public.pax_rewritten": {
+						Marker:           "marker0",
+						RelFileNode:      200,
+						LastDDLTimestamp: "00000",
+					},
 					// A PAX table created since the previous backup has no
 					// entry at all in prevTOC, so it compares against the
 					// zero value and must be backed up.
@@ -86,16 +102,20 @@ var _ = Describe("backup/incremental tests", func() {
 		tblPAXUnchanged := backup.Table{Relation: backup.Relation{Schema: "public", Name: "pax_unchanged"}}
 		tblPAXNew := backup.Table{Relation: backup.Relation{Schema: "public", Name: "pax_new"}}
 		tblPAXUntracked := backup.Table{Relation: backup.Relation{Schema: "public", Name: "pax_untracked"}}
+		tblAORewritten := backup.Table{Relation: backup.Relation{Schema: "public", Name: "ao_rewritten"}}
+		tblPAXRewritten := backup.Table{Relation: backup.Relation{Schema: "public", Name: "pax_rewritten"}}
 		tables := []backup.Table{
 			tblHeap,
 			tblAOChangedModcount,
 			tblAOChangedTS,
 			tblAOUnchanged,
+			tblAORewritten,
 			tblPAXChangedMarker,
 			tblPAXChangedTS,
 			tblPAXUnchanged,
 			tblPAXNew,
 			tblPAXUntracked,
+			tblPAXRewritten,
 		}
 
 		filteredTables := backup.FilterTablesForIncremental(&prevTOC, &currTOC, tables)
@@ -116,6 +136,10 @@ var _ = Describe("backup/incremental tests", func() {
 			Expect(filteredTables).To(Not(ContainElement(tblAOUnchanged)))
 		})
 
+		It("Should include the AO table whose storage was replaced by a rewrite", func() {
+			Expect(filteredTables).To(ContainElement(tblAORewritten))
+		})
+
 		It("Should include the PAX table having a modified marker", func() {
 			Expect(filteredTables).To(ContainElement(tblPAXChangedMarker))
 		})
@@ -134,6 +158,10 @@ var _ = Describe("backup/incremental tests", func() {
 
 		It("Should include a PAX table with no incremental metadata at all", func() {
 			Expect(filteredTables).To(ContainElement(tblPAXUntracked))
+		})
+
+		It("Should include the PAX table whose storage was replaced by a rewrite", func() {
+			Expect(filteredTables).To(ContainElement(tblPAXRewritten))
 		})
 	})
 

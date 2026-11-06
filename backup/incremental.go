@@ -19,6 +19,12 @@ import (
  * not change since the backup we are building on; any table we have no change
  * markers for (heap, external, or a storage format this version does not know
  * how to track) is always included.
+ *
+ * Each storage format is checked on three independent signals, and any one of
+ * them differing re-reads the table.  They cover each other: the content
+ * signal (AO modcount, PAX aux digest) misses pure DDL, the DDL timestamp
+ * misses CLUSTER because pg_stat_last_operation does not record it, and the
+ * storage identity misses nothing about a rewrite but says nothing about DML.
  */
 func FilterTablesForIncremental(lastBackupTOC, currentTOC *toc.TOC, tables []Table) []Table {
 	var filteredTables []Table
@@ -28,7 +34,8 @@ func FilterTablesForIncremental(lastBackupTOC, currentTOC *toc.TOC, tables []Tab
 		if currentAOEntry, isAOTable := currentTOC.IncrementalMetadata.AO[tableFQN]; isAOTable {
 			previousAOEntry := lastBackupTOC.IncrementalMetadata.AO[tableFQN]
 			if previousAOEntry.Modcount != currentAOEntry.Modcount ||
-				previousAOEntry.LastDDLTimestamp != currentAOEntry.LastDDLTimestamp {
+				previousAOEntry.LastDDLTimestamp != currentAOEntry.LastDDLTimestamp ||
+				previousAOEntry.RelFileNode != currentAOEntry.RelFileNode {
 				filteredTables = append(filteredTables, table)
 			}
 			continue
@@ -37,7 +44,8 @@ func FilterTablesForIncremental(lastBackupTOC, currentTOC *toc.TOC, tables []Tab
 		if currentPAXEntry, isPAXTable := currentTOC.IncrementalMetadata.PAX[tableFQN]; isPAXTable {
 			previousPAXEntry := lastBackupTOC.IncrementalMetadata.PAX[tableFQN]
 			if previousPAXEntry.Marker != currentPAXEntry.Marker ||
-				previousPAXEntry.LastDDLTimestamp != currentPAXEntry.LastDDLTimestamp {
+				previousPAXEntry.LastDDLTimestamp != currentPAXEntry.LastDDLTimestamp ||
+				previousPAXEntry.RelFileNode != currentPAXEntry.RelFileNode {
 				filteredTables = append(filteredTables, table)
 			}
 			continue
