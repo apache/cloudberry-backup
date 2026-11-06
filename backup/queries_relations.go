@@ -37,6 +37,46 @@ func relationAndSchemaFilterClause() string {
 	return filterRelationClause
 }
 
+// relOptionsClause returns a SQL expression that flattens a pg_class.reloptions
+// array into the text that goes inside a WITH (...) clause, quoting each value
+// the way the server's own get_reloptions() (ruleutils.c) does.
+//
+// reloptions is an array of "name=value" strings, and a value may legally
+// contain a comma: PAX stores minmax_columns, bloomfilter_columns and
+// cluster_columns as comma-separated column lists. A plain
+// array_to_string(reloptions, ', ') loses the element boundaries, so one option
+// such as "minmax_columns=a,b" comes back out as several and the restore fails
+// on the fragments with `unrecognized parameter "b"`. The same flattening also
+// silently downcases an upper-case value and mis-reads a numeric or
+// space-containing one.
+//
+// Mirror the server instead: split each element on its first '=', emit the name
+// as a quoted identifier, and leave the value bare only when it is already an
+// identifier that needs no quoting (quote_ident(value) = value); otherwise emit
+// a quoted literal. A value we quote is a value the server would have quoted, so
+// the WITH clause matches pg_dump byte for byte and round-trips exactly.
+//
+// generate_series over the array subscripts keeps the options in catalog order.
+// It is used in place of unnest(...) WITH ORDINALITY, which GPDB 5 (PostgreSQL
+// 8.3) does not support; LATERAL is avoided for the same reason. The outer NULLIF
+// maps an empty result back to NULL, reproducing the NULL-when-empty result of a
+// plain array_to_string over a NULL array, which callers rely on: they wrap this
+// in a coalesce that prepends " WITH (" and appends ")", and would otherwise emit
+// an empty " WITH ()" for a relation that has no storage options.
+func relOptionsClause(arrayExpr string) string {
+	return fmt.Sprintf(`NULLIF(array_to_string(ARRAY(
+			SELECT quote_ident(substr(s.opt, 1, position('=' in s.opt) - 1)) || '=' ||
+				CASE WHEN quote_ident(substr(s.opt, position('=' in s.opt) + 1)) = substr(s.opt, position('=' in s.opt) + 1)
+					THEN substr(s.opt, position('=' in s.opt) + 1)
+					ELSE quote_literal(substr(s.opt, position('=' in s.opt) + 1))
+				END
+			FROM (
+				SELECT g AS ord, (%[1]s)[g] AS opt
+				FROM generate_series(array_lower(%[1]s, 1), array_upper(%[1]s, 1)) AS g
+			) AS s
+			ORDER BY s.ord), ', '), '')`, arrayExpr)
+}
+
 func GetOidsFromRelationList(relationFqns []options.Relation) []string {
 	oidString := make([]string, len(relationFqns))
 	for idx, rel := range relationFqns {
@@ -419,7 +459,7 @@ func GetAllViews(connectionPool *dbconn.DBConn) []View {
 		quote_ident(n.nspname) AS schema,
 		quote_ident(c.relname) AS name,
 		pg_get_viewdef(c.oid) AS definition,
-		coalesce(' WITH (' || array_to_string(c.reloptions, ', ') || ')', '') AS options,
+		coalesce(' WITH (' || %s || ')', '') AS options,
 		coalesce(quote_ident(t.spcname), '') AS tablespace,
 		c.relkind='m' AS ismaterialized
 	FROM pg_class c
@@ -427,7 +467,7 @@ func GetAllViews(connectionPool *dbconn.DBConn) []View {
 		LEFT JOIN pg_tablespace t ON t.oid = c.reltablespace
 	WHERE c.relkind IN ('m', 'v')
 		AND %s
-		AND %s`, relationAndSchemaFilterClause(), ExtensionFilterClause("c"))
+		AND %s`, relOptionsClause("c.reloptions"), relationAndSchemaFilterClause(), ExtensionFilterClause("c"))
 
 	atLeast7Query := fmt.Sprintf(`
 	SELECT
@@ -435,7 +475,7 @@ func GetAllViews(connectionPool *dbconn.DBConn) []View {
 		quote_ident(n.nspname) AS schema,
 		quote_ident(c.relname) AS name,
 		pg_get_viewdef(c.oid) AS definition,
-		coalesce(' WITH (' || array_to_string(c.reloptions, ', ') || ')', '') AS options,
+		coalesce(' WITH (' || %s || ')', '') AS options,
 		coalesce(quote_ident(t.spcname), '') AS tablespace,
 		c.relkind='m' AS ismaterialized,
 		coalesce(quote_ident(am.amname), '') AS accessmethodname
@@ -445,7 +485,7 @@ func GetAllViews(connectionPool *dbconn.DBConn) []View {
 		LEFT JOIN pg_am am ON am.oid = c.relam
 	WHERE c.relkind IN ('m', 'v')
 		AND %s
-		AND %s`, relationAndSchemaFilterClause(), ExtensionFilterClause("c"))
+		AND %s`, relOptionsClause("c.reloptions"), relationAndSchemaFilterClause(), ExtensionFilterClause("c"))
 
 	query := ""
 	if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("6") {
