@@ -846,6 +846,43 @@ SET SUBPARTITION TEMPLATE
 				Expect(result[oid]).To(Equal("blocksize=32768, compresslevel=0, compresstype=none, checksum=true"))
 			}
 		})
+		/*
+		 * A reloption value is free to contain a comma: PAX stores
+		 * minmax_columns, bloomfilter_columns and cluster_columns as
+		 * comma-separated column lists. Flattening the array without quoting
+		 * turns one option into several, and the restore then fails on the
+		 * fragments with "unrecognized parameter".
+		 */
+		It("quotes a storage option whose value contains a comma", func() {
+			testutils.SkipIfNoPAX(connectionPool)
+
+			testhelper.AssertQueryRuns(connectionPool, `CREATE TABLE public.pax_lists(a int, b int, c text, d text)
+				USING pax
+				WITH (minmax_columns='a,b', bloomfilter_columns='c,d', cluster_columns='a,b')
+				DISTRIBUTED BY (a)`)
+			defer testhelper.AssertQueryRuns(connectionPool, "DROP TABLE public.pax_lists")
+			oid := testutils.OidFromObjectName(connectionPool, "public", "pax_lists", backup.TYPE_RELATION)
+
+			_, result := backup.GetTableStorage(connectionPool)
+
+			Expect(result[oid]).To(Equal(
+				"minmax_columns='a,b', bloomfilter_columns='c,d', cluster_columns='a,b'"))
+		})
+		/*
+		 * The server leaves a value bare only when it is already an identifier
+		 * needing no quoting, and quotes everything else -- numbers included.
+		 * Match that, so what we emit is what the server would have emitted.
+		 */
+		It("leaves an identifier value bare and quotes a numeric one", func() {
+			testhelper.AssertQueryRuns(connectionPool,
+				"CREATE TABLE public.opt_table(i int) WITH (fillfactor=70)")
+			defer testhelper.AssertQueryRuns(connectionPool, "DROP TABLE public.opt_table")
+			oid := testutils.OidFromObjectName(connectionPool, "public", "opt_table", backup.TYPE_RELATION)
+
+			_, result := backup.GetTableStorage(connectionPool)
+
+			Expect(result[oid]).To(Equal("fillfactor='70'"))
+		})
 	})
 	Describe("GetTableInheritance", func() {
 		child := backup.Relation{Schema: "public", Name: "child"}

@@ -93,9 +93,20 @@ func createMatrixSchema(conn *dbconn.DBConn, accessMethods []string) {
 		"DROP SCHEMA IF EXISTS %s CASCADE; CREATE SCHEMA %s", matrixSchema, matrixSchema))
 
 	for _, am := range accessMethods {
+		/*
+		 * Give the PAX table the storage options whose values are
+		 * comma-separated column lists. They are the ones that have to
+		 * survive being written into the dump and parsed back: an unquoted
+		 * value turns one option into several and the restore fails on the
+		 * fragments.
+		 */
+		storageOptions := ""
+		if am == "pax" {
+			storageOptions = " WITH (minmax_columns='id,part', bloomfilter_columns='part,v')"
+		}
 		testhelper.AssertQueryRuns(conn, fmt.Sprintf(
-			"CREATE TABLE %s.%s_plain (id int, part int, v text) USING %s DISTRIBUTED BY (id)",
-			matrixSchema, am, am))
+			"CREATE TABLE %s.%s_plain (id int, part int, v text) USING %s%s DISTRIBUTED BY (id)",
+			matrixSchema, am, am, storageOptions))
 		testhelper.AssertQueryRuns(conn, fmt.Sprintf(
 			`CREATE TABLE %s.%s_part (id int, part int, v text) USING %s DISTRIBUTED BY (id)
 				PARTITION BY RANGE (part) (START (0) END (%d) EVERY (1))`,
