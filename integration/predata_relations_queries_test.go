@@ -497,7 +497,7 @@ PARTITION BY LIST (gender)
 			defer testhelper.AssertQueryRuns(connectionPool, "DROP VIEW public.simpleview")
 
 			results := backup.GetAllViews(connectionPool)
-			view := backup.View{Oid: 1, Schema: "public", Name: "simpleview", Definition: viewDef, Options: " WITH (security_barrier=true)"}
+			view := backup.View{Oid: 1, Schema: "public", Name: "simpleview", Definition: viewDef, Options: " WITH (security_barrier='true')"}
 
 			view.Oid = testutils.OidFromObjectName(connectionPool, "public", "simpleview", backup.TYPE_RELATION)
 			Expect(results).To(HaveLen(1))
@@ -528,7 +528,7 @@ PARTITION BY LIST (gender)
 			defer testhelper.AssertQueryRuns(connectionPool, "DROP MATERIALIZED VIEW public.simplematerialview")
 
 			results := backup.GetAllViews(connectionPool)
-			materialView := backup.View{Oid: 1, Schema: "public", Name: "simplematerialview", Definition: sql.NullString{String: " SELECT 1 AS a;", Valid: true}, Options: " WITH (fillfactor=50, autovacuum_enabled=false)", IsMaterialized: true, DistPolicy: backup.DistPolicy{Policy: "DISTRIBUTED BY (a)"}}
+			materialView := backup.View{Oid: 1, Schema: "public", Name: "simplematerialview", Definition: sql.NullString{String: " SELECT 1 AS a;", Valid: true}, Options: " WITH (fillfactor='50', autovacuum_enabled='false')", IsMaterialized: true, DistPolicy: backup.DistPolicy{Policy: "DISTRIBUTED BY (a)"}}
 			if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 				materialView.AccessMethodName = "heap"
 			}

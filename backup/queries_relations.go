@@ -37,6 +37,50 @@ func relationAndSchemaFilterClause() string {
 	return filterRelationClause
 }
 
+/*
+ * Build a SQL expression that flattens a reloptions array into the text that
+ * goes inside WITH (...).
+ *
+ * pg_class.reloptions is an array of "name=value" strings, and a value is free
+ * to contain a comma: PAX's minmax_columns, bloomfilter_columns and
+ * cluster_columns all hold comma-separated column lists. Joining the array
+ * with ", " loses the element boundaries, so a single option comes back out as
+ * several and the restore fails on the fragments:
+ *
+ *   WITH (bloomfilter_columns=v1,v2)   ->  ERROR: unrecognized parameter "v2"
+ *
+ * This mirrors the rule the server itself uses to print reloptions, in
+ * get_reloptions() in ruleutils.c: split on the first '=', quote the name as
+ * an identifier, and leave the value bare only when it is already an
+ * identifier that needs no quoting -- otherwise emit it as a quoted literal.
+ * Doing it the server's way means a value we quote is a value the server would
+ * have quoted, so the round trip is exact.
+ *
+ * WITH ORDINALITY keeps the options in their catalog order, so the same
+ * database always produces the same DDL.
+ */
+func relOptionsClause(arrayExpr string) string {
+	// NULLIF restores the NULL-when-there-are-no-options behavior of a plain
+	// array_to_string over a NULL array. Callers rely on it: they wrap this in
+	// coalesce(' WITH (' || ... || ')', ''), which would otherwise emit an
+	// empty " WITH ()" for every relation that has no storage options at all.
+	return fmt.Sprintf(`NULLIF(pg_catalog.array_to_string(ARRAY(
+			SELECT pg_catalog.quote_ident(opt.name) || '=' ||
+				CASE WHEN pg_catalog.quote_ident(opt.value) = opt.value
+					THEN opt.value
+					ELSE pg_catalog.quote_literal(opt.value)
+				END
+			FROM pg_catalog.unnest(%s) WITH ORDINALITY AS u(option, ord),
+				LATERAL (SELECT
+					CASE WHEN pg_catalog.strpos(u.option, '=') = 0 THEN u.option
+						ELSE pg_catalog.substr(u.option, 1, pg_catalog.strpos(u.option, '=') - 1)
+					END AS name,
+					CASE WHEN pg_catalog.strpos(u.option, '=') = 0 THEN ''
+						ELSE pg_catalog.substr(u.option, pg_catalog.strpos(u.option, '=') + 1)
+					END AS value) opt
+			ORDER BY u.ord), ', '), '')`, arrayExpr)
+}
+
 func GetOidsFromRelationList(relationFqns []options.Relation) []string {
 	oidString := make([]string, len(relationFqns))
 	for idx, rel := range relationFqns {
@@ -419,7 +463,7 @@ func GetAllViews(connectionPool *dbconn.DBConn) []View {
 		quote_ident(n.nspname) AS schema,
 		quote_ident(c.relname) AS name,
 		pg_get_viewdef(c.oid) AS definition,
-		coalesce(' WITH (' || array_to_string(c.reloptions, ', ') || ')', '') AS options,
+		coalesce(' WITH (' || %s || ')', '') AS options,
 		coalesce(quote_ident(t.spcname), '') AS tablespace,
 		c.relkind='m' AS ismaterialized
 	FROM pg_class c
@@ -427,7 +471,7 @@ func GetAllViews(connectionPool *dbconn.DBConn) []View {
 		LEFT JOIN pg_tablespace t ON t.oid = c.reltablespace
 	WHERE c.relkind IN ('m', 'v')
 		AND %s
-		AND %s`, relationAndSchemaFilterClause(), ExtensionFilterClause("c"))
+		AND %s`, relOptionsClause("c.reloptions"), relationAndSchemaFilterClause(), ExtensionFilterClause("c"))
 
 	atLeast7Query := fmt.Sprintf(`
 	SELECT
@@ -435,7 +479,7 @@ func GetAllViews(connectionPool *dbconn.DBConn) []View {
 		quote_ident(n.nspname) AS schema,
 		quote_ident(c.relname) AS name,
 		pg_get_viewdef(c.oid) AS definition,
-		coalesce(' WITH (' || array_to_string(c.reloptions, ', ') || ')', '') AS options,
+		coalesce(' WITH (' || %s || ')', '') AS options,
 		coalesce(quote_ident(t.spcname), '') AS tablespace,
 		c.relkind='m' AS ismaterialized,
 		coalesce(quote_ident(am.amname), '') AS accessmethodname
@@ -445,7 +489,7 @@ func GetAllViews(connectionPool *dbconn.DBConn) []View {
 		LEFT JOIN pg_am am ON am.oid = c.relam
 	WHERE c.relkind IN ('m', 'v')
 		AND %s
-		AND %s`, relationAndSchemaFilterClause(), ExtensionFilterClause("c"))
+		AND %s`, relOptionsClause("c.reloptions"), relationAndSchemaFilterClause(), ExtensionFilterClause("c"))
 
 	query := ""
 	if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("6") {
