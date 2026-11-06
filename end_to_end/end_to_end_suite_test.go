@@ -346,6 +346,22 @@ func skipIfOldBackupVersionBefore(version string) {
 	}
 }
 
+/*
+ * PAX is a Cloudberry table access method registered by the pax_storage
+ * contrib module, so it is absent on GPDB and on Cloudberry builds that did
+ * not include the module.
+ */
+func skipIfNoPAX() {
+	if backupConn.Version.IsGPDB() {
+		Skip("Test only applicable to Cloudberry with the PAX access method")
+	}
+	paxCount := dbconn.MustSelectString(backupConn,
+		"SELECT count(*) AS string FROM pg_am WHERE amname = 'pax'")
+	if paxCount == "0" {
+		Skip("Test only applicable to Cloudberry with the PAX access method")
+	}
+}
+
 func createGlobalObjects(conn *dbconn.DBConn) {
 	if conn.Version.IsGPDB() && conn.Version.Before("6") {
 		testhelper.AssertQueryRuns(conn, "CREATE TABLESPACE test_tablespace FILESPACE test_dir")

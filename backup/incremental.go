@@ -13,19 +13,37 @@ import (
 	"github.com/pkg/errors"
 )
 
+/*
+ * Return the subset of tables whose data must be written to the current
+ * incremental backup.  A table is skipped only when we can prove its data did
+ * not change since the backup we are building on; any table we have no change
+ * markers for (heap, external, or a storage format this version does not know
+ * how to track) is always included.
+ */
 func FilterTablesForIncremental(lastBackupTOC, currentTOC *toc.TOC, tables []Table) []Table {
 	var filteredTables []Table
 	for _, table := range tables {
-		currentAOEntry, isAOTable := currentTOC.IncrementalMetadata.AO[table.FQN()]
-		if !isAOTable {
-			filteredTables = append(filteredTables, table)
+		tableFQN := table.FQN()
+
+		if currentAOEntry, isAOTable := currentTOC.IncrementalMetadata.AO[tableFQN]; isAOTable {
+			previousAOEntry := lastBackupTOC.IncrementalMetadata.AO[tableFQN]
+			if previousAOEntry.Modcount != currentAOEntry.Modcount ||
+				previousAOEntry.LastDDLTimestamp != currentAOEntry.LastDDLTimestamp {
+				filteredTables = append(filteredTables, table)
+			}
 			continue
 		}
-		previousAOEntry := lastBackupTOC.IncrementalMetadata.AO[table.FQN()]
 
-		if previousAOEntry.Modcount != currentAOEntry.Modcount || previousAOEntry.LastDDLTimestamp != currentAOEntry.LastDDLTimestamp {
-			filteredTables = append(filteredTables, table)
+		if currentPAXEntry, isPAXTable := currentTOC.IncrementalMetadata.PAX[tableFQN]; isPAXTable {
+			previousPAXEntry := lastBackupTOC.IncrementalMetadata.PAX[tableFQN]
+			if previousPAXEntry.Marker != currentPAXEntry.Marker ||
+				previousPAXEntry.LastDDLTimestamp != currentPAXEntry.LastDDLTimestamp {
+				filteredTables = append(filteredTables, table)
+			}
+			continue
 		}
+
+		filteredTables = append(filteredTables, table)
 	}
 
 	return filteredTables

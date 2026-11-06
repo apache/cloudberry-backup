@@ -560,6 +560,22 @@ func SkipIfBefore7(connectionPool *dbconn.DBConn) {
 }
 
 /*
+ * PAX is a Cloudberry table access method registered by the pax_storage
+ * contrib module, so it is absent on GPDB and on Cloudberry builds that did
+ * not include the module.
+ */
+func SkipIfNoPAX(connectionPool *dbconn.DBConn) {
+	if connectionPool.Version.IsGPDB() {
+		Skip("Test only applicable to Cloudberry with the PAX access method")
+	}
+	paxCount := dbconn.MustSelectString(connectionPool,
+		"SELECT count(*) AS string FROM pg_am WHERE amname = 'pax'")
+	if paxCount == "0" {
+		Skip("Test only applicable to Cloudberry with the PAX access method")
+	}
+}
+
+/*
  * Cloudberry 3.x is built on the PostgreSQL 16 kernel.  Compare the major
  * version directly: a development build reports a version such as
  * "3.0.0-devel", which sorts before "3.0.0" under semver and so fails

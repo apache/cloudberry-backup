@@ -769,6 +769,8 @@ func backupTableStatistics(statisticsFile *utils.FileWithByteCount, tables []Tab
 func backupIncrementalMetadata() {
 	aoTableEntries := GetAOIncrementalMetadata(connectionPool)
 	globalTOC.IncrementalMetadata.AO = aoTableEntries
+	paxTableEntries := GetPAXIncrementalMetadata(connectionPool)
+	globalTOC.IncrementalMetadata.PAX = paxTableEntries
 }
 
 func backupStorageServers(metadataFile *utils.FileWithByteCount) {

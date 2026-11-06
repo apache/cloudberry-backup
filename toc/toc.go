@@ -53,11 +53,25 @@ type SegmentDataEntry struct {
 }
 
 type IncrementalEntries struct {
-	AO map[string]AOEntry
+	AO  map[string]AOEntry
+	PAX map[string]PAXEntry
 }
 
 type AOEntry struct {
 	Modcount         int64
+	LastDDLTimestamp string
+}
+
+/*
+ * PAX tables have no modcount, so changes are detected through a digest of the
+ * table's aux relation instead.  Marker is an opaque fixed-width SHA-256 hex
+ * digest: only equality with the previous backup's marker is meaningful, never
+ * ordering, and its width does not grow with the size of the table.  A TOC
+ * written by a version that predates PAX support has no PAX map at all, in
+ * which case every PAX table is treated as unknown and backed up in full.
+ */
+type PAXEntry struct {
+	Marker           string
 	LastDDLTimestamp string
 }
 
