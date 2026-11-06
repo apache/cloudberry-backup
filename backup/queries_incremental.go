@@ -13,11 +13,14 @@ func GetAOIncrementalMetadata(connectionPool *dbconn.DBConn) map[string]toc.AOEn
 	var modCounts = getAllModCounts(connectionPool)
 	gplog.Verbose("Querying last DDL modification timestamp for tables")
 	var lastDDLTimestamps = getLastDDLTimestamps(connectionPool)
+	gplog.Verbose("Querying storage identity for tables")
+	var relFileNodes = getAORelFileNodes(connectionPool)
 	aoTableEntries := make(map[string]toc.AOEntry)
 	for aoTableFQN := range modCounts {
 		aoTableEntries[aoTableFQN] = toc.AOEntry{
-			Modcount:         modCounts[aoTableFQN],
 			LastDDLTimestamp: lastDDLTimestamps[aoTableFQN],
+			Modcount:         modCounts[aoTableFQN],
+			RelFileNode:      relFileNodes[aoTableFQN],
 		}
 	}
 
@@ -96,8 +99,13 @@ func getModCount(connectionPool *dbconn.DBConn, aosegtablefqn string) int64 {
 		aosegtablefqn)
 
 	// In GPDB 7+, the coordinator no longer stores AO segment data so we must
-	// query the modcount from the segments. Unfortunately, this does give a
-	// false positive if a VACUUM FULL compaction happens on the AO table.
+	// query the modcount from the segments.
+	//
+	// The modcount alone cannot tell a rewritten table from an untouched one.
+	// Any rewrite moves the table onto a fresh pg_aoseg relation whose rows
+	// were written by a single statement, so the sum restarts at the segment
+	// count, which is also what a bulk-loaded table reads. getAORelFileNodes()
+	// is what distinguishes the two.
 	atLeast7Query := fmt.Sprintf(`SELECT COALESCE(pg_catalog.sum(modcount), 0) AS modcount FROM gp_dist_random('%s')`,
 		aosegtablefqn)
 
@@ -245,10 +253,13 @@ func GetPAXIncrementalMetadata(connectionPool *dbconn.DBConn) map[string]toc.PAX
 
 	gplog.Verbose("Querying last DDL modification timestamp for PAX tables")
 	lastDDLTimestamps := getPAXLastDDLTimestamps(connectionPool)
+	gplog.Verbose("Querying storage identity for PAX tables")
+	relFileNodes := getPAXRelFileNodes(connectionPool)
 	for paxTableFQN := range markers {
 		paxTableEntries[paxTableFQN] = toc.PAXEntry{
-			Marker:           markers[paxTableFQN],
 			LastDDLTimestamp: lastDDLTimestamps[paxTableFQN],
+			Marker:           markers[paxTableFQN],
+			RelFileNode:      relFileNodes[paxTableFQN],
 		}
 	}
 
@@ -364,4 +375,92 @@ func getPAXMarker(connectionPool *dbconn.DBConn, auxRelation paxAuxRelation) str
 
 func getPAXLastDDLTimestamps(connectionPool *dbconn.DBConn) map[string]string {
 	return selectLastDDLTimestamps(connectionPool, lastDDLTimestampQuery("'pax'"))
+}
+
+/*
+ * Storage identity: each table's relfilenode.
+ *
+ * A rewrite -- CLUSTER, or any of the ALTER forms that rebuild a table --
+ * replaces the table's storage, and the relfilenode is the only thing that
+ * reliably says so.  The modcount cannot: a rewrite moves the table onto a
+ * fresh pg_aoseg whose rows were written by one statement, so the sum restarts
+ * at the segment count, indistinguishable from a bulk-loaded table that has
+ * not been touched since.  Once ordinary DML brings the counter back up to the
+ * value the previous backup recorded, the table looks unchanged and is
+ * skipped.  The DDL timestamp does not cover this either: CLUSTER,
+ * SET UNLOGGED and SET ACCESS METHOD all rewrite the table without being
+ * recorded in pg_stat_last_operation.
+ *
+ * This reads the coordinator's relfilenode, not the segments'.  The two are
+ * allocated independently and never match -- a table reading 28848 on the
+ * coordinator reads 60115 on every segment -- but they move together, because
+ * a rewrite is a dispatched DDL that replaces the relation on every node in
+ * one distributed transaction.  Measured across CLUSTER, TRUNCATE,
+ * SET WITH (reorganize=true), SET DISTRIBUTED BY, ALTER COLUMN TYPE,
+ * SET UNLOGGED and SET ACCESS METHOD, the two sides changed together every
+ * time, and VACUUM FULL left both alone.
+ *
+ * Reading the coordinator keeps this to one local catalog query instead of a
+ * gp_dist_random scan of pg_class on every segment, and avoids depending on an
+ * ordered aggregate surviving a motion.  Partitioned roots appear here with a
+ * relfilenode of 0; they have no pg_aoseg and no aux relation, so they are
+ * never looked up.
+ *
+ * It costs nothing in false positives.  Measured on both AO layouts, the
+ * relfilenode is left alone by INSERT, UPDATE, DELETE, VACUUM and VACUUM FULL,
+ * and changes only where the storage is genuinely replaced.
+ */
+func getAORelFileNodes(connectionPool *dbconn.DBConn) map[string]int64 {
+	before7Query := fmt.Sprintf(`
+		SELECT quote_ident(n.nspname) || '.' || quote_ident(c.relname) AS aotablefqn,
+			c.relfilenode::int8 AS relfilenode
+		FROM pg_class c
+			JOIN pg_namespace n ON n.oid = c.relnamespace
+		WHERE c.relstorage IN ('ao', 'co')
+			AND %s`, relationAndSchemaFilterClause())
+
+	atLeast7Query := relFileNodeQuery("'ao_row', 'ao_column'")
+
+	query := ""
+	if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("7") {
+		query = before7Query
+	} else {
+		query = atLeast7Query
+	}
+
+	return selectRelFileNodes(connectionPool, query)
+}
+
+func getPAXRelFileNodes(connectionPool *dbconn.DBConn) map[string]int64 {
+	return selectRelFileNodes(connectionPool, relFileNodeQuery("'pax'"))
+}
+
+/*
+ * Build the GPDB7+/Cloudberry query returning the relfilenode of every table
+ * using one of the given access methods.  amNames is a ready-quoted SQL list,
+ * e.g. "'ao_row', 'ao_column'".
+ */
+func relFileNodeQuery(amNames string) string {
+	return fmt.Sprintf(`
+		SELECT quote_ident(n.nspname) || '.' || quote_ident(c.relname) AS aotablefqn,
+			c.relfilenode::int8 AS relfilenode
+		FROM pg_class c
+			JOIN pg_namespace n ON n.oid = c.relnamespace
+			JOIN pg_am a ON a.oid = c.relam
+		WHERE a.amname in (%s)
+			AND %s`, amNames, relationAndSchemaFilterClause())
+}
+
+func selectRelFileNodes(connectionPool *dbconn.DBConn, query string) map[string]int64 {
+	var results []struct {
+		AOTableFQN  string
+		RelFileNode int64
+	}
+	err := connectionPool.Select(&results, query)
+	gplog.FatalOnError(err)
+	resultMap := make(map[string]int64, len(results))
+	for _, result := range results {
+		resultMap[result.AOTableFQN] = result.RelFileNode
+	}
+	return resultMap
 }
