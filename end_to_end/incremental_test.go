@@ -60,6 +60,46 @@ var _ = Describe("End to End incremental tests", func() {
 			schema2TupleCounts["schema2.ao1"] = 1002
 			assertDataRestored(restoreConn, schema2TupleCounts)
 		})
+		It("restores from an incremental backup of PAX tables", func() {
+			skipIfNoPAX()
+			skipIfOldBackupVersionBefore("2.2.0")
+
+			testhelper.AssertQueryRuns(backupConn, "CREATE SCHEMA pax_schema;")
+			defer testhelper.AssertQueryRuns(backupConn, "DROP SCHEMA pax_schema CASCADE;")
+			defer testhelper.AssertQueryRuns(restoreConn, "DROP SCHEMA IF EXISTS pax_schema CASCADE;")
+			testhelper.AssertQueryRuns(backupConn,
+				"CREATE TABLE pax_schema.pax1 (i int) USING pax DISTRIBUTED BY (i);")
+			testhelper.AssertQueryRuns(backupConn,
+				"INSERT INTO pax_schema.pax1 SELECT generate_series(1, 100);")
+			testhelper.AssertQueryRuns(backupConn,
+				"CREATE TABLE pax_schema.pax2 (i int) USING pax DISTRIBUTED BY (i);")
+			testhelper.AssertQueryRuns(backupConn,
+				"INSERT INTO pax_schema.pax2 SELECT generate_series(1, 100);")
+
+			output := gpbackup(gpbackupPath, backupHelperPath,
+				"--leaf-partition-data", "--include-schema", "pax_schema")
+			fullTimestamp := getBackupTimestamp(string(output))
+			defer assertArtifactsCleaned(fullTimestamp)
+
+			// Only pax2 changes, and it changes by a delete rather than an
+			// insert: PAX records a delete in the visimap without adding a
+			// micro-partition, so this is the case a marker based on the
+			// micro-partition sequence alone would miss.
+			testhelper.AssertQueryRuns(backupConn, "DELETE FROM pax_schema.pax2 WHERE i > 60;")
+
+			output = gpbackup(gpbackupPath, backupHelperPath,
+				"--leaf-partition-data", "--incremental", "--include-schema", "pax_schema")
+			incrementalTimestamp := getBackupTimestamp(string(output))
+			defer assertArtifactsCleaned(incrementalTimestamp)
+
+			gprestore(gprestorePath, restoreHelperPath, incrementalTimestamp, "--redirect-db", "restoredb")
+
+			// pax1 comes from the full backup, pax2 from the incremental.
+			assertDataRestored(restoreConn, map[string]int{
+				"pax_schema.pax1": 100,
+				"pax_schema.pax2": 60,
+			})
+		})
 		It("restores from an incremental backup with AO Table consisting of multiple segment files", func() {
 			// Versions before 1.13.0 incorrectly handle AO table inserts involving multiple seg files
 			skipIfOldBackupVersionBefore("1.13.0")
@@ -942,6 +982,93 @@ EOF1`, backupDir)
 					Fail(fmt.Sprintf("Unexpected timestamp %s in restore plan", backupConfig2.RestorePlan[restorePlanIdx].Timestamp))
 				}
 			}
+		})
+		It("Stores and retrieves expected restore plans for PAX table backups in an incremental series", func() {
+			skipIfNoPAX()
+			skipIfOldBackupVersionBefore("2.2.0")
+
+			// set up initial ddl+dml
+			testhelper.AssertQueryRuns(backupConn,
+				"CREATE TABLE test_schema.new_table1 (mydata int) USING pax DISTRIBUTED BY (mydata);")
+			testhelper.AssertQueryRuns(backupConn,
+				"INSERT INTO test_schema.new_table1 SELECT generate_series(1, 30);")
+			testhelper.AssertQueryRuns(backupConn,
+				"CREATE TABLE test_schema.new_table2 (mydata int) USING pax DISTRIBUTED BY (mydata);")
+			testhelper.AssertQueryRuns(backupConn,
+				"INSERT INTO test_schema.new_table2 SELECT generate_series(1, 30);")
+
+			// take a full backup to start out
+			output := gpbackup(gpbackupPath, backupHelperPath, "--leaf-partition-data", "--include-schema", "test_schema")
+			timestamp1 := getBackupTimestamp(string(output))
+			defer assertArtifactsCleaned(timestamp1)
+
+			// an insert into new_table2 only
+			testhelper.AssertQueryRuns(backupConn,
+				"INSERT INTO test_schema.new_table2 SELECT generate_series(1, 30);")
+			output = gpbackup(gpbackupPath, backupHelperPath, "--leaf-partition-data", "--incremental", "--include-schema", "test_schema")
+			timestamp2 := getBackupTimestamp(string(output))
+			defer assertArtifactsCleaned(timestamp2)
+
+			// a delete from new_table2 only; PAX handles this through the
+			// visimap rather than by writing a new micro-partition
+			testhelper.AssertQueryRuns(backupConn,
+				"DELETE FROM test_schema.new_table2 WHERE mydata > 20;")
+			output = gpbackup(gpbackupPath, backupHelperPath, "--leaf-partition-data", "--incremental", "--include-schema", "test_schema")
+			timestamp3 := getBackupTimestamp(string(output))
+			defer assertArtifactsCleaned(timestamp3)
+
+			// finally, an incremental backup with no new data at all
+			output = gpbackup(gpbackupPath, backupHelperPath, "--leaf-partition-data", "--incremental", "--include-schema", "test_schema")
+			timestamp4 := getBackupTimestamp(string(output))
+			defer assertArtifactsCleaned(timestamp4)
+
+			// initialize historyDB to allow us to examine the stored restore plans
+			historyDB, err := history.InitializeHistoryDatabase(historyFilePath)
+			Expect(err).ToNot(HaveOccurred())
+
+			assertRestorePlan := func(timestamp string, expected map[string][]string) {
+				backupConfig, err := history.GetBackupConfig(timestamp, historyDB)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(backupConfig.RestorePlan).To(HaveLen(len(expected)))
+				for _, restorePlanEntry := range backupConfig.RestorePlan {
+					expectedTableFQNs, ok := expected[restorePlanEntry.Timestamp]
+					if !ok {
+						Fail(fmt.Sprintf("Unexpected timestamp %s in restore plan for %s",
+							restorePlanEntry.Timestamp, timestamp))
+					}
+					if len(expectedTableFQNs) == 0 {
+						Expect(restorePlanEntry.TableFQNs).To(BeEmpty())
+					} else {
+						Expect(restorePlanEntry.TableFQNs).To(ConsistOf(expectedTableFQNs))
+					}
+				}
+			}
+
+			// the full backup holds the data of both tables
+			assertRestorePlan(timestamp1, map[string][]string{
+				timestamp1: {"test_schema.new_table1", "test_schema.new_table2"},
+			})
+
+			// the insert moved new_table2 forward; new_table1 was not rewritten
+			assertRestorePlan(timestamp2, map[string][]string{
+				timestamp1: {"test_schema.new_table1"},
+				timestamp2: {"test_schema.new_table2"},
+			})
+
+			// the delete moved new_table2 forward again, emptying timestamp2
+			assertRestorePlan(timestamp3, map[string][]string{
+				timestamp1: {"test_schema.new_table1"},
+				timestamp2: {},
+				timestamp3: {"test_schema.new_table2"},
+			})
+
+			// nothing changed, so the newest backup holds no table data
+			assertRestorePlan(timestamp4, map[string][]string{
+				timestamp1: {"test_schema.new_table1"},
+				timestamp2: {},
+				timestamp3: {"test_schema.new_table2"},
+				timestamp4: {},
+			})
 		})
 		It("Stores and retrieves expected restore plans for heap table backups in an incremental series", func() {
 			// set up initial ddl+dml

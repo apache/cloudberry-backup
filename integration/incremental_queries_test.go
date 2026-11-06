@@ -5,7 +5,9 @@ import (
 
 	"github.com/apache/cloudberry-backup/backup"
 	"github.com/apache/cloudberry-backup/options"
+	"github.com/apache/cloudberry-backup/testutils"
 	"github.com/apache/cloudberry-backup/toc"
+	"github.com/apache/cloudberry-go-libs/dbconn"
 	"github.com/apache/cloudberry-go-libs/testhelper"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -278,6 +280,254 @@ var _ = Describe("backup integration tests", func() {
 
 					aoIncrementalMetadata = backup.GetAOIncrementalMetadata(connectionPool)
 					Expect(aoIncrementalMetadata).To(HaveLen(1))
+				})
+			})
+		})
+	})
+	/*
+	 * PAX change detection has no modcount to lean on; it digests the table's
+	 * aux relation instead.  These tests pin down the properties the digest
+	 * must have, and they hold for both aux layouts (pg_manifest_<oid> and
+	 * pg_pax_blocks_<oid>) because the queries are selected by aux relation
+	 * name rather than by server version.
+	 */
+	Describe("GetPAXIncrementalMetadata", func() {
+		var paxTableFQN = "public.pax_foo"
+		var paxPartParentTableFQN = "public.pax_part"
+		var paxPartChildTableFQN = "public.pax_part_1_prt_child"
+		var initialPAXIncrementalMetadata map[string]toc.PAXEntry
+		var paxIncrementalMetadata map[string]toc.PAXEntry
+
+		BeforeEach(func() {
+			testutils.SkipIfNoPAX(connectionPool)
+			testhelper.AssertQueryRuns(connectionPool,
+				fmt.Sprintf("CREATE TABLE %s (i int) USING pax DISTRIBUTED BY (i)", paxTableFQN))
+			testhelper.AssertQueryRuns(connectionPool,
+				fmt.Sprintf(`CREATE TABLE %s (i int) USING pax
+	DISTRIBUTED BY (i)
+	PARTITION BY LIST (i)
+	(
+		PARTITION child VALUES (10)
+	);`, paxPartParentTableFQN))
+		})
+		AfterEach(func() {
+			testhelper.AssertQueryRuns(connectionPool, fmt.Sprintf(dropTableSQL, paxTableFQN))
+			testhelper.AssertQueryRuns(connectionPool, fmt.Sprintf(dropTableSQL, paxPartParentTableFQN))
+		})
+
+		Context("PAX tables are only just created", func() {
+			BeforeEach(func() {
+				paxIncrementalMetadata = backup.GetPAXIncrementalMetadata(connectionPool)
+			})
+			It("should have an empty marker, since the table holds no data", func() {
+				Expect(paxIncrementalMetadata).To(HaveKey(paxTableFQN))
+				Expect(paxIncrementalMetadata[paxTableFQN].Marker).To(BeEmpty())
+				Expect(paxIncrementalMetadata[paxPartChildTableFQN].Marker).To(BeEmpty())
+			})
+			It("should have a last DDL timestamp", func() {
+				Expect(paxIncrementalMetadata[paxTableFQN].LastDDLTimestamp).To(Not(BeEmpty()))
+				Expect(paxIncrementalMetadata[paxPartChildTableFQN].LastDDLTimestamp).To(Not(BeEmpty()))
+			})
+			It("should not track the root of a partitioned table, which has no aux relation", func() {
+				Expect(paxIncrementalMetadata).To(Not(HaveKey(paxPartParentTableFQN)))
+			})
+		})
+
+		Context("PAX tables have DML changes", func() {
+			Context("After an insert", func() {
+				BeforeEach(func() {
+					initialPAXIncrementalMetadata = backup.GetPAXIncrementalMetadata(connectionPool)
+
+					testhelper.AssertQueryRuns(connectionPool, fmt.Sprintf(insertSQL, paxTableFQN))
+					testhelper.AssertQueryRuns(connectionPool, fmt.Sprintf(insertSQL, paxPartParentTableFQN))
+
+					paxIncrementalMetadata = backup.GetPAXIncrementalMetadata(connectionPool)
+				})
+				It("should change the marker of the inserted-into table", func() {
+					Expect(paxIncrementalMetadata[paxTableFQN].Marker).
+						To(Not(Equal(initialPAXIncrementalMetadata[paxTableFQN].Marker)))
+					Expect(paxIncrementalMetadata[paxTableFQN].Marker).To(Not(BeEmpty()))
+				})
+				It("should change the marker of the modified child partition", func() {
+					Expect(paxIncrementalMetadata[paxPartChildTableFQN].Marker).
+						To(Not(Equal(initialPAXIncrementalMetadata[paxPartChildTableFQN].Marker)))
+				})
+			})
+			Context("After a read-only query", func() {
+				BeforeEach(func() {
+					testhelper.AssertQueryRuns(connectionPool, fmt.Sprintf(insertSQL, paxTableFQN))
+					initialPAXIncrementalMetadata = backup.GetPAXIncrementalMetadata(connectionPool)
+
+					testhelper.AssertQueryRuns(connectionPool, fmt.Sprintf("SELECT count(*) FROM %s", paxTableFQN))
+
+					paxIncrementalMetadata = backup.GetPAXIncrementalMetadata(connectionPool)
+				})
+				/*
+				 * The whole point of incremental backup: reading a table must
+				 * not make it look modified, or every backup degrades to a
+				 * full one.
+				 */
+				It("should NOT change the marker", func() {
+					Expect(paxIncrementalMetadata[paxTableFQN].Marker).
+						To(Equal(initialPAXIncrementalMetadata[paxTableFQN].Marker))
+				})
+			})
+			Context("After a delete", func() {
+				BeforeEach(func() {
+					testhelper.AssertQueryRuns(connectionPool, fmt.Sprintf(insertSQL, paxTableFQN))
+					initialPAXIncrementalMetadata = backup.GetPAXIncrementalMetadata(connectionPool)
+
+					testhelper.AssertQueryRuns(connectionPool, fmt.Sprintf(deleteSQL, paxTableFQN))
+
+					paxIncrementalMetadata = backup.GetPAXIncrementalMetadata(connectionPool)
+				})
+				/*
+				 * A delete adds no micro-partition, so a marker derived from
+				 * the block sequence alone would miss it.  It does rewrite the
+				 * visimap, which is what the digest picks up.
+				 */
+				It("should change the marker", func() {
+					Expect(paxIncrementalMetadata[paxTableFQN].Marker).
+						To(Not(Equal(initialPAXIncrementalMetadata[paxTableFQN].Marker)))
+				})
+			})
+			Context("After an update", func() {
+				BeforeEach(func() {
+					testhelper.AssertQueryRuns(connectionPool, fmt.Sprintf(insertSQL, paxTableFQN))
+					initialPAXIncrementalMetadata = backup.GetPAXIncrementalMetadata(connectionPool)
+
+					testhelper.AssertQueryRuns(connectionPool,
+						fmt.Sprintf("UPDATE %s SET i = 20 WHERE i = 10", paxTableFQN))
+
+					paxIncrementalMetadata = backup.GetPAXIncrementalMetadata(connectionPool)
+				})
+				It("should change the marker", func() {
+					Expect(paxIncrementalMetadata[paxTableFQN].Marker).
+						To(Not(Equal(initialPAXIncrementalMetadata[paxTableFQN].Marker)))
+				})
+			})
+		})
+
+		/*
+		 * The marker is a digest, so these two properties are what make it
+		 * safe to compare and cheap to retain: it must not vary between
+		 * identical reads of the same state, and its size must not follow the
+		 * size of the table, since one is held per PAX table in the backup set.
+		 */
+		Context("Marker properties", func() {
+			BeforeEach(func() {
+				testhelper.AssertQueryRuns(connectionPool,
+					fmt.Sprintf("INSERT INTO %s SELECT generate_series(1, 5000)", paxTableFQN))
+			})
+			It("computes the same marker on every call when nothing has changed", func() {
+				initialPAXIncrementalMetadata = backup.GetPAXIncrementalMetadata(connectionPool)
+				Expect(initialPAXIncrementalMetadata[paxTableFQN].Marker).To(Not(BeEmpty()))
+
+				for i := 0; i < 3; i++ {
+					paxIncrementalMetadata = backup.GetPAXIncrementalMetadata(connectionPool)
+					Expect(paxIncrementalMetadata[paxTableFQN].Marker).
+						To(Equal(initialPAXIncrementalMetadata[paxTableFQN].Marker))
+				}
+			})
+			/*
+			 * The aux relation is an ordinary heap, so its file is rewritten
+			 * by VACUUM, checkpoints and hint-bit flushes with no change to
+			 * any micro-partition.  A marker that followed the file's
+			 * modification time would call the table modified here and force
+			 * a full re-backup on every autovacuum; the digest is built from
+			 * tuple contents precisely so that it does not.
+			 */
+			It("does not change when the aux relation's file is rewritten", func() {
+				initialPAXIncrementalMetadata = backup.GetPAXIncrementalMetadata(connectionPool)
+				Expect(initialPAXIncrementalMetadata[paxTableFQN].Marker).To(Not(BeEmpty()))
+
+				auxTableFQN := dbconn.MustSelectString(connectionPool, fmt.Sprintf(`
+					SELECT quote_ident(aux_n.nspname) || '.' || quote_ident(aux_c.relname) AS string
+					FROM pg_class aux_c
+						JOIN pg_namespace aux_n ON aux_c.relnamespace = aux_n.oid
+					WHERE aux_n.nspname = 'pg_ext_aux'
+						AND aux_c.relkind = 'r'
+						AND aux_c.relname::text IN ('pg_manifest_' || '%s'::regclass::oid,
+							'pg_pax_blocks_' || '%s'::regclass::oid)`, paxTableFQN, paxTableFQN))
+				Expect(auxTableFQN).To(Not(BeEmpty()))
+
+				testhelper.AssertQueryRuns(connectionPool, fmt.Sprintf("VACUUM %s", auxTableFQN))
+
+				paxIncrementalMetadata = backup.GetPAXIncrementalMetadata(connectionPool)
+				Expect(paxIncrementalMetadata[paxTableFQN].Marker).
+					To(Equal(initialPAXIncrementalMetadata[paxTableFQN].Marker))
+			})
+			It("keeps a fixed marker width as the table grows", func() {
+				initialPAXIncrementalMetadata = backup.GetPAXIncrementalMetadata(connectionPool)
+				// Hex-encoded SHA-256.
+				Expect(initialPAXIncrementalMetadata[paxTableFQN].Marker).To(HaveLen(64))
+
+				testhelper.AssertQueryRuns(connectionPool,
+					fmt.Sprintf("INSERT INTO %s SELECT generate_series(1, 500000)", paxTableFQN))
+
+				paxIncrementalMetadata = backup.GetPAXIncrementalMetadata(connectionPool)
+				Expect(paxIncrementalMetadata[paxTableFQN].Marker).To(HaveLen(64))
+				Expect(paxIncrementalMetadata[paxTableFQN].Marker).
+					To(Not(Equal(initialPAXIncrementalMetadata[paxTableFQN].Marker)))
+			})
+		})
+
+		Context("PAX tables have DDL changes", func() {
+			Context("After a column add", func() {
+				BeforeEach(func() {
+					initialPAXIncrementalMetadata = backup.GetPAXIncrementalMetadata(connectionPool)
+
+					testhelper.AssertQueryRuns(connectionPool, fmt.Sprintf(addColumnSQL, paxTableFQN))
+
+					paxIncrementalMetadata = backup.GetPAXIncrementalMetadata(connectionPool)
+				})
+				It("should have a changed last DDL timestamp", func() {
+					Expect(paxIncrementalMetadata[paxTableFQN].LastDDLTimestamp).
+						To(Not(Equal(initialPAXIncrementalMetadata[paxTableFQN].LastDDLTimestamp)))
+				})
+			})
+			Context("After truncating a child partition", func() {
+				BeforeEach(func() {
+					testhelper.AssertQueryRuns(connectionPool, fmt.Sprintf(insertSQL, paxPartParentTableFQN))
+					initialPAXIncrementalMetadata = backup.GetPAXIncrementalMetadata(connectionPool)
+
+					testhelper.AssertQueryRuns(connectionPool,
+						fmt.Sprintf("TRUNCATE TABLE %s", paxPartChildTableFQN))
+
+					paxIncrementalMetadata = backup.GetPAXIncrementalMetadata(connectionPool)
+				})
+				It("should have a changed last DDL timestamp for the child", func() {
+					Expect(paxIncrementalMetadata[paxPartChildTableFQN].LastDDLTimestamp).
+						To(Not(Equal(initialPAXIncrementalMetadata[paxPartChildTableFQN].LastDDLTimestamp)))
+				})
+			})
+		})
+
+		Context("Filtered backup", func() {
+			Context("During a table-filtered backup", func() {
+				It("only retrieves pax metadata for specific tables", func() {
+					_ = backupCmdFlags.Set(options.INCLUDE_RELATION, paxTableFQN)
+					opts, err := options.NewOptions(backupCmdFlags)
+					Expect(err).NotTo(HaveOccurred())
+					backup.ValidateAndProcessFilterLists(opts)
+
+					paxIncrementalMetadata = backup.GetPAXIncrementalMetadata(connectionPool)
+					Expect(paxIncrementalMetadata).To(HaveLen(1))
+					Expect(paxIncrementalMetadata).To(HaveKey(paxTableFQN))
+				})
+			})
+			Context("During a schema-filtered backup", func() {
+				It("only retrieves pax metadata for tables in a specific schema", func() {
+					testhelper.AssertQueryRuns(connectionPool, "CREATE SCHEMA testschema")
+					defer testhelper.AssertQueryRuns(connectionPool, "DROP SCHEMA testschema CASCADE")
+					testhelper.AssertQueryRuns(connectionPool,
+						"CREATE TABLE testschema.pax_foo (i int) USING pax DISTRIBUTED BY (i)")
+
+					_ = backupCmdFlags.Set(options.INCLUDE_SCHEMA, "testschema")
+
+					paxIncrementalMetadata = backup.GetPAXIncrementalMetadata(connectionPool)
+					Expect(paxIncrementalMetadata).To(HaveLen(1))
+					Expect(paxIncrementalMetadata).To(HaveKey("testschema.pax_foo"))
 				})
 			})
 		})

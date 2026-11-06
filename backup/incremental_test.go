@@ -24,12 +24,21 @@ var _ = Describe("backup/incremental tests", func() {
 			Modcount:         0,
 			LastDDLTimestamp: "00000",
 		}
+		defaultPAXEntry := toc.PAXEntry{
+			Marker:           "marker0",
+			LastDDLTimestamp: "00000",
+		}
 		prevTOC := toc.TOC{
 			IncrementalMetadata: toc.IncrementalEntries{
 				AO: map[string]toc.AOEntry{
 					"public.ao_changed_modcount":  defaultEntry,
 					"public.ao_changed_timestamp": defaultEntry,
 					"public.ao_unchanged":         defaultEntry,
+				},
+				PAX: map[string]toc.PAXEntry{
+					"public.pax_changed_marker":    defaultPAXEntry,
+					"public.pax_changed_timestamp": defaultPAXEntry,
+					"public.pax_unchanged":         defaultPAXEntry,
 				},
 			},
 		}
@@ -47,6 +56,24 @@ var _ = Describe("backup/incremental tests", func() {
 					},
 					"public.ao_unchanged": defaultEntry,
 				},
+				PAX: map[string]toc.PAXEntry{
+					"public.pax_changed_marker": {
+						Marker:           "marker1",
+						LastDDLTimestamp: "00000",
+					},
+					"public.pax_changed_timestamp": {
+						Marker:           "marker0",
+						LastDDLTimestamp: "00001",
+					},
+					"public.pax_unchanged": defaultPAXEntry,
+					// A PAX table created since the previous backup has no
+					// entry at all in prevTOC, so it compares against the
+					// zero value and must be backed up.
+					"public.pax_new": {
+						Marker:           "marker2",
+						LastDDLTimestamp: "00002",
+					},
+				},
 			},
 		}
 
@@ -54,11 +81,21 @@ var _ = Describe("backup/incremental tests", func() {
 		tblAOChangedModcount := backup.Table{Relation: backup.Relation{Schema: "public", Name: "ao_changed_modcount"}}
 		tblAOChangedTS := backup.Table{Relation: backup.Relation{Schema: "public", Name: "ao_changed_timestamp"}}
 		tblAOUnchanged := backup.Table{Relation: backup.Relation{Schema: "public", Name: "ao_unchanged"}}
+		tblPAXChangedMarker := backup.Table{Relation: backup.Relation{Schema: "public", Name: "pax_changed_marker"}}
+		tblPAXChangedTS := backup.Table{Relation: backup.Relation{Schema: "public", Name: "pax_changed_timestamp"}}
+		tblPAXUnchanged := backup.Table{Relation: backup.Relation{Schema: "public", Name: "pax_unchanged"}}
+		tblPAXNew := backup.Table{Relation: backup.Relation{Schema: "public", Name: "pax_new"}}
+		tblPAXUntracked := backup.Table{Relation: backup.Relation{Schema: "public", Name: "pax_untracked"}}
 		tables := []backup.Table{
 			tblHeap,
 			tblAOChangedModcount,
 			tblAOChangedTS,
 			tblAOUnchanged,
+			tblPAXChangedMarker,
+			tblPAXChangedTS,
+			tblPAXUnchanged,
+			tblPAXNew,
+			tblPAXUntracked,
 		}
 
 		filteredTables := backup.FilterTablesForIncremental(&prevTOC, &currTOC, tables)
@@ -77,6 +114,50 @@ var _ = Describe("backup/incremental tests", func() {
 
 		It("Should NOT include the unmodified AO table", func() {
 			Expect(filteredTables).To(Not(ContainElement(tblAOUnchanged)))
+		})
+
+		It("Should include the PAX table having a modified marker", func() {
+			Expect(filteredTables).To(ContainElement(tblPAXChangedMarker))
+		})
+
+		It("Should include the PAX table having a modified last DDL timestamp", func() {
+			Expect(filteredTables).To(ContainElement(tblPAXChangedTS))
+		})
+
+		It("Should NOT include the unmodified PAX table", func() {
+			Expect(filteredTables).To(Not(ContainElement(tblPAXUnchanged)))
+		})
+
+		It("Should include a PAX table that did not exist in the previous backup", func() {
+			Expect(filteredTables).To(ContainElement(tblPAXNew))
+		})
+
+		It("Should include a PAX table with no incremental metadata at all", func() {
+			Expect(filteredTables).To(ContainElement(tblPAXUntracked))
+		})
+	})
+
+	Describe("FilterTablesForIncremental with a TOC predating PAX support", func() {
+		// A backup taken by a version without a PAX map must not cause a PAX
+		// table to be skipped, since we cannot prove it is unchanged.
+		prevTOC := toc.TOC{
+			IncrementalMetadata: toc.IncrementalEntries{
+				AO: map[string]toc.AOEntry{},
+			},
+		}
+		currTOC := toc.TOC{
+			IncrementalMetadata: toc.IncrementalEntries{
+				AO: map[string]toc.AOEntry{},
+				PAX: map[string]toc.PAXEntry{
+					"public.pax_table": {Marker: "marker1", LastDDLTimestamp: "00001"},
+				},
+			},
+		}
+		tblPAX := backup.Table{Relation: backup.Relation{Schema: "public", Name: "pax_table"}}
+
+		It("Should include the PAX table", func() {
+			Expect(backup.FilterTablesForIncremental(&prevTOC, &currTOC, []backup.Table{tblPAX})).
+				To(ContainElement(tblPAX))
 		})
 	})
 

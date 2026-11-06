@@ -137,25 +137,7 @@ func getLastDDLTimestamps(connectionPool *dbconn.DBConn) map[string]string {
 			) lastop
 		ON aotables.aooid = lastop.objid`, relationAndSchemaFilterClause())
 
-	atLeast7Query := fmt.Sprintf(`
-		SELECT quote_ident(aoschema) || '.' || quote_ident(aorelname) as aotablefqn,
-			lastddltimestamp
-		FROM ( SELECT c.oid AS aooid,
-					n.nspname AS aoschema,
-					c.relname AS aorelname
-				FROM pg_class c
-					JOIN pg_namespace n ON c.relnamespace = n.oid
-					JOIN pg_am a ON c.relam = a.oid
-				WHERE a.amname in ('ao_row', 'ao_column')
-					AND %s
-			) aotables
-		JOIN ( SELECT lo.objid,
-					MAX(lo.statime) AS lastddltimestamp
-				FROM pg_stat_last_operation lo
-				WHERE lo.staactionname IN ('CREATE', 'ALTER', 'TRUNCATE')
-				GROUP BY lo.objid
-			) lastop
-		ON aotables.aooid = lastop.objid`, relationAndSchemaFilterClause())
+	atLeast7Query := lastDDLTimestampQuery("'ao_row', 'ao_column'")
 
 	query := ""
 	if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("7") {
@@ -164,6 +146,37 @@ func getLastDDLTimestamps(connectionPool *dbconn.DBConn) map[string]string {
 		query = atLeast7Query
 	}
 
+	return selectLastDDLTimestamps(connectionPool, query)
+}
+
+/*
+ * Build the GPDB7+/Cloudberry query returning the most recent CREATE, ALTER or
+ * TRUNCATE timestamp for every table using one of the given access methods.
+ * amNames is a ready-quoted SQL list, e.g. "'ao_row', 'ao_column'".
+ */
+func lastDDLTimestampQuery(amNames string) string {
+	return fmt.Sprintf(`
+		SELECT quote_ident(aoschema) || '.' || quote_ident(aorelname) as aotablefqn,
+			lastddltimestamp
+		FROM ( SELECT c.oid AS aooid,
+					n.nspname AS aoschema,
+					c.relname AS aorelname
+				FROM pg_class c
+					JOIN pg_namespace n ON c.relnamespace = n.oid
+					JOIN pg_am a ON c.relam = a.oid
+				WHERE a.amname in (%s)
+					AND %s
+			) aotables
+		JOIN ( SELECT lo.objid,
+					MAX(lo.statime) AS lastddltimestamp
+				FROM pg_stat_last_operation lo
+				WHERE lo.staactionname IN ('CREATE', 'ALTER', 'TRUNCATE')
+				GROUP BY lo.objid
+			) lastop
+		ON aotables.aooid = lastop.objid`, amNames, relationAndSchemaFilterClause())
+}
+
+func selectLastDDLTimestamps(connectionPool *dbconn.DBConn, query string) map[string]string {
 	var results []struct {
 		AOTableFQN       string
 		LastDDLTimestamp string
@@ -175,4 +188,180 @@ func getLastDDLTimestamps(connectionPool *dbconn.DBConn) map[string]string {
 		resultMap[result.AOTableFQN] = result.LastDDLTimestamp
 	}
 	return resultMap
+}
+
+/*
+ * PAX incremental metadata.
+ *
+ * PAX tables have no pg_aoseg entry and therefore no modcount.  What they do
+ * have is an aux relation in the pg_ext_aux namespace describing their
+ * micro-partitions, and Cloudberry builds PAX in one of two mutually exclusive
+ * layouts:
+ *
+ *   - manifest layout (cmake USE_MANIFEST_API): pg_ext_aux.pg_manifest_<oid>,
+ *     a single-row table whose "path" column names the relation's current
+ *     manifest file.  Any transaction that dirties the manifest flushes it
+ *     under a freshly generated name and rewrites that row.
+ *   - catalog layout (cmake USE_PAX_CATALOG): pg_ext_aux.pg_pax_blocks_<oid>,
+ *     one row per micro-partition.  Inserts add rows; deletes write a new
+ *     visimap file and update the row's ptvisimapname to its name.
+ *
+ * Which layout a cluster uses is fixed at compile time, so we detect it by
+ * aux relation name rather than by version.  Either way the aux relation is
+ * reduced to one fixed-width digest, because FilterTablesForIncremental only
+ * ever compares a table's marker against the previous backup's marker for
+ * equality, and a marker is retained for every PAX table in the backup set.
+ *
+ * Like the AO modcount, this over-reports rather than under-reports: a rewrite
+ * that preserves the data (VACUUM FULL, CLUSTER) changes the digest and causes
+ * an unnecessary re-backup of the table.  A read-only transaction does not
+ * dirty the aux relation, so plain queries never trigger one.
+ */
+
+const (
+	paxAuxManifest = "manifest"
+	paxAuxBlocks   = "blocks"
+)
+
+type paxAuxRelation struct {
+	PAXTableFQN string
+	AuxTableFQN string
+	AuxKind     string
+}
+
+func GetPAXIncrementalMetadata(connectionPool *dbconn.DBConn) map[string]toc.PAXEntry {
+	paxTableEntries := make(map[string]toc.PAXEntry)
+
+	// PAX is a Cloudberry table access method; it never exists on GPDB.
+	if connectionPool.Version.IsGPDB() {
+		return paxTableEntries
+	}
+
+	gplog.Verbose("Querying PAX table aux metadata markers")
+	markers := getAllPAXMarkers(connectionPool)
+	if len(markers) == 0 {
+		return paxTableEntries
+	}
+
+	gplog.Verbose("Querying last DDL modification timestamp for PAX tables")
+	lastDDLTimestamps := getPAXLastDDLTimestamps(connectionPool)
+	for paxTableFQN := range markers {
+		paxTableEntries[paxTableFQN] = toc.PAXEntry{
+			Marker:           markers[paxTableFQN],
+			LastDDLTimestamp: lastDDLTimestamps[paxTableFQN],
+		}
+	}
+
+	return paxTableEntries
+}
+
+func getAllPAXMarkers(connectionPool *dbconn.DBConn) map[string]string {
+	var auxRelations = getPAXAuxRelations(connectionPool)
+	markers := make(map[string]string, len(auxRelations))
+	for _, auxRelation := range auxRelations {
+		markers[auxRelation.PAXTableFQN] = getPAXMarker(connectionPool, auxRelation)
+	}
+	return markers
+}
+
+/*
+ * Pair every PAX table in the backup set with its aux relation.  The root of a
+ * partitioned PAX table has no aux relation of its own and so is absent from
+ * the result, exactly as an AO root is absent from the modcount map.
+ */
+func getPAXAuxRelations(connectionPool *dbconn.DBConn) []paxAuxRelation {
+	query := fmt.Sprintf(`
+		SELECT paxtables.paxtablefqn,
+			quote_ident(aux_n.nspname) || '.' || quote_ident(aux_c.relname) AS auxtablefqn,
+			CASE WHEN aux_c.relname::text = 'pg_manifest_' || paxtables.oid
+				THEN '%s' ELSE '%s' END AS auxkind
+		FROM pg_class aux_c
+			JOIN pg_namespace aux_n ON aux_c.relnamespace = aux_n.oid
+			JOIN (SELECT c.oid,
+					quote_ident(n.nspname) || '.' || quote_ident(c.relname) AS paxtablefqn
+				FROM pg_class c
+					JOIN pg_namespace n ON c.relnamespace = n.oid
+					JOIN pg_am a ON c.relam = a.oid
+				WHERE a.amname = 'pax'
+					AND %s
+			) paxtables
+			ON aux_c.relname::text IN ('pg_manifest_' || paxtables.oid,
+				'pg_pax_blocks_' || paxtables.oid)
+		WHERE aux_n.nspname = 'pg_ext_aux'
+			AND aux_c.relkind = 'r'`,
+		paxAuxManifest, paxAuxBlocks, relationAndSchemaFilterClause())
+
+	results := make([]paxAuxRelation, 0)
+	err := connectionPool.Select(&results, query)
+	gplog.FatalOnError(err)
+	return results
+}
+
+/*
+ * Reduce one PAX aux relation to a single digest.  Aux relations only hold
+ * rows on the segments, so they are read through gp_dist_random.
+ *
+ * The digest is always keyed by gp_segment_id.  Block numbers are assigned
+ * per segment, so the same ptblockname occurs once per segment with unrelated
+ * contents; folding the segments together would let two different cluster
+ * states reduce to the same multiset of rows.
+ *
+ * SHA-256 rather than MD5: the dangerous direction here is two *different*
+ * aux states hashing alike, because that makes a changed table look unchanged
+ * and silently drops its data from the backup.  MD5 has constructible
+ * collisions, so it is the wrong primitive for a check whose failure mode is
+ * data loss, and the hash is far too cheap for its strength to be worth
+ * trading away.  Collisions are not merely unlikely under SHA-256, there is
+ * no known way to produce one.
+ *
+ * Hashing at all, rather than keeping the aux rows themselves, is deliberate:
+ * a marker is held in memory and written to the TOC for every PAX table in
+ * the backup set, so it has to be a fixed width independent of how many
+ * micro-partitions a table has.
+ */
+func getPAXMarker(connectionPool *dbconn.DBConn, auxRelation paxAuxRelation) string {
+	var query string
+	if auxRelation.AuxKind == paxAuxManifest {
+		// Exactly one row per segment, so a single pass is already bounded.
+		query = fmt.Sprintf(`
+		SELECT COALESCE(pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(
+				pg_catalog.string_agg(gp_segment_id::text || ':' || path,
+					',' ORDER BY gp_segment_id, path), 'UTF8')), 'hex'), '') AS marker
+		FROM gp_dist_random('%s')`, auxRelation.AuxTableFQN)
+	} else {
+		// One row per micro-partition, so digest each segment's rows on that
+		// segment and only combine the per-segment digests on the
+		// coordinator.  That keeps coordinator memory proportional to the
+		// number of segments rather than to the size of the table.
+		//
+		// ptblockname and pttupcount cover inserts, ptblocksize covers
+		// rewrites that preserve the row count, and ptvisimapname covers
+		// deletes, which write a new visimap file without adding a
+		// micro-partition.  ptstatistics is deliberately left out: it is a
+		// composite type that only ever changes alongside one of these
+		// columns.  ptblockname is the aux relation's primary key, so
+		// ordering by it alone is deterministic within a segment.
+		query = fmt.Sprintf(`
+		SELECT COALESCE(pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(
+				pg_catalog.string_agg(segment_digest, ',' ORDER BY gp_segment_id), 'UTF8')), 'hex'), '') AS marker
+		FROM (SELECT gp_segment_id,
+				gp_segment_id::text || ':' || pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(
+					pg_catalog.string_agg(ptblockname::text || ':' || pttupcount::text || ':' ||
+						ptblocksize::text || ':' || COALESCE(ptvisimapname::text, ''),
+						',' ORDER BY ptblockname), 'UTF8')), 'hex') AS segment_digest
+			FROM gp_dist_random('%s')
+			GROUP BY gp_segment_id) segments`, auxRelation.AuxTableFQN)
+	}
+
+	var results []struct {
+		Marker string
+	}
+	err := connectionPool.Select(&results, query)
+	gplog.FatalOnError(err)
+
+	return results[0].Marker
+}
+
+func getPAXLastDDLTimestamps(connectionPool *dbconn.DBConn) map[string]string {
+	return selectLastDDLTimestamps(connectionPool, lastDDLTimestampQuery("'pax'"))
 }
