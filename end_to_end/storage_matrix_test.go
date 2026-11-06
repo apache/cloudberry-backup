@@ -128,12 +128,12 @@ func populateMatrixSchema(conn *dbconn.DBConn, accessMethods []string) {
 	for _, am := range accessMethods {
 		for _, table := range []string{am + "_plain", am + "_part"} {
 			testhelper.AssertQueryRuns(conn, fmt.Sprintf(
-				"INSERT INTO %s.%s SELECT i, i %% %d, 'r' || i FROM generate_series(1, %d) i",
+				"INSERT INTO %s.%s SELECT i, i %% %d, 'r'::text || i FROM generate_series(1, %d) i",
 				matrixSchema, table, matrixLeaves, rows))
 		}
 	}
 	testhelper.AssertQueryRuns(conn, fmt.Sprintf(
-		"INSERT INTO %s.mixed_part SELECT i, i %% %d, 'r' || i FROM generate_series(1, %d) i",
+		"INSERT INTO %s.mixed_part SELECT i, i %% %d, 'r'::text || i FROM generate_series(1, %d) i",
 		matrixSchema, len(accessMethods), len(accessMethods)*matrixRowsPerLeaf))
 }
 

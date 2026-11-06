@@ -284,7 +284,7 @@ func getPAXAuxRelations(connectionPool *dbconn.DBConn) []paxAuxRelation {
 	query := fmt.Sprintf(`
 		SELECT paxtables.paxtablefqn,
 			quote_ident(aux_n.nspname) || '.' || quote_ident(aux_c.relname) AS auxtablefqn,
-			CASE WHEN aux_c.relname::text = 'pg_manifest_' || paxtables.oid
+			CASE WHEN aux_c.relname::text = 'pg_manifest_'::text || paxtables.oid
 				THEN '%s' ELSE '%s' END AS auxkind
 		FROM pg_class aux_c
 			JOIN pg_namespace aux_n ON aux_c.relnamespace = aux_n.oid
@@ -296,8 +296,8 @@ func getPAXAuxRelations(connectionPool *dbconn.DBConn) []paxAuxRelation {
 				WHERE a.amname = 'pax'
 					AND %s
 			) paxtables
-			ON aux_c.relname::text IN ('pg_manifest_' || paxtables.oid,
-				'pg_pax_blocks_' || paxtables.oid)
+			ON aux_c.relname::text IN ('pg_manifest_'::text || paxtables.oid,
+			'pg_pax_blocks_'::text || paxtables.oid)
 		WHERE aux_n.nspname = 'pg_ext_aux'
 			AND aux_c.relkind = 'r'`,
 		paxAuxManifest, paxAuxBlocks, relationAndSchemaFilterClause())
