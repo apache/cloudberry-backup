@@ -63,7 +63,7 @@ $(GOLANG_LINTER) :
 format : $(GOIMPORTS)
 		@goimports -w $(shell find . -type f -name '*.go' -not -path "./vendor/*")
 
-.PHONY : coverage integration end_to_end lint
+.PHONY : coverage integration end_to_end storage_matrix lint
 
 lint : $(GOLANG_LINTER)
 		$(GOLANG_LINTER) run
@@ -84,6 +84,11 @@ test : build unit integration
 
 end_to_end : $(GINKGO)
 	ginkgo $(GINKGO_FLAGS) --timeout=3h --poll-progress-after=0s end_to_end -- --custom_backup_dir $(CUSTOM_BACKUP_DIR) 2>&1
+
+# The storage and partitioning matrix on its own: every access method crossed
+# with plain, partitioned and mixed-AM partitioned tables, full and incremental.
+storage_matrix : $(GINKGO)
+	ginkgo $(GINKGO_FLAGS) --timeout=1h --poll-progress-after=0s --focus="storage and partitioning matrix" end_to_end -- --custom_backup_dir $(CUSTOM_BACKUP_DIR) 2>&1
 
 coverage :
 		@./show_coverage.sh
