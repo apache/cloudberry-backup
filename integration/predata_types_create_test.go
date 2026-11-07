@@ -277,7 +277,7 @@ var _ = Describe("backup integration create statement tests", func() {
 		})
 		It("creates a specific collation", func() {
 			testutils.SkipIfBefore7(connectionPool)
-			collation := backup.Collation{Oid: 1, Schema: "public", Name: "testcollation", Collate: "de_DE", Ctype: "de_DE", Provider: "c", IsDeterministic: "true"}
+			collation := backup.Collation{Oid: 1, Schema: "public", Name: "testcollation", Collate: "C", Ctype: "C", Provider: "c", IsDeterministic: "true"}
 			backup.PrintCreateCollationStatements(backupfile, tocfile, []backup.Collation{collation}, backup.MetadataMap{})
 
 			testhelper.AssertQueryRuns(connectionPool, buffer.String())
