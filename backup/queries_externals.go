@@ -53,6 +53,8 @@ func GetExternalTableDefinitions(connectionPool *dbconn.DBConn) map[uint32]Exter
 	// Cannot use unnest() in CASE statements anymore in GPDB 7+ so convert
 	// it to a LEFT JOIN LATERAL. We do not use LEFT JOIN LATERAL for GPDB 6
 	// because the CASE unnest() logic is more performant.
+	// Without a reject limit, pg_exttable can expose char(-1) instead of NULL
+	// on platforms with unsigned char. The reject type is unused in that case.
 	atLeast7Query := `
 	SELECT e.reloid AS oid,
 		ljl_unnest AS location,
@@ -61,7 +63,8 @@ func GetExternalTableDefinitions(connectionPool *dbconn.DBConn) map[uint32]Exter
 		coalesce(e.fmtopts, '') AS formatopts,
 		coalesce(e.command, '') AS command,
 		coalesce(e.rejectlimit, 0) AS rejectlimit,
-		coalesce(e.rejectlimittype, '') AS rejectlimittype,
+		CASE WHEN coalesce(e.rejectlimit, 0) > 0
+			THEN coalesce(e.rejectlimittype::text, '') ELSE '' END AS rejectlimittype,
 		e.logerrors,
 		coalesce('log_errors=persistently' = any(ft.ftoptions), false) AS logerrpersist,
 		pg_encoding_to_char(e.encoding) AS encoding,
