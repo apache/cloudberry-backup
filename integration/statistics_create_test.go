@@ -15,6 +15,29 @@ var _ = Describe("backup integration tests", func() {
 		tocfile, backupfile = testutils.InitializeTestTOC(buffer, "predata")
 	})
 	Describe("PrintStatisticsStatementsForTable", func() {
+		It("restores fractional segment NDV statistics in the fifth slot", func() {
+			if !connectionPool.Version.IsCBDB() || connectionPool.Version.Before("2.1.0") {
+				Skip("Segment NDV statistics require Cloudberry 2.1.0 or later")
+			}
+			testhelper.AssertQueryRuns(connectionPool, "CREATE TABLE public.foo(k bool)")
+			defer testhelper.AssertQueryRuns(connectionPool, "DROP TABLE public.foo")
+			tableOid := testutils.OidFromObjectName(connectionPool, "public", "foo", backup.TYPE_RELATION)
+			table := backup.Table{Relation: backup.Relation{Oid: tableOid, Schema: "public", Name: "foo"}}
+			expected := backup.AttributeStatistic{
+				Oid: tableOid, Schema: "public", Table: "foo", AttName: "k", Type: "bool",
+				Relid: tableOid, AttNumber: 1, Width: 1,
+				Kind5: backup.STATISTIC_KIND_NDV_BY_SEGMENTS, Operator5: 58,
+				Values5: []string{"3.0000000596046448"},
+			}
+
+			for _, query := range backup.GenerateAttributeStatisticsQueries(table, expected) {
+				testhelper.AssertQueryRuns(connectionPool, query)
+			}
+
+			actual := backup.GetAttributeStatistics(connectionPool, []backup.Table{table})
+			Expect(actual[tableOid]).To(HaveLen(1))
+			structmatcher.ExpectStructsToMatch(&expected, &actual[tableOid][0])
+		})
 		It("prints attribute and tuple statistics for a table", func() {
 			tables := []backup.Table{
 				{Relation: backup.Relation{SchemaOid: 2200, Schema: "public", Name: "foo"}},

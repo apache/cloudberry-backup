@@ -238,9 +238,11 @@ WHERE oid = '"""test''schema"""."""test''table"""'::regclass::oid;`))
 			castedString := backup.AnyValues([]string{"1", "2"}, "int", 1)
 			Expect(castedString).To(Equal(`array_in('{"1","2"}', 'int'::regtype::oid, -1)`))
 		})
-		It("returns int8 casted string when kind is STATISTIC_KIND_NDV_BY_SEGMENTS", func() {
-			castedString := backup.AnyValues([]string{"2"}, "bool", backup.STATISTIC_KIND_NDV_BY_SEGMENTS)
-			Expect(castedString).To(Equal(`array_in('{"2"}', 'int8'::regtype::oid, -1)`))
+		It("returns float8 values when kind is STATISTIC_KIND_NDV_BY_SEGMENTS", func() {
+			for _, value := range []string{"2", "3.0000000596046448"} {
+				castedString := backup.AnyValues([]string{value}, "bool", backup.STATISTIC_KIND_NDV_BY_SEGMENTS)
+				Expect(castedString).To(Equal(fmt.Sprintf(`array_in('{"%s"}', 'float8'::regtype::oid, -1)`, value)))
+			}
 		})
 		It("returns NULL if anyvalues is of length 0", func() {
 			castedString := backup.AnyValues([]string{}, "int", 1)
