@@ -181,9 +181,10 @@ func getLastDDLTimestamps(connectionPool *dbconn.DBConn) map[string]string {
 }
 
 // heapTable carries the catalog identity of a heap table eligible for file-hash
-// incremental backup. Oid is what we pass into the file-hash plpgsql function
-// (pg_relation_filepath resolves it locally on each segment); FQN is for keying
-// the result map and for log messages.
+// incremental backup. Hashes are keyed by Oid, which is also what we pass into
+// the file-hash plpgsql function (pg_relation_filepath resolves it locally on
+// each segment); FQN is only for log messages, since a table may be renamed
+// before the backup snapshot is taken.
 type heapTable struct {
 	Oid uint32
 	FQN string
@@ -201,7 +202,7 @@ const heapFileHashBatchSize = 1000
 //
 // A nil map means the hashes could not be collected; every heap table is
 // then included in the next incremental, as without --heap-file-hash.
-func CollectHeapFileHashes(dbName string) ([]heapTable, map[string]string) {
+func CollectHeapFileHashes(dbName string) ([]heapTable, map[uint32]string) {
 	hashConn := dbconn.NewDBConnFromEnvironment(dbName)
 	hashConn.MustConnect(1)
 	defer hashConn.Close()
@@ -209,6 +210,7 @@ func CollectHeapFileHashes(dbName string) ([]heapTable, map[string]string) {
 	if !ensureFileStatFunction(hashConn) {
 		return nil, nil
 	}
+	defer dropFileStatFunction(hashConn)
 
 	// CHECKPOINT flushes dirty pages so pg_stat_file sees up-to-date mtime/size.
 	// Without it a committed change may still sit in shared buffers, and the
@@ -223,7 +225,11 @@ func CollectHeapFileHashes(dbName string) ([]heapTable, map[string]string) {
 	// CHECKPOINT wrote in, so only files written during collection are refused.
 	time.Sleep(time.Second)
 
-	heapTables := getHeapTables(hashConn, SchemaFilterClause("n"))
+	heapTables, err := getHeapTables(hashConn, SchemaFilterClause("n"))
+	if err != nil {
+		gplog.Warn("Could not list heap tables, skipping heap file hash collection: %v", err)
+		return nil, nil
+	}
 	hashes := getFileHashesForTables(hashConn, heapTables)
 
 	// The data files also hold rows of transactions still in progress, and
@@ -238,9 +244,9 @@ func CollectHeapFileHashes(dbName string) ([]heapTable, map[string]string) {
 		return nil, nil
 	}
 	for _, t := range heapTables {
-		if _, ok := hashes[t.FQN]; ok && writtenOids[t.Oid] {
+		if _, ok := hashes[t.Oid]; ok && writtenOids[t.Oid] {
 			gplog.Verbose("Not recording a file hash for %s: a transaction writing to it is in progress", t.FQN)
-			delete(hashes, t.FQN)
+			delete(hashes, t.Oid)
 		}
 	}
 	return heapTables, hashes
@@ -252,10 +258,15 @@ func CollectHeapFileHashes(dbName string) ([]heapTable, map[string]string) {
 // shared buffers, invisible to that hash but visible to the snapshot; a
 // second CHECKPOINT flushes it, so the table's files no longer match and its
 // hash is dropped.
-func VerifyHeapFileHashes(dbName string, heapTables []heapTable, hashes map[string]string) map[string]string {
+func VerifyHeapFileHashes(dbName string, heapTables []heapTable, hashes map[uint32]string) map[uint32]string {
 	hashConn := dbconn.NewDBConnFromEnvironment(dbName)
 	hashConn.MustConnect(1)
 	defer hashConn.Close()
+
+	if !ensureFileStatFunction(hashConn) {
+		return nil
+	}
+	defer dropFileStatFunction(hashConn)
 
 	gplog.Verbose("Executing CHECKPOINT to verify heap file hashes")
 	if _, err := hashConn.Exec("CHECKPOINT;", 0); err != nil {
@@ -265,17 +276,27 @@ func VerifyHeapFileHashes(dbName string, heapTables []heapTable, hashes map[stri
 
 	hashedTables := make([]heapTable, 0, len(hashes))
 	for _, t := range heapTables {
-		if _, ok := hashes[t.FQN]; ok {
+		if _, ok := hashes[t.Oid]; ok {
 			hashedTables = append(hashedTables, t)
 		}
 	}
-	current := getFileHashesForTables(hashConn, hashedTables)
-	verified := make(map[string]string, len(hashes))
-	for fqn, hash := range hashes {
-		if current[fqn] == hash {
-			verified[fqn] = hash
+	return keepUnchangedHashes(hashedTables, hashes, getFileHashesForTables(hashConn, hashedTables))
+}
+
+// keepUnchangedHashes returns the hashes of tables that current still reports
+// unchanged. A table missing from current could not be re-read, so its hash
+// is dropped too.
+func keepUnchangedHashes(tables []heapTable, hashes, current map[uint32]string) map[uint32]string {
+	verified := make(map[uint32]string, len(hashes))
+	for _, t := range tables {
+		hash, ok := hashes[t.Oid]
+		if !ok {
+			continue
+		}
+		if current[t.Oid] == hash {
+			verified[t.Oid] = hash
 		} else {
-			gplog.Verbose("Not recording a file hash for %s: its files changed while the backup started", fqn)
+			gplog.Verbose("Not recording a file hash for %s: its files changed while the backup started", t.FQN)
 		}
 	}
 	return verified
@@ -320,8 +341,9 @@ func getTablesWithActiveWriters(hashConn *dbconn.DBConn) (map[uint32]bool, error
 // the mtime; the caller then records no hash, forcing the table into the next
 // incremental.
 //
-// The function is replaced on every run so a body left by an older gpbackup
-// is never reused.
+// The function is created for each phase and dropped when it ends, so a body
+// left by an older gpbackup is never reused and no object is left behind in
+// gp_toolkit (an extension on GPDB 7 and Cloudberry).
 func ensureFileStatFunction(hashConn *dbconn.DBConn) bool {
 	gplog.Verbose("Creating gp_toolkit.gpbackup_file_info function")
 
@@ -381,58 +403,52 @@ $BODY$ LANGUAGE plpgsql;`
 	return true
 }
 
-// getHeapTables returns (oid, FQN) pairs of heap tables, leaf partitions included.
-func getHeapTables(conn *dbconn.DBConn, filterClause string) []heapTable {
-	var query string
-	if conn.Version.IsGPDB() && conn.Version.Before("7") {
-		query = fmt.Sprintf(`
-			SELECT c.oid,
-				quote_ident(n.nspname) || '.' || quote_ident(c.relname) AS tablefqn
-			FROM pg_class c
-			JOIN pg_namespace n ON c.relnamespace = n.oid
-			WHERE c.relstorage = 'h'
-			AND c.relkind = 'r'
-			AND %s`, filterClause)
-	} else {
-		query = fmt.Sprintf(`
-			SELECT c.oid,
-				quote_ident(n.nspname) || '.' || quote_ident(c.relname) AS tablefqn
-			FROM pg_class c
-			JOIN pg_namespace n ON c.relnamespace = n.oid
-			JOIN pg_am a ON c.relam = a.oid
-			WHERE a.amname = 'heap'
-			AND c.relkind = 'r'
-			AND %s`, filterClause)
+func dropFileStatFunction(hashConn *dbconn.DBConn) {
+	if _, err := hashConn.Exec("DROP FUNCTION IF EXISTS gp_toolkit.gpbackup_file_info(oid);", 0); err != nil {
+		gplog.Warn("Could not drop gpbackup_file_info function: %v", err)
 	}
+}
+
+// getHeapTables returns (oid, FQN) pairs of heap tables, leaf partitions included.
+func getHeapTables(conn *dbconn.DBConn, filterClause string) ([]heapTable, error) {
+	amJoin, heapFilter := heapTableFilter(conn)
+	query := fmt.Sprintf(`
+		SELECT c.oid,
+			quote_ident(n.nspname) || '.' || quote_ident(c.relname) AS tablefqn
+		FROM pg_class c
+			JOIN pg_namespace n ON c.relnamespace = n.oid
+			%s
+		WHERE %s
+			AND c.relkind = 'r'
+			AND %s`, amJoin, heapFilter, filterClause)
 
 	var results []struct {
 		Oid      uint32
 		TableFQN string
 	}
-	err := conn.Select(&results, query)
-	gplog.FatalOnError(err)
+	if err := conn.Select(&results, query); err != nil {
+		return nil, err
+	}
 	out := make([]heapTable, len(results))
 	for i, r := range results {
 		out[i] = heapTable{Oid: r.Oid, FQN: r.TableFQN}
 	}
-	return out
+	return out, nil
 }
 
 // getFileHashesForTables hashes gpbackup_file_info over every segment for each
 // table, in batches. A table gets a hash only if every segment described its
 // files; otherwise it is left out and the next incremental includes it.
-func getFileHashesForTables(hashConn *dbconn.DBConn, tables []heapTable) map[string]string {
-	result := make(map[string]string)
+func getFileHashesForTables(hashConn *dbconn.DBConn, tables []heapTable) map[uint32]string {
+	result := make(map[uint32]string)
 	for start := 0; start < len(tables); start += heapFileHashBatchSize {
 		end := start + heapFileHashBatchSize
 		if end > len(tables) {
 			end = len(tables)
 		}
 		batch := tables[start:end]
-		fqnByOid := make(map[uint32]string, len(batch))
 		oids := make([]string, len(batch))
 		for i, t := range batch {
-			fqnByOid[t.Oid] = t.FQN
 			oids[i] = strconv.FormatUint(uint64(t.Oid), 10)
 		}
 
@@ -447,7 +463,7 @@ func getFileHashesForTables(hashConn *dbconn.DBConn, tables []heapTable) map[str
 				WHERE c.oid IN (%s)
 			) x
 			GROUP BY oid
-			HAVING bool_and(info <> '')`, strings.Join(oids, ","))
+			HAVING bool_and(COALESCE(info, '') <> '')`, strings.Join(oids, ","))
 
 		var results []struct {
 			Oid      uint32
@@ -458,70 +474,62 @@ func getFileHashesForTables(hashConn *dbconn.DBConn, tables []heapTable) map[str
 			continue
 		}
 		for _, r := range results {
-			result[fqnByOid[r.Oid]] = r.FileHash
+			result[r.Oid] = r.FileHash
 		}
 	}
 	return result
 }
 
+// heapIncrementalEntry is a heap table's TOC entry, without its file hash,
+// along with the FQN it has in the backup snapshot.
+type heapIncrementalEntry struct {
+	FQN   string
+	Entry toc.HeapEntry
+}
+
 // getHeapIncrementalEntries returns, for every heap table in the backup set,
-// what besides the file hash decides whether the table changed:
-//
-//   - its last DDL timestamp (empty if none is recorded). A DDL that does not
-//     rewrite the table, e.g. DROP COLUMN, leaves the data files untouched, so
-//     the file hash alone would reuse data dumped with the old column list.
-//   - a hash of the labels of the enum types its columns use, directly or
-//     through domains, arrays, composite and range types. Enum values are
-//     stored by oid, so ALTER TYPE ... RENAME VALUE changes the dumped text but
-//     neither the data files nor the table's DDL timestamp.
-//
-// FileHashMD5 is left empty.
-func getHeapIncrementalEntries(connectionPool *dbconn.DBConn) map[string]toc.HeapEntry {
-	heapFilter := "a.amname = 'heap'"
-	amJoin := "JOIN pg_am a ON c.relam = a.oid"
-	// Enum labels cannot be renamed before PostgreSQL 10, i.e. GPDB 7.
-	enumLabels := `
-			LEFT JOIN (
-				WITH RECURSIVE type_deps(typid, deptypid) AS (
-					SELECT oid, typbasetype FROM pg_type WHERE typtype = 'd'
-					UNION ALL
-					SELECT oid, typelem FROM pg_type WHERE typelem <> 0
-					UNION ALL
-					SELECT t.oid, ta.atttypid
-					FROM pg_type t
-						JOIN pg_attribute ta ON ta.attrelid = t.typrelid
-					WHERE t.typtype = 'c' AND ta.attnum > 0 AND NOT ta.attisdropped
-					UNION ALL
-					SELECT rngtypid, rngsubtype FROM pg_range
-				), column_types(relid, typid) AS (
-					SELECT ta.attrelid, ta.atttypid
-					FROM pg_attribute ta
-						JOIN pg_class tc ON tc.oid = ta.attrelid
-						JOIN pg_am tam ON tam.oid = tc.relam
-					WHERE tam.amname = 'heap' AND tc.relkind = 'r'
-						AND ta.attnum > 0 AND NOT ta.attisdropped
-					UNION
-					SELECT ct.relid, d.deptypid
-					FROM column_types ct
-						JOIN type_deps d ON d.typid = ct.typid
-				)
-				SELECT ct.relid,
-					md5(string_agg(e.enumtypid::text || ':' || e.enumlabel, ',' ORDER BY e.enumtypid, e.enumsortorder)) AS enumlabelsmd5
-				FROM column_types ct
-					JOIN pg_enum e ON e.enumtypid = ct.typid
-				GROUP BY ct.relid
-			) enums ON c.oid = enums.relid`
-	enumColumn := "COALESCE(enums.enumlabelsmd5, '')"
-	if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("7") {
-		heapFilter = "c.relstorage = 'h'"
-		amJoin = ""
-		enumLabels = ""
-		enumColumn = "''"
+// keyed by oid, what besides the file hash decides whether the table changed:
+// its last DDL timestamp and a hash of its columns and of the types they use
+// (see getHeapColumnHashes). A nil result means the column hashes could not
+// be read and no heap table may be skipped.
+func getHeapIncrementalEntries(connectionPool *dbconn.DBConn) map[uint32]heapIncrementalEntry {
+	tables := getHeapLastDDLTimestamps(connectionPool)
+	columnHashes, err := getHeapColumnHashes(connectionPool)
+	if err != nil {
+		gplog.Warn("Could not read the columns of heap tables, skipping heap file hash collection: %v", err)
+		return nil
 	}
+	for oid, table := range tables {
+		table.Entry.ColumnsMD5 = columnHashes[oid]
+		tables[oid] = table
+	}
+	return tables
+}
+
+// heapTableFilter returns the join and the condition that select the heap
+// tables eligible for file hashes from pg_class c. Unlogged tables are left
+// out: a CHECKPOINT other than at shutdown does not write their buffers, so
+// their files may not move when they change.
+func heapTableFilter(conn *dbconn.DBConn) (amJoin string, heapFilter string) {
+	if conn.Version.IsGPDB() && conn.Version.Before("6") {
+		return "", "c.relstorage = 'h'"
+	}
+	if conn.Version.IsGPDB() && conn.Version.Before("7") {
+		return "", "c.relstorage = 'h' AND c.relpersistence = 'p'"
+	}
+	return "JOIN pg_am a ON c.relam = a.oid", "a.amname = 'heap' AND c.relpersistence = 'p'"
+}
+
+// getHeapLastDDLTimestamps returns every heap table in the backup set with its
+// last DDL timestamp (empty if none is recorded). A DDL that does not rewrite
+// the table, e.g. DROP COLUMN, leaves the data files untouched, so the file
+// hash alone would reuse data dumped with the old column list.
+func getHeapLastDDLTimestamps(connectionPool *dbconn.DBConn) map[uint32]heapIncrementalEntry {
+	amJoin, heapFilter := heapTableFilter(connectionPool)
 	query := fmt.Sprintf(`
-		SELECT quote_ident(n.nspname) || '.' || quote_ident(c.relname) AS tablefqn,
-			COALESCE(lastop.lastddltimestamp::text, '') AS lastddltimestamp,
-			%s AS enumlabelsmd5
+		SELECT c.oid,
+			quote_ident(n.nspname) || '.' || quote_ident(c.relname) AS tablefqn,
+			COALESCE(lastop.lastddltimestamp::text, '') AS lastddltimestamp
 		FROM pg_class c
 			JOIN pg_namespace n ON c.relnamespace = n.oid
 			%s
@@ -530,24 +538,118 @@ func getHeapIncrementalEntries(connectionPool *dbconn.DBConn) map[string]toc.Hea
 				FROM pg_stat_last_operation lo
 				WHERE lo.staactionname IN ('CREATE', 'ALTER', 'TRUNCATE')
 				GROUP BY lo.objid
-			) lastop ON c.oid = lastop.objid%s
+			) lastop ON c.oid = lastop.objid
 		WHERE %s
 			AND c.relkind = 'r'
-			AND %s`, enumColumn, amJoin, enumLabels, heapFilter, relationAndSchemaFilterClause())
+			AND %s`, amJoin, heapFilter, relationAndSchemaFilterClause())
 
 	var results []struct {
+		Oid              uint32
 		TableFQN         string
 		LastDDLTimestamp string
-		EnumLabelsMD5    string
 	}
 	err := connectionPool.Select(&results, query)
 	gplog.FatalOnError(err)
-	resultMap := make(map[string]toc.HeapEntry)
+	resultMap := make(map[uint32]heapIncrementalEntry, len(results))
 	for _, result := range results {
-		resultMap[result.TableFQN] = toc.HeapEntry{
-			LastDDLTimestamp: result.LastDDLTimestamp,
-			EnumLabelsMD5:    result.EnumLabelsMD5,
+		resultMap[result.Oid] = heapIncrementalEntry{
+			FQN:   result.TableFQN,
+			Entry: toc.HeapEntry{LastDDLTimestamp: result.LastDDLTimestamp},
 		}
 	}
 	return resultMap
+}
+
+// getHeapColumnHashes returns, keyed by oid, a hash of every heap table's
+// columns (number, name, type, typmod, dropped) and of the definitions of the
+// enum and composite types they use, directly or through domains, arrays,
+// composite, range and multirange types: the labels of each enum and the
+// attributes of each composite type. Restore loads a skipped table's old data
+// file into the newest column list, so neither may change. Some changes touch
+// neither the data files nor the table's DDL timestamp: ALTER TYPE ... RENAME
+// VALUE or ADD/DROP ATTRIBUTE, or DROP DOMAIN ... CASCADE dropping a column.
+//
+// GPDB 5 cannot change types this way, so nothing is returned there. The query runs in
+// the backup transaction under a savepoint, so a failure leaves the
+// transaction usable and the caller can fall back to not skipping heap tables.
+func getHeapColumnHashes(connectionPool *dbconn.DBConn) (map[uint32]string, error) {
+	resultMap := make(map[uint32]string)
+	if connectionPool.Version.IsGPDB() && connectionPool.Version.Before("6") {
+		return resultMap, nil
+	}
+	amJoin, heapFilter := heapTableFilter(connectionPool)
+	// Multirange types (PostgreSQL 14) point to their range type only through
+	// pg_range.rngmultitypid.
+	multirangeDeps := ""
+	if connectionPool.Version.IsCBDB() {
+		multirangeDeps = `
+			UNION ALL
+			SELECT rngmultitypid, rngtypid FROM pg_range`
+	}
+	query := fmt.Sprintf(`
+		WITH RECURSIVE type_deps(typid, deptypid) AS (
+			SELECT oid, typbasetype FROM pg_type WHERE typtype = 'd'
+			UNION ALL
+			SELECT oid, typelem FROM pg_type WHERE typelem <> 0
+			UNION ALL
+			SELECT t.oid, ta.atttypid
+			FROM pg_type t
+				JOIN pg_attribute ta ON ta.attrelid = t.typrelid
+			WHERE t.typtype = 'c' AND ta.attnum > 0 AND NOT ta.attisdropped
+			UNION ALL
+			SELECT rngtypid, rngsubtype FROM pg_range%s
+		), column_types(relid, typid) AS (
+			SELECT c.oid, ca.atttypid
+			FROM pg_class c
+				JOIN pg_namespace n ON c.relnamespace = n.oid
+				%s
+				JOIN pg_attribute ca ON ca.attrelid = c.oid
+			WHERE %s
+				AND c.relkind = 'r'
+				AND ca.attnum > 0 AND NOT ca.attisdropped
+				AND %s
+			UNION
+			SELECT ct.relid, d.deptypid
+			FROM column_types ct
+				JOIN type_deps d ON d.typid = ct.typid
+		), type_defs(typid, def) AS (
+			SELECT enumtypid, 'e' || enumtypid || ':' || enumsortorder || ':' || enumlabel
+			FROM pg_enum
+			UNION ALL
+			SELECT t.oid, 'c' || t.oid || ':' || ta.attnum || ':' || ta.attname || ':' || ta.atttypid
+				|| ':' || ta.atttypmod || ':' || ta.attisdropped
+			FROM pg_type t
+				JOIN pg_attribute ta ON ta.attrelid = t.typrelid
+			WHERE t.typtype = 'c' AND ta.attnum > 0
+		)
+		SELECT d.relid AS oid,
+			md5(string_agg(d.def, ',' ORDER BY d.def)) AS columnsmd5
+		FROM (
+			SELECT ct.relid, td.def
+			FROM column_types ct
+				JOIN type_defs td ON td.typid = ct.typid
+			UNION ALL
+			SELECT ca.attrelid, 'a' || ca.attnum || ':' || ca.attname || ':' || ca.atttypid
+				|| ':' || ca.atttypmod || ':' || ca.attisdropped
+			FROM pg_attribute ca
+			WHERE ca.attnum > 0
+				AND ca.attrelid IN (SELECT relid FROM column_types)
+		) d
+		GROUP BY d.relid`, multirangeDeps, amJoin, heapFilter, relationAndSchemaFilterClause())
+
+	var results []struct {
+		Oid        uint32
+		ColumnsMD5 string
+	}
+	if connectionPool.Tx[0] != nil {
+		connectionPool.MustExec("SAVEPOINT gpbackup_heap_columns")
+		defer connectionPool.MustExec("ROLLBACK TO SAVEPOINT gpbackup_heap_columns")
+	}
+	if err := connectionPool.Select(&results, query); err != nil {
+		return nil, err
+	}
+	for _, result := range results {
+		resultMap[result.Oid] = result.ColumnsMD5
+	}
+	return resultMap, nil
 }

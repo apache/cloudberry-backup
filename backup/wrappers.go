@@ -767,11 +767,14 @@ func backupIncrementalMetadata() {
 		return
 	}
 	heapTables := getHeapIncrementalEntries(connectionPool)
+	if heapTables == nil {
+		return
+	}
 	heapEntries := make(map[string]toc.HeapEntry)
-	for fqn, entry := range heapTables {
-		if hash, ok := heapFileHashes[fqn]; ok {
-			entry.FileHashMD5 = hash
-			heapEntries[fqn] = entry
+	for oid, table := range heapTables {
+		if hash, ok := heapFileHashes[oid]; ok {
+			table.Entry.FileHashMD5 = hash
+			heapEntries[table.FQN] = table.Entry
 		}
 	}
 	globalTOC.IncrementalMetadata.Heap = heapEntries

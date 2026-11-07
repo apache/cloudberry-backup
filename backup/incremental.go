@@ -13,12 +13,21 @@ import (
 	"github.com/pkg/errors"
 )
 
-func FilterTablesForIncremental(lastBackupTOC, currentTOC *toc.TOC, tables []Table) []Table {
+func FilterTablesForIncremental(lastBackupTOC, currentTOC *toc.TOC, lastBackupRestorePlan []history.RestorePlanEntry, tables []Table) []Table {
+	// A skipped table's data is restored from the backup the previous restore
+	// plan points it to; a table in no entry has no data to restore from,
+	// e.g. it belonged to an extension, whose tables' data is not backed up.
+	restorableFQNs := make(map[string]bool)
+	for _, entry := range lastBackupRestorePlan {
+		for _, fqn := range entry.TableFQNs {
+			restorableFQNs[fqn] = true
+		}
+	}
 	var filteredTables []Table
 	for _, table := range tables {
 		currentAOEntry, isAOTable := currentTOC.IncrementalMetadata.AO[table.FQN()]
 		if !isAOTable {
-			if !heapTableUnchanged(lastBackupTOC, currentTOC, table.FQN()) {
+			if !restorableFQNs[table.FQN()] || !heapTableUnchanged(lastBackupTOC, currentTOC, table.FQN()) {
 				filteredTables = append(filteredTables, table)
 			}
 			continue
@@ -35,8 +44,8 @@ func FilterTablesForIncremental(lastBackupTOC, currentTOC *toc.TOC, tables []Tab
 
 // heapTableUnchanged reports whether a non-AO table can be skipped. That needs a
 // file hash in both backups (recorded only with --heap-file-hash) and matching
-// hashes, DDL timestamps and enum labels; anything else includes the table, as
-// before.
+// hashes, DDL timestamps and column hashes; anything else includes the table,
+// as before.
 func heapTableUnchanged(lastBackupTOC, currentTOC *toc.TOC, fqn string) bool {
 	currentEntry, ok := currentTOC.IncrementalMetadata.Heap[fqn]
 	if !ok || currentEntry.FileHashMD5 == "" {
@@ -48,7 +57,7 @@ func heapTableUnchanged(lastBackupTOC, currentTOC *toc.TOC, fqn string) bool {
 	}
 	return previousEntry.FileHashMD5 == currentEntry.FileHashMD5 &&
 		previousEntry.LastDDLTimestamp == currentEntry.LastDDLTimestamp &&
-		previousEntry.EnumLabelsMD5 == currentEntry.EnumLabelsMD5
+		previousEntry.ColumnsMD5 == currentEntry.ColumnsMD5
 }
 
 func GetTargetBackupTimestamp() string {

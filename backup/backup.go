@@ -172,7 +172,7 @@ func DoBackup() {
 
 			targetBackupTOC := toc.NewTOC(targetBackupFPInfo.GetTOCFilePath())
 			targetBackupRestorePlan = history.ReadConfigFile(targetBackupFPInfo.GetConfigFilePath()).RestorePlan
-			backupSetTables = FilterTablesForIncremental(targetBackupTOC, globalTOC, dataTables)
+			backupSetTables = FilterTablesForIncremental(targetBackupTOC, globalTOC, targetBackupRestorePlan, dataTables)
 		}
 
 		backupReport.RestorePlan = PopulateRestorePlan(backupSetTables, targetBackupRestorePlan, dataTables)
