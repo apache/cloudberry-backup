@@ -771,6 +771,23 @@ func backupIncrementalMetadata() {
 	globalTOC.IncrementalMetadata.AO = aoTableEntries
 	paxTableEntries := GetPAXIncrementalMetadata(connectionPool)
 	globalTOC.IncrementalMetadata.PAX = paxTableEntries
+
+	if heapFileHashes == nil {
+		return
+	}
+	heapTables := getHeapIncrementalEntries(connectionPool)
+	if heapTables == nil {
+		return
+	}
+	heapEntries := make(map[string]toc.HeapEntry)
+	for oid, table := range heapTables {
+		if hash, ok := heapFileHashes[oid]; ok {
+			table.Entry.FileHashMD5 = hash
+			heapEntries[table.FQN] = table.Entry
+		}
+	}
+	globalTOC.IncrementalMetadata.Heap = heapEntries
+	gplog.Verbose("Collected file hashes for %d of %d heap tables", len(heapEntries), len(heapTables))
 }
 
 func backupStorageServers(metadataFile *utils.FileWithByteCount) {
