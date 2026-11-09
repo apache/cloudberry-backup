@@ -272,7 +272,7 @@ jobs:
           } >> "${GITHUB_STEP_SUMMARY}"
 
       - name: Upload verified source release
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.validate.outputs.artifact_name }}
           retention-days: ${{ env.LOG_RETENTION_DAYS }}
@@ -424,7 +424,7 @@ jobs:
           } >> "${GITHUB_STEP_SUMMARY}"
 
       - name: Upload verified source release
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.validate.outputs.artifact_name }}
           retention-days: ${{ env.LOG_RETENTION_DAYS }}
@@ -481,7 +481,7 @@ jobs:
           "
 
       - name: Download verified cloudberry-backup source
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ${{ needs.verify-cloudberry-backup-source.outputs.artifact_name }}
           path: ${{ github.workspace }}/verified-source
@@ -579,7 +579,7 @@ jobs:
           } >> "${GITHUB_STEP_SUMMARY}"
 
       - name: Upload package artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: packages-${{ matrix.arch }}
           retention-days: ${{ env.LOG_RETENTION_DAYS }}
@@ -660,7 +660,7 @@ jobs:
           su - gpadmin -c "/tmp/init_system.sh"
 
       - name: Download verified Cloudberry source
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ${{ needs.verify-cloudberry-source.outputs.artifact_name }}
           path: ${{ github.workspace }}/verified-source
@@ -739,7 +739,7 @@ jobs:
       # ----------------------------------------------------------------
 
       - name: Download backup package
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: packages-${{ matrix.backup_arch }}
           path: ${{ github.workspace }}/package-artifacts
