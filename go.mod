@@ -12,7 +12,7 @@ require (
 	github.com/inhies/go-bytesize v0.0.0-20220417184213-4913239db9cf
 	github.com/jackc/pgx/v5 v5.9.2
 	github.com/jmoiron/sqlx v1.3.5
-	github.com/klauspost/compress v1.18.0
+	github.com/klauspost/compress v1.18.7
 	github.com/lib/pq v1.10.7
 	github.com/mattn/go-sqlite3 v1.14.19
 	github.com/nightlyone/lockfile v1.0.0
