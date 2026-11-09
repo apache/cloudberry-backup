@@ -105,7 +105,7 @@ jobs:
           df -h /
 
       - name: Checkout Cloudberry Source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: ${{ env.CLOUDBERRY_REPO }}
           ref: ${{ matrix.cloudberry_ref }}
@@ -166,7 +166,7 @@ jobs:
           tar -C /usr/local -czf cloudberry-db.tgz cloudberry-db
 
       - name: Upload Cloudberry Installation
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: cloudberry-db-install-${{ matrix.cloudberry_ref }}
           path: cloudberry-db.tgz
@@ -174,7 +174,7 @@ jobs:
           retention-days: 7
 
       - name: Upload Cloudberry Source
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: cloudberry-source-${{ matrix.cloudberry_ref }}
           path: cloudberry-src.tgz
@@ -229,18 +229,18 @@ jobs:
           df -h /
 
       - name: Checkout Cloudberry-backup
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           path: ${{ env.CLOUDBERRY_BACKUP_DIR }}
 
       - name: Download Cloudberry Installation
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: cloudberry-db-install-${{ matrix.cloudberry_ref }}
 
       - name: Download Cloudberry Source
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: cloudberry-source-${{ matrix.cloudberry_ref }}
 
@@ -609,7 +609,7 @@ jobs:
 
       - name: Upload Test Logs (On Failure)
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: cloudberry-backup-logs-${{ matrix.cloudberry_ref }}-${{ matrix.test_target }}
           path: test-logs/${{ matrix.test_target }}
