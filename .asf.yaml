@@ -45,8 +45,14 @@ github:
     merge: false
     # enable rebase button:
     rebase: true
+  # Repository collaborators (triage access)
+  #
+  # Non-committer contributors listed here get triage permission, which
+  # lets GitHub Actions run automatically on their pull requests without
+  # waiting for a committer's manual approval.
   collaborators:
-    - woblerr
+    - talmacschen-arch
+    - liang8283
   protected_branches:
     main:
       required_status_checks:
