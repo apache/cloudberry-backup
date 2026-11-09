@@ -118,7 +118,7 @@ var _ = Describe("backup/incremental tests", func() {
 			tblPAXRewritten,
 		}
 
-		filteredTables := backup.FilterTablesForIncremental(&prevTOC, &currTOC, tables)
+		filteredTables := backup.FilterTablesForIncremental(&prevTOC, &currTOC, nil, tables)
 
 		It("Should include the heap table in the filtered list", func() {
 			Expect(filteredTables).To(ContainElement(tblHeap))
@@ -184,8 +184,86 @@ var _ = Describe("backup/incremental tests", func() {
 		tblPAX := backup.Table{Relation: backup.Relation{Schema: "public", Name: "pax_table"}}
 
 		It("Should include the PAX table", func() {
-			Expect(backup.FilterTablesForIncremental(&prevTOC, &currTOC, []backup.Table{tblPAX})).
+			Expect(backup.FilterTablesForIncremental(&prevTOC, &currTOC, nil, []backup.Table{tblPAX})).
 				To(ContainElement(tblPAX))
+		})
+	})
+
+	Describe("FilterTablesForIncremental with heap file hashes", func() {
+		heapEntry := toc.HeapEntry{FileHashMD5: "hash1", LastDDLTimestamp: "ddl1"}
+		prevTOC := toc.TOC{
+			IncrementalMetadata: toc.IncrementalEntries{
+				Heap: map[string]toc.HeapEntry{
+					"public.heap_unchanged":     heapEntry,
+					"public.heap_changed_hash":  heapEntry,
+					"public.heap_changed_ddl":   heapEntry,
+					"public.heap_changed_types": heapEntry,
+					"public.heap_no_curr_hash":  heapEntry,
+					"public.heap_empty_prev":    {LastDDLTimestamp: "ddl1"},
+					"public.heap_no_prev_data":  heapEntry,
+				},
+			},
+		}
+		currTOC := toc.TOC{
+			IncrementalMetadata: toc.IncrementalEntries{
+				Heap: map[string]toc.HeapEntry{
+					"public.heap_unchanged":     heapEntry,
+					"public.heap_changed_hash":  {FileHashMD5: "hash2", LastDDLTimestamp: "ddl1"},
+					"public.heap_changed_ddl":   {FileHashMD5: "hash1", LastDDLTimestamp: "ddl2"},
+					"public.heap_changed_types": {FileHashMD5: "hash1", LastDDLTimestamp: "ddl1", ColumnsMD5: "types2"},
+					"public.heap_no_prev":       heapEntry,
+					"public.heap_empty_prev":    heapEntry,
+					"public.heap_no_prev_data":  heapEntry,
+				},
+			},
+		}
+
+		tblUnchanged := backup.Table{Relation: backup.Relation{Schema: "public", Name: "heap_unchanged"}}
+		tblChangedHash := backup.Table{Relation: backup.Relation{Schema: "public", Name: "heap_changed_hash"}}
+		tblChangedDDL := backup.Table{Relation: backup.Relation{Schema: "public", Name: "heap_changed_ddl"}}
+		tblChangedTypes := backup.Table{Relation: backup.Relation{Schema: "public", Name: "heap_changed_types"}}
+		tblNoCurrHash := backup.Table{Relation: backup.Relation{Schema: "public", Name: "heap_no_curr_hash"}}
+		tblNoPrev := backup.Table{Relation: backup.Relation{Schema: "public", Name: "heap_no_prev"}}
+		tblEmptyPrev := backup.Table{Relation: backup.Relation{Schema: "public", Name: "heap_empty_prev"}}
+		tblNoPrevData := backup.Table{Relation: backup.Relation{Schema: "public", Name: "heap_no_prev_data"}}
+		tables := []backup.Table{tblUnchanged, tblChangedHash, tblChangedDDL, tblChangedTypes, tblNoCurrHash, tblNoPrev, tblEmptyPrev, tblNoPrevData}
+		prevRestorePlan := []history.RestorePlanEntry{
+			{Timestamp: "ts1", TableFQNs: []string{"public.heap_unchanged", "public.heap_changed_hash"}},
+			{Timestamp: "ts2", TableFQNs: []string{"public.heap_changed_ddl", "public.heap_changed_types",
+				"public.heap_no_curr_hash", "public.heap_no_prev", "public.heap_empty_prev"}},
+		}
+
+		filteredTables := backup.FilterTablesForIncremental(&prevTOC, &currTOC, prevRestorePlan, tables)
+
+		It("Should NOT include the heap table with unchanged hash and DDL timestamp", func() {
+			Expect(filteredTables).To(Not(ContainElement(tblUnchanged)))
+		})
+
+		It("Should include the heap table having a modified file hash", func() {
+			Expect(filteredTables).To(ContainElement(tblChangedHash))
+		})
+
+		It("Should include the heap table having a modified last DDL timestamp", func() {
+			Expect(filteredTables).To(ContainElement(tblChangedDDL))
+		})
+
+		It("Should include the heap table whose data is in no entry of the previous restore plan", func() {
+			Expect(filteredTables).To(ContainElement(tblNoPrevData))
+		})
+
+		It("Should include the heap table having modified columns", func() {
+			Expect(filteredTables).To(ContainElement(tblChangedTypes))
+		})
+
+		It("Should include heap tables missing a hash in either backup", func() {
+			Expect(filteredTables).To(ContainElement(tblNoCurrHash))
+			Expect(filteredTables).To(ContainElement(tblNoPrev))
+			Expect(filteredTables).To(ContainElement(tblEmptyPrev))
+		})
+
+		It("Should include every heap table when the previous backup has no heap hashes", func() {
+			filtered := backup.FilterTablesForIncremental(&toc.TOC{}, &currTOC, prevRestorePlan, tables)
+			Expect(filtered).To(Equal(tables))
 		})
 	})
 

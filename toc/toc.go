@@ -53,8 +53,9 @@ type SegmentDataEntry struct {
 }
 
 type IncrementalEntries struct {
-	AO  map[string]AOEntry
-	PAX map[string]PAXEntry
+	AO   map[string]AOEntry
+	PAX  map[string]PAXEntry
+	Heap map[string]HeapEntry `yaml:"heap,omitempty"`
 }
 
 type AOEntry struct {
@@ -104,6 +105,12 @@ type PAXEntry struct {
 	LastDDLTimestamp string
 	Marker           string
 	RelFileNode      int64
+}
+
+type HeapEntry struct {
+	FileHashMD5      string `yaml:"fileHashMD5,omitempty"`
+	LastDDLTimestamp string `yaml:"lastddltimestamp,omitempty"`
+	ColumnsMD5       string `yaml:"columnsmd5,omitempty"`
 }
 
 type UniqueID struct {

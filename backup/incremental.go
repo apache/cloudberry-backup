@@ -17,16 +17,27 @@ import (
  * Return the subset of tables whose data must be written to the current
  * incremental backup.  A table is skipped only when we can prove its data did
  * not change since the backup we are building on; any table we have no change
- * markers for (heap, external, or a storage format this version does not know
- * how to track) is always included.
+ * markers for (external, a storage format this version does not know how to
+ * track, or a heap table without file hashes) is always included.
  *
  * Each storage format is checked on three independent signals, and any one of
  * them differing re-reads the table.  They cover each other: the content
  * signal (AO modcount, PAX aux digest) misses pure DDL, the DDL timestamp
  * misses CLUSTER because pg_stat_last_operation does not record it, and the
  * storage identity misses nothing about a rewrite but says nothing about DML.
+ * Heap tables are checked as described in heapTableUnchanged.
  */
-func FilterTablesForIncremental(lastBackupTOC, currentTOC *toc.TOC, tables []Table) []Table {
+func FilterTablesForIncremental(lastBackupTOC, currentTOC *toc.TOC, lastBackupRestorePlan []history.RestorePlanEntry, tables []Table) []Table {
+	// A skipped heap table's data is restored from the backup the previous
+	// restore plan points it to; a table in no entry has no data to restore
+	// from, e.g. it belonged to an extension, whose tables' data is not
+	// backed up.
+	restorableFQNs := make(map[string]bool)
+	for _, entry := range lastBackupRestorePlan {
+		for _, fqn := range entry.TableFQNs {
+			restorableFQNs[fqn] = true
+		}
+	}
 	var filteredTables []Table
 	for _, table := range tables {
 		tableFQN := table.FQN()
@@ -51,10 +62,31 @@ func FilterTablesForIncremental(lastBackupTOC, currentTOC *toc.TOC, tables []Tab
 			continue
 		}
 
-		filteredTables = append(filteredTables, table)
+		if !restorableFQNs[tableFQN] || !heapTableUnchanged(lastBackupTOC, currentTOC, tableFQN) {
+			filteredTables = append(filteredTables, table)
+		}
 	}
 
 	return filteredTables
+}
+
+// heapTableUnchanged reports whether a table that is neither AO nor PAX can be
+// skipped. That needs a
+// file hash in both backups (recorded only with --heap-file-hash) and matching
+// hashes, DDL timestamps and column hashes; anything else includes the table,
+// as before.
+func heapTableUnchanged(lastBackupTOC, currentTOC *toc.TOC, fqn string) bool {
+	currentEntry, ok := currentTOC.IncrementalMetadata.Heap[fqn]
+	if !ok || currentEntry.FileHashMD5 == "" {
+		return false
+	}
+	previousEntry, ok := lastBackupTOC.IncrementalMetadata.Heap[fqn]
+	if !ok || previousEntry.FileHashMD5 == "" {
+		return false
+	}
+	return previousEntry.FileHashMD5 == currentEntry.FileHashMD5 &&
+		previousEntry.LastDDLTimestamp == currentEntry.LastDDLTimestamp &&
+		previousEntry.ColumnsMD5 == currentEntry.ColumnsMD5
 }
 
 func GetTargetBackupTimestamp() string {
