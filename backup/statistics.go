@@ -323,12 +323,12 @@ func realValues(reals pq.StringArray) string {
  * A given type is not guaranteed to have a corresponding array type, so we need
  * to use array_in() instead of casting to an array.
  * STATISTIC_KIND_NDV_BY_SEGMENTS (8) is a special case which stores an array of
- * int8 values rather than the column's native type.
+ * float8 values rather than the column's native type.
  */
 func AnyValues(any pq.StringArray, typ string, kind int) string {
 	if len(any) > 0 {
 		if kind == STATISTIC_KIND_NDV_BY_SEGMENTS {
-			return fmt.Sprintf(`array_in(%s, 'int8'::regtype::oid, -1)`, SliceToPostgresArray(any))
+			return fmt.Sprintf(`array_in(%s, 'float8'::regtype::oid, -1)`, SliceToPostgresArray(any))
 		}
 		return fmt.Sprintf(`array_in(%s, '%s'::regtype::oid, -1)`, SliceToPostgresArray(any), typ)
 	}

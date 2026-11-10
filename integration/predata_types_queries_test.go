@@ -370,14 +370,14 @@ var _ = Describe("backup integration tests", func() {
 		})
 		It("returns a slice of with specific collation", func() {
 			testutils.SkipIfBefore7(connectionPool)
-			testhelper.AssertQueryRuns(connectionPool, `CREATE COLLATION public.some_coll (provider = 'libc', locale = 'de_DE');`)
+			testhelper.AssertQueryRuns(connectionPool, `CREATE COLLATION public.some_coll (provider = 'libc', locale = 'C');`)
 			defer testhelper.AssertQueryRuns(connectionPool, "DROP COLLATION public.some_coll")
 
 			results := backup.GetCollations(connectionPool)
 
 			Expect(results).To(HaveLen(1))
 
-			collationDef := backup.Collation{Oid: 0, Schema: "public", Name: "some_coll", Collate: "de_DE", Ctype: "de_DE", Provider: "c", IsDeterministic: "true"}
+			collationDef := backup.Collation{Oid: 0, Schema: "public", Name: "some_coll", Collate: "C", Ctype: "C", Provider: "c", IsDeterministic: "true"}
 			structmatcher.ExpectStructsToMatchExcluding(&collationDef, &results[0], "Oid")
 
 		})
