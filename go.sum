@@ -5,8 +5,8 @@ github.com/alecthomas/kingpin/v2 v2.4.0 h1:f48lwail6p8zpO1bC4TxtqACaGqHYA22qkHjH
 github.com/alecthomas/kingpin/v2 v2.4.0/go.mod h1:0gyi0zQnjuFk8xrkNKamJoyUo382HRL7ATRpFZCw6tE=
 github.com/alecthomas/units v0.0.0-20240927000941-0f3dac36c52b h1:mimo19zliBX/vSQ6PWWSL9lK8qwHozUj03+zLoEB8O0=
 github.com/alecthomas/units v0.0.0-20240927000941-0f3dac36c52b/go.mod h1:fvzegU4vN3H1qMT+8wDmzjAcDONcgo2/SZ/TyfdUOFs=
-github.com/apache/cloudberry-go-libs v1.0.12-0.20260624080114-3de23e29a87a h1:xDVS0fObqCupd0eBTdk1OQC5vQJ9YD7KCyAsnP8zZXw=
-github.com/apache/cloudberry-go-libs v1.0.12-0.20260624080114-3de23e29a87a/go.mod h1:yaH60R8eMGETbTAAxrcBVXJ0T7WwWXPddm2LWLKB7kI=
+github.com/apache/cloudberry-go-libs v1.0.12-0.20260915140105-0e762c961c5e h1:whGrrxGScrNdPtqD5AOxTp4psjFjCBeEqxQmyJGHtN8=
+github.com/apache/cloudberry-go-libs v1.0.12-0.20260915140105-0e762c961c5e/go.mod h1:S9wcw2zjwgwMNr8rAVnxs/qgHe0QDK5HVb88rSwuDOQ=
 github.com/aws/aws-sdk-go v1.44.257 h1:HwelXYZZ8c34uFFhgVw3ybu2gB5fkk8KLj2idTvzZb8=
 github.com/aws/aws-sdk-go v1.44.257/go.mod h1:aVsgQcEevwlmQ7qHE9I3h+dtQgpqhFB+i8Phjh7fkwI=
 github.com/beorn7/perks v1.0.1 h1:VlbKKnNfV8bJzeqoa4cOKqO6bYr3WgKZxO8Z16+hsOM=
