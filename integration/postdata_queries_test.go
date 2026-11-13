@@ -386,6 +386,23 @@ PARTITION BY RANGE (date)
 
 			Expect(results).To(BeEmpty())
 		})
+		It("does not include IVM maintenance triggers of an incremental materialized view", func() {
+			if !connectionPool.Version.IsCBDB() {
+				Skip("Incremental materialized views are only available on Cloudberry")
+			}
+			testhelper.AssertQueryRuns(connectionPool, "CREATE TABLE public.ivm_base(id int, val int) DISTRIBUTED BY (id)")
+			defer testhelper.AssertQueryRuns(connectionPool, "DROP TABLE public.ivm_base CASCADE")
+			// A populated incremental matview installs IVM_trigger_* maintenance
+			// triggers on the base table (calling pg_catalog.ivm_immediate_*). They
+			// are re-created automatically when the matview is repopulated after
+			// restore, so GetTriggers must not back them up.
+			testhelper.AssertQueryRuns(connectionPool, "CREATE INCREMENTAL MATERIALIZED VIEW public.ivm_mv AS SELECT id, val FROM public.ivm_base DISTRIBUTED BY (id)")
+			defer testhelper.AssertQueryRuns(connectionPool, "DROP MATERIALIZED VIEW public.ivm_mv")
+
+			results := backup.GetTriggers(connectionPool)
+
+			Expect(results).To(BeEmpty())
+		})
 		It("returns a slice of triggers for a specific schema", func() {
 			triggerString1 := `CREATE TRIGGER sync_trigger_table1 AFTER INSERT OR DELETE OR UPDATE ON public.trigger_table1 FOR EACH STATEMENT EXECUTE PROCEDURE "RI_FKey_check_ins"()`
 			triggerString2 := `CREATE TRIGGER sync_trigger_table1 AFTER INSERT OR DELETE OR UPDATE ON testschema.trigger_table1 FOR EACH STATEMENT EXECUTE PROCEDURE "RI_FKey_check_ins"()`
