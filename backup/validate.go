@@ -168,6 +168,9 @@ func validateFlagCombinations(flags *pflag.FlagSet) {
 }
 
 func validateFlagValues() {
+	if MustGetFlagInt(options.SNAPSHOT_ATTEMPTS) < 1 {
+		gplog.Fatal(errors.New("--snapshot-attempts must be an integer of at least 1"), "")
+	}
 	timeoutSeconds := MustGetFlagInt(options.HISTORY_SYNC_STANDBY_TIMEOUT)
 	if timeoutSeconds <= 0 || timeoutSeconds > maxHistorySyncStandbyTimeoutSeconds {
 		gplog.Fatal(errors.Errorf("--%s must be between 1 and %d seconds", options.HISTORY_SYNC_STANDBY_TIMEOUT, maxHistorySyncStandbyTimeoutSeconds), "")

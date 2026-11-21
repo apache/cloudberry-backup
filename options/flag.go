@@ -57,6 +57,7 @@ const (
 	NO_INHERITS                          = "no-inherits"
 	REPORT_DIR                           = "report-dir"
 	HEAP_FILE_HASH                       = "heap-file-hash"
+	SNAPSHOT_ATTEMPTS                    = "snapshot-attempts"
 	DEFAULT_HISTORY_SYNC_STANDBY_TIMEOUT = 300
 )
 
@@ -95,6 +96,7 @@ func SetBackupFlagDefaults(flagSet *pflag.FlagSet) {
 	flagSet.Bool(WITH_STATS, false, "Back up query plan statistics")
 	flagSet.Bool(WITHOUT_GLOBALS, false, "Skip backup of global metadata")
 	flagSet.Bool(NO_INHERITS, false, "For a filtered backup, don't back up all tables that inherit included tables")
+	flagSet.Int(SNAPSHOT_ATTEMPTS, 3, "Maximum Cloudberry snapshot preparation attempts, including the first; 1 disables retries. Fail the backup if table storage or identity still conflicts after the last attempt")
 	flagSet.Bool(HEAP_FILE_HASH, false, "Skip unchanged heap tables in incremental backups by hashing their data files. Issues a cluster-wide CHECKPOINT before the backup starts")
 }
 

@@ -49,6 +49,7 @@ var (
 	quotedRoleNames      map[string]string
 	backupSnapshot       string
 	heapFileHashes       map[uint32]string
+	backupOptions        *options.Options
 	/*
 	 * Used for synchronizing DoCleanup.  In DoInit() we increment the group
 	 * and then wait for at least one DoCleanup to finish, either in DoTeardown

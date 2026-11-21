@@ -45,7 +45,6 @@ func SetLoggerVerbosity() {
 
 func initializeConnectionPool(timestamp string) {
 	var numConns int
-	var err error
 	connectionPool = dbconn.NewDBConnFromEnvironment(MustGetFlagString(options.DBNAME))
 	/*
 	 * The additional connection is used to hold the locks and process any deferred
@@ -68,20 +67,36 @@ func initializeConnectionPool(timestamp string) {
 
 	utils.ValidateGPDBVersionCompatibility(connectionPool)
 	InitializeMetadataParams(connectionPool)
-	// Begin transactions, initialize the synchronized snapshot, and set session GUCs
+	gplog.FatalOnError(initializeBackupTransactions(timestamp))
+}
+
+// On Cloudberry, import the snapshot before session queries establish a worker snapshot.
+// application_name is set outside the transaction so rollback preserves cleanup's identity.
+func initializeBackupTransactions(timestamp string) error {
+	backupSnapshot = ""
 	for connNum := 0; connNum < connectionPool.NumConns; connNum++ {
-		connectionPool.MustExec(fmt.Sprintf("SET application_name TO 'gpbackup_%s'", timestamp), connNum)
-		// Begins transaction in repeatable read
-		connectionPool.MustBegin(connNum)
-		if ((connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast(SNAPSHOT_GPDB_MIN_VERSION)) || connectionPool.Version.IsCBDB()) && backupSnapshot == "" {
-			backupSnapshot, err = GetSynchronizedSnapshot(connectionPool)
-			if err != nil {
-				gplog.FatalOnError(err)
+		if _, err := connectionPool.Exec(fmt.Sprintf("SET application_name TO 'gpbackup_%s'", timestamp), connNum); err != nil {
+			return err
+		}
+		if err := connectionPool.Begin(connNum); err != nil {
+			return err
+		}
+		if connectionPool.Version.IsCBDB() || (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast(SNAPSHOT_GPDB_MIN_VERSION)) {
+			if connNum == 0 {
+				var err error
+				backupSnapshot, err = GetSynchronizedSnapshot(connectionPool)
+				if err != nil {
+					return err
+				}
+			} else if connectionPool.Version.IsCBDB() {
+				if err := SetSynchronizedSnapshot(connectionPool, connNum, backupSnapshot); err != nil {
+					return err
+				}
 			}
 		}
-
 		SetSessionGUCs(connNum)
 	}
+	return nil
 }
 
 func SetSessionGUCs(connNum int) {
@@ -203,11 +218,9 @@ func createBackupDirectoriesOnAllHosts() {
  * Metadata retrieval wrapper functions
  */
 
-func RetrieveAndProcessTables() ([]Table, []Table) {
-	includedRelations := GetIncludedUserTableRelations(connectionPool, IncludedRelationFqns)
-	tableRelations := ConvertRelationsOptionsToBackup(includedRelations)
-
-	LockTables(connectionPool, tableRelations)
+func RetrieveAndProcessTables(opts *options.Options) ([]Table, []Table) {
+	tableRelations, err := prepareSnapshotTables(opts)
+	gplog.FatalOnError(err)
 
 	if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("6")) || connectionPool.Version.IsCBDB() {
 		tableRelations = append(tableRelations, GetForeignTableRelations(connectionPool)...)
