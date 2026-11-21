@@ -65,6 +65,7 @@ func DoSetup() {
 	gplog.Info("Starting backup of database %s", MustGetFlagString(options.DBNAME))
 	opts, err := options.NewOptions(cmdFlags)
 	gplog.FatalOnError(err)
+	backupOptions = opts
 
 	ValidateAndProcessFilterLists(opts)
 	includeOids := GetOidsFromRelationList(IncludedRelationFqns)
@@ -143,7 +144,7 @@ func DoBackup() {
 	}
 
 	gplog.Info("Gathering table state information")
-	metadataTables, dataTables := RetrieveAndProcessTables()
+	metadataTables, dataTables := RetrieveAndProcessTables(backupOptions)
 	dataTables, numExtOrForeignTables := GetBackupDataSet(dataTables)
 	if len(dataTables) == 0 && !backupReport.MetadataOnly {
 		gplog.Warn("No tables in backup set contain data. Performing metadata-only backup instead.")

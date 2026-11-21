@@ -550,11 +550,12 @@ func GetAllViews(connectionPool *dbconn.DBConn) []View {
 // dumping part but it also makes the main worker thread (worker 0) the
 // most resilient for the later data dumping logic. Locks will still be
 // taken for --data-only calls.
-func LockTables(connectionPool *dbconn.DBConn, tables []Relation) {
+func LockTables(connectionPool *dbconn.DBConn, tables []Relation) error {
 	gplog.Info("Acquiring ACCESS SHARE locks on tables")
 
 	progressBar := utils.NewProgressBar(len(tables), "Locks acquired: ", utils.PB_VERBOSE)
 	progressBar.Start()
+	defer progressBar.Finish()
 	var lockMode string
 	const batchSize = 100
 	lastBatchSize := len(tables) % batchSize
@@ -583,7 +584,7 @@ func LockTables(connectionPool *dbconn.DBConn, tables []Relation) {
 				gplog.Warn("Interrupt received while acquiring ACCESS SHARE locks on tables")
 				select {} // wait for cleanup thread to exit gpbackup
 			} else {
-				gplog.FatalOnError(err)
+				return fmt.Errorf("locking tables %s: %w", currentBatch, err)
 			}
 		}
 		if i == len(tableBatches)-1 && lastBatchSize > 0 {
@@ -592,7 +593,7 @@ func LockTables(connectionPool *dbconn.DBConn, tables []Relation) {
 		progressBar.Add(currentBatchSize)
 	}
 
-	progressBar.Finish()
+	return nil
 }
 
 // GenerateTableBatches batches tables to reduce network congestion and
