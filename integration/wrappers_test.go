@@ -35,7 +35,7 @@ var _ = Describe("Wrappers Integration", func() {
 			connectionPool.MustBegin(0)
 			defer connectionPool.MustCommit(0)
 
-			_, dataTables := backup.RetrieveAndProcessTables(subject)
+			_, dataTables := backup.RetrieveAndProcessTables()
 			Expect(len(dataTables)).To(Equal(2))
 			Expect(dataTables[0].Name).To(Equal("foo"))
 			Expect(dataTables[1].Name).To(Equal(`"BAR"`))

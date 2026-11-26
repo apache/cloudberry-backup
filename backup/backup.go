@@ -49,27 +49,17 @@ func DoSetup() {
 	utils.CheckGpexpandRunning(utils.BackupPreventedByGpexpandMessage)
 	timestamp := history.CurrentTimestamp()
 	createBackupLockFile(timestamp)
-	// Heap file hashes must be read before initializeConnectionPool takes the
-	// backup snapshot, and verified after it; see CollectHeapFileHashes.
+	// Collect heap hashes before the snapshot and verify them after it.
 	var hashedHeapTables []heapTable
 	if MustGetFlagBool(options.HEAP_FILE_HASH) && collectsIncrementalMetadata() {
 		gplog.Info("Collecting heap table file hashes")
 		hashedHeapTables, heapFileHashes = CollectHeapFileHashes(MustGetFlagString(options.DBNAME))
 	}
 	initializeConnectionPool(timestamp)
-	if heapFileHashes != nil {
-		heapFileHashes = VerifyHeapFileHashes(MustGetFlagString(options.DBNAME), hashedHeapTables, heapFileHashes)
-	}
 	gplog.Info("Apache Cloudberry Version = %s", connectionPool.Version.VersionString)
 
 	gplog.Info("Starting backup of database %s", MustGetFlagString(options.DBNAME))
 	opts, err := options.NewOptions(cmdFlags)
-	gplog.FatalOnError(err)
-	backupOptions = opts
-
-	ValidateAndProcessFilterLists(opts)
-	includeOids := GetOidsFromRelationList(IncludedRelationFqns)
-	err = ExpandIncludesForPartitions(connectionPool, opts, includeOids, cmdFlags)
 	gplog.FatalOnError(err)
 
 	clusterConfigConn := dbconn.NewDBConnFromEnvironment(MustGetFlagString(options.DBNAME))
@@ -93,6 +83,17 @@ func DoSetup() {
 	globalTOC = &toc.TOC{}
 	globalTOC.InitializeMetadataEntryMap()
 	utils.InitializePipeThroughParameters(!MustGetFlagBool(options.NO_COMPRESSION), MustGetFlagString(options.COMPRESSION_TYPE), MustGetFlagInt(options.COMPRESSION_LEVEL))
+	// Signal cleanup needs globalFPInfo.Timestamp to cancel blocked sessions.
+	if connectionPool.Version.IsCBDB() {
+		gplog.FatalOnError(PrepareBackupSnapshot(opts))
+	} else {
+		ValidateAndProcessFilterLists(opts)
+		includeOids := GetOidsFromRelationList(IncludedRelationFqns)
+		gplog.FatalOnError(ExpandIncludesForPartitions(connectionPool, opts, includeOids, cmdFlags))
+	}
+	if heapFileHashes != nil {
+		heapFileHashes = VerifyHeapFileHashes(MustGetFlagString(options.DBNAME), hashedHeapTables, heapFileHashes)
+	}
 	getQuotedRoleNames(connectionPool)
 
 	pluginConfigFlag := MustGetFlagString(options.PLUGIN_CONFIG)
@@ -144,7 +145,7 @@ func DoBackup() {
 	}
 
 	gplog.Info("Gathering table state information")
-	metadataTables, dataTables := RetrieveAndProcessTables(backupOptions)
+	metadataTables, dataTables := RetrieveAndProcessTables()
 	dataTables, numExtOrForeignTables := GetBackupDataSet(dataTables)
 	if len(dataTables) == 0 && !backupReport.MetadataOnly {
 		gplog.Warn("No tables in backup set contain data. Performing metadata-only backup instead.")
@@ -524,7 +525,8 @@ func DoCleanup(backupFailed bool) {
 	// panics, there should be no way for gpbackup to exit that leaves the entry in the initial status.
 
 	historyUpdated := false
-	if !MustGetFlagBool(options.NO_HISTORY) {
+	// Cancellation during lock acquisition can precede report creation.
+	if backupReport != nil && !MustGetFlagBool(options.NO_HISTORY) {
 		var statusString string
 		if backupFailed {
 			statusString = history.BackupStatusFailed

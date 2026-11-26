@@ -23,14 +23,18 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/apache/cloudberry-backup/testutils"
+	"github.com/apache/cloudberry-backup/toc"
+	"github.com/apache/cloudberry-go-libs/cluster"
 	"github.com/apache/cloudberry-go-libs/dbconn"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	. "github.com/onsi/gomega/gexec"
+	"gopkg.in/yaml.v2"
 )
 
 // Wait for this backup's lock request, never a fixed sleep or another client's lock.
@@ -42,7 +46,7 @@ func waitForSnapshotBackupLock(relation string) {
 }
 
 func startSnapshotBackup(args ...string) *Session {
-	args = append([]string{"--dbname", "testdb", "--backup-dir", backupDir, "--verbose", "--no-history-sync-standby"}, args...)
+	args = append([]string{"--dbname", "testdb", "--backup-dir", backupDir, "--verbose", "--no-history-sync-standby", "--snapshot-attempts", "1"}, args...)
 	session, err := Start(exec.Command(gpbackupPath, args...), GinkgoWriter, GinkgoWriter)
 	Expect(err).NotTo(HaveOccurred())
 	DeferCleanup(func() {
@@ -69,10 +73,10 @@ func waitForSnapshotBackupSessionsToClose() {
 	}, 10*time.Second, 100*time.Millisecond).Should(BeZero())
 }
 
-var _ = Describe("snapshot lock retry", func() {
+var _ = Describe("snapshot lock preparation", func() {
 	BeforeEach(func() {
 		if useOldBackupVersion || !backupConn.Version.IsCBDB() {
-			Skip("snapshot retries require Cloudberry and current gpbackup")
+			Skip("snapshot preparation requires Cloudberry and current gpbackup")
 		}
 		end_to_end_setup()
 		backupConn.MustExec("CREATE SCHEMA snapshot_retry")
@@ -116,7 +120,7 @@ var _ = Describe("snapshot lock retry", func() {
 	}
 	restore := func(session *Session) {
 		Expect(session.ExitCode()).To(Equal(0))
-		Expect(string(session.Out.Contents())).To(ContainSubstring("Starting snapshot attempt 2 of 3"))
+		Expect(string(session.Out.Contents())).NotTo(ContainSubstring("Starting snapshot attempt"))
 		ts := getBackupTimestamp(string(session.Out.Contents()))
 		gprestore(gprestorePath, restoreHelperPath, ts, "--backup-dir", backupDir, "--redirect-db", "restoredb")
 		Expect(snapshotRetryRows(backupConn)).To(Equal([]int{4, 5, 6}))
@@ -139,7 +143,7 @@ var _ = Describe("snapshot lock retry", func() {
 			})
 		}
 	}
-	It("retries with single data file and a table filter file", func() {
+	It("restores with single data file and a table filter file", func() {
 		createTable("heap", true)
 		file, err := os.CreateTemp("", "snapshot-include")
 		Expect(err).NotTo(HaveOccurred())
@@ -150,14 +154,7 @@ var _ = Describe("snapshot lock retry", func() {
 		restoreConn.MustExec("CREATE SCHEMA snapshot_retry")
 		restore(truncateDuringBackup(true, "--include-table-file", file.Name(), "--single-data-file", "--leaf-partition-data"))
 	})
-	It("fails the entire backup when only one attempt is allowed", func() {
-		createTable("heap", false)
-		session := truncateDuringBackup(false, "--include-schema", "snapshot_retry", "--snapshot-attempts", "1")
-		Expect(session.ExitCode()).NotTo(Equal(0))
-		Expect(string(session.Out.Contents())).To(ContainSubstring("after 1 attempt(s): snapshot_retry.t"))
-		Expect(string(session.Out.Contents())).NotTo(ContainSubstring("Backup completed successfully"))
-	})
-	It("fails after two consecutive storage conflicts", func() {
+	It("does not deadlock when another exclusive lock queues behind the backup", func() {
 		createTable("heap", false)
 		first := testutils.SetupTestDbConn("testdb")
 		defer first.Close()
@@ -168,7 +165,7 @@ var _ = Describe("snapshot lock retry", func() {
 			}
 		}()
 		first.MustExec("TRUNCATE snapshot_retry.t; INSERT INTO snapshot_retry.t VALUES(4),(5),(6)")
-		session := startSnapshotBackup("--include-schema", "snapshot_retry", "--snapshot-attempts", "2")
+		session := startSnapshotBackup("--include-schema", "snapshot_retry", "--jobs", "2")
 		waitForSnapshotBackupLock("snapshot_retry.t")
 		second := testutils.SetupTestDbConn("testdb")
 		defer second.Close()
@@ -199,40 +196,102 @@ var _ = Describe("snapshot lock retry", func() {
 			return count, err
 		}, 30*time.Second, 100*time.Millisecond).Should(BeNumerically(">", 0))
 		first.MustCommit()
+		Eventually(session, 90*time.Second).Should(Exit(0))
 		Eventually(ready, 30*time.Second).Should(Receive(BeNil()))
-		waitForSnapshotBackupLock("snapshot_retry.t")
 		second.MustCommit()
-		Eventually(session, 90*time.Second).Should(Exit())
-		Expect(session.ExitCode()).NotTo(Equal(0))
-		Expect(string(session.Out.Contents())).To(ContainSubstring("after 2 attempt(s): snapshot_retry.t"))
-		Expect(string(session.Out.Contents())).NotTo(ContainSubstring("Backup completed successfully"))
+		Expect(string(session.Out.Contents())).NotTo(ContainSubstring("Starting snapshot attempt"))
+		ts := getBackupTimestamp(string(session.Out.Contents()))
+		gprestore(gprestorePath, restoreHelperPath, ts, "--backup-dir", backupDir, "--redirect-db", "restoredb")
+		Expect(snapshotRetryRows(restoreConn)).To(Equal([]int{4, 5, 6}))
+		Expect(snapshotRetryRows(backupConn)).To(Equal([]int{7, 8, 9}))
 		waitForSnapshotBackupSessionsToClose()
 	})
 
-	It("restores full then incremental after a retry with heap file hashes", func() {
+	It("restores an incremental after TRUNCATE and retains hashes for unchanged heap tables", func() {
 		createTable("heap", false)
+		backupConn.MustExec("CREATE TABLE snapshot_retry.unchanged(id int) DISTRIBUTED BY(id); INSERT INTO snapshot_retry.unchanged VALUES(42)")
+		var count int
+		Expect(backupConn.Get(&count, "SELECT count(*) FROM snapshot_retry.unchanged")).To(Succeed())
 		full := gpbackup(gpbackupPath, backupHelperPath, "--backup-dir", backupDir, "--include-schema", "snapshot_retry", "--leaf-partition-data", "--heap-file-hash")
 		fullTS := getBackupTimestamp(string(full))
 		session := truncateDuringBackup(false, "--include-schema", "snapshot_retry", "--leaf-partition-data", "--heap-file-hash", "--incremental", "--from-timestamp", fullTS)
 		Expect(session.ExitCode()).To(Equal(0))
-		Expect(string(session.Out.Contents())).To(ContainSubstring("Snapshot retry disables heap file hashes"))
+		Expect(string(session.Out.Contents())).NotTo(ContainSubstring("Starting snapshot attempt"))
+		var currentTOC toc.TOC
 		ts := getBackupTimestamp(string(session.Out.Contents()))
+		Expect(yaml.Unmarshal(getMetdataFileContents(backupDir, ts, "toc.yaml"), &currentTOC)).To(Succeed())
+		Expect(currentTOC.IncrementalMetadata.Heap["snapshot_retry.unchanged"].FileHashMD5).NotTo(BeEmpty())
 		gprestore(gprestorePath, restoreHelperPath, ts, "--backup-dir", backupDir, "--redirect-db", "restoredb")
 		Expect(snapshotRetryRows(restoreConn)).To(Equal([]int{4, 5, 6}))
+		next := gpbackup(gpbackupPath, backupHelperPath, "--backup-dir", backupDir, "--include-schema", "snapshot_retry", "--leaf-partition-data", "--heap-file-hash", "--incremental", "--from-timestamp", ts)
+		nextTS := getBackupTimestamp(string(next))
+		var nextTOC toc.TOC
+		Expect(yaml.Unmarshal(getMetdataFileContents(backupDir, nextTS, "toc.yaml"), &nextTOC)).To(Succeed())
+		Expect(nextTOC.IncrementalMetadata.Heap["snapshot_retry.unchanged"].FileHashMD5).NotTo(BeEmpty())
+		for _, entry := range nextTOC.DataEntries {
+			Expect(entry.Schema + "." + entry.Name).NotTo(Equal("snapshot_retry.unchanged"))
+		}
 	})
-	It("cancels blocked locks and leaves no backup sessions after interruption", func() {
+	DescribeTable("accepts a safe heap rewrite before the snapshot without retrying", func(command string) {
+		createTable("heap", false)
+		backupConn.MustExec("CREATE TABLE snapshot_retry.rewrite(id int) DISTRIBUTED BY(id); INSERT INTO snapshot_retry.rewrite VALUES(41),(42); CREATE INDEX snapshot_rewrite_idx ON snapshot_retry.rewrite(id)")
+		if command == "ALTER TABLE snapshot_retry.rewrite SET TABLESPACE snapshot_rewrite_ts" {
+			output := backupCluster.GenerateAndExecuteCommand("Creating snapshot test tablespace directories", cluster.ON_HOSTS|cluster.INCLUDE_COORDINATOR, func(host string) string { return "mkdir -p /tmp/snapshot_rewrite_ts" })
+			Expect(output.NumErrors).To(BeZero())
+			backupConn.MustExec("CREATE TABLESPACE snapshot_rewrite_ts LOCATION '/tmp/snapshot_rewrite_ts'")
+			DeferCleanup(func() {
+				backupConn.MustExec("DROP TABLESPACE snapshot_rewrite_ts")
+				output := backupCluster.GenerateAndExecuteCommand("Removing snapshot test tablespace directories", cluster.ON_HOSTS|cluster.INCLUDE_COORDINATOR, func(host string) string { return "rmdir /tmp/snapshot_rewrite_ts" })
+				Expect(output.NumErrors).To(BeZero())
+			})
+		}
+		var before, after uint32
+		Expect(backupConn.Get(&before, "SELECT relfilenode FROM pg_class WHERE oid='snapshot_retry.rewrite'::regclass")).To(Succeed())
+		gate := testutils.SetupTestDbConn("testdb")
+		defer gate.Close()
+		gate.MustBegin()
+		defer func() {
+			if gate.Tx[0] != nil {
+				gate.MustRollback()
+			}
+		}()
+		gate.MustExec("LOCK TABLE snapshot_retry.t IN ACCESS EXCLUSIVE MODE")
+		session := startSnapshotBackup("--include-schema", "snapshot_retry")
+		waitForSnapshotBackupLock("snapshot_retry.t")
+		backupConn.MustExec(command)
+		Expect(backupConn.Get(&after, "SELECT relfilenode FROM pg_class WHERE oid='snapshot_retry.rewrite'::regclass")).To(Succeed())
+		Expect(after).NotTo(Equal(before))
+		gate.MustCommit()
+		Eventually(session, 90*time.Second).Should(Exit(0))
+		Expect(string(session.Out.Contents())).NotTo(ContainSubstring("Starting snapshot attempt"))
+		ts := getBackupTimestamp(string(session.Out.Contents()))
+		gprestore(gprestorePath, restoreHelperPath, ts, "--backup-dir", backupDir, "--redirect-db", "restoredb")
+		var rows []int
+		Expect(restoreConn.Select(&rows, "SELECT id FROM snapshot_retry.rewrite ORDER BY id")).To(Succeed())
+		Expect(rows).To(Equal([]int{41, 42}))
+	}, Entry("VACUUM FULL", "VACUUM FULL snapshot_retry.rewrite"),
+		Entry("CLUSTER", "CLUSTER snapshot_retry.rewrite USING snapshot_rewrite_idx"),
+		Entry("SET TABLESPACE", "ALTER TABLE snapshot_retry.rewrite SET TABLESPACE snapshot_rewrite_ts"))
+
+	DescribeTable("cancels blocked locks and completes cleanup after interruption", func(args []string) {
 		createTable("heap", false)
 		writer := testutils.SetupTestDbConn("testdb")
 		defer writer.Close()
 		writer.MustBegin()
 		defer writer.MustRollback()
 		writer.MustExec("TRUNCATE snapshot_retry.t")
-		session := startSnapshotBackup("--include-schema", "snapshot_retry")
+		session := startSnapshotBackup(append([]string{"--include-schema", "snapshot_retry"}, args...)...)
 		waitForSnapshotBackupLock("snapshot_retry.t")
+		var application string
+		Expect(backupConn.Get(&application, "SELECT application_name FROM pg_stat_activity WHERE datname=current_database() AND application_name LIKE 'gpbackup_%' AND query LIKE 'LOCK TABLE%'")).To(Succeed())
 		session.Signal(syscall.SIGINT)
 		Eventually(session, 30*time.Second).Should(Exit())
 		Expect(session.ExitCode()).NotTo(Equal(0))
 		Expect(string(session.Out.Contents())).NotTo(ContainSubstring("Backup completed successfully"))
+		Expect(string(session.Out.Contents())).NotTo(ContainSubstring("Encountered error during cleanup"))
+		Expect(string(session.Out.Contents())).To(ContainSubstring("Cleanup complete"))
+		_, err := os.Stat("/tmp/" + strings.TrimPrefix(application, "gpbackup_") + ".lck")
+		Expect(os.IsNotExist(err)).To(BeTrue())
 		waitForSnapshotBackupSessionsToClose()
-	})
+	}, Entry("with history", []string{}), Entry("with single data file", []string{"--single-data-file"}), Entry("without history", []string{"--no-history"}))
 })

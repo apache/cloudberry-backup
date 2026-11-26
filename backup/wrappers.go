@@ -70,26 +70,26 @@ func initializeConnectionPool(timestamp string) {
 	gplog.FatalOnError(initializeBackupTransactions(timestamp))
 }
 
-// On Cloudberry, import the snapshot before session queries establish a worker snapshot.
-// application_name is set outside the transaction so rollback preserves cleanup's identity.
+// Set application_name outside transactions so cleanup can find sessions after rollback.
 func initializeBackupTransactions(timestamp string) error {
 	backupSnapshot = ""
 	for connNum := 0; connNum < connectionPool.NumConns; connNum++ {
 		if _, err := connectionPool.Exec(fmt.Sprintf("SET application_name TO 'gpbackup_%s'", timestamp), connNum); err != nil {
 			return err
 		}
+		if connectionPool.Version.IsCBDB() {
+			// SetSessionGUCs runs a SELECT that would establish the snapshot.
+			SetSessionGUCs(connNum)
+			continue
+		}
 		if err := connectionPool.Begin(connNum); err != nil {
 			return err
 		}
-		if connectionPool.Version.IsCBDB() || (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast(SNAPSHOT_GPDB_MIN_VERSION)) {
+		if connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast(SNAPSHOT_GPDB_MIN_VERSION) {
 			if connNum == 0 {
 				var err error
 				backupSnapshot, err = GetSynchronizedSnapshot(connectionPool)
 				if err != nil {
-					return err
-				}
-			} else if connectionPool.Version.IsCBDB() {
-				if err := SetSynchronizedSnapshot(connectionPool, connNum, backupSnapshot); err != nil {
 					return err
 				}
 			}
@@ -218,9 +218,12 @@ func createBackupDirectoriesOnAllHosts() {
  * Metadata retrieval wrapper functions
  */
 
-func RetrieveAndProcessTables(opts *options.Options) ([]Table, []Table) {
-	tableRelations, err := prepareSnapshotTables(opts)
-	gplog.FatalOnError(err)
+func RetrieveAndProcessTables() ([]Table, []Table) {
+	tableRelations := ConvertRelationsOptionsToBackup(GetIncludedUserTableRelations(connectionPool, IncludedRelationFqns))
+	// PrepareBackupSnapshot already holds these locks on Cloudberry.
+	if !connectionPool.Version.IsCBDB() {
+		gplog.FatalOnError(LockTables(connectionPool, tableRelations))
+	}
 
 	if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("6")) || connectionPool.Version.IsCBDB() {
 		tableRelations = append(tableRelations, GetForeignTableRelations(connectionPool)...)
