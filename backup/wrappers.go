@@ -232,6 +232,9 @@ func RetrieveAndProcessTables() ([]Table, []Table) {
 	tables := ConstructDefinitionsForTables(connectionPool, tableRelations)
 
 	metadataTables, dataTables := SplitTablesByPartitionType(tables, IncludedRelationFqns)
+	if connectionPool.Version.IsCBDB() && !MustGetFlagBool(options.METADATA_ONLY) && !MustGetFlagBool(options.LEAF_PARTITION_DATA) {
+		gplog.FatalOnError(collectSnapshotPartitionLeaves(connectionPool, dataTables))
+	}
 	objectCounts["Tables"] = len(metadataTables)
 
 	return metadataTables, dataTables

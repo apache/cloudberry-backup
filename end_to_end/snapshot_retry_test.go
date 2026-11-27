@@ -158,7 +158,30 @@ var _ = Describe("snapshot lock preparation", func() {
 		restoreConn.MustExec("CREATE SCHEMA snapshot_retry")
 		restore(truncateDuringBackup(true, "--include-table-file", file.Name(), "--single-data-file", "--leaf-partition-data"))
 	})
-	DescribeTable("preserves the root copy when ATTACH starts after the backup snapshot", func(nested bool) {
+	It("backs up a partitioned root with SELECT and applies its row policy", func() {
+		createTable("heap", true)
+		backupConn.MustExec("CREATE ROLE snapshot_retry_reader")
+		DeferCleanup(func() {
+			restoreConn.MustExec("DROP OWNED BY snapshot_retry_reader")
+			backupConn.MustExec("DROP OWNED BY snapshot_retry_reader; DROP ROLE snapshot_retry_reader")
+		})
+		backupConn.MustExec(`GRANT USAGE ON SCHEMA snapshot_retry TO snapshot_retry_reader;
+			GRANT SELECT ON ALL TABLES IN SCHEMA snapshot_retry, pg_catalog TO snapshot_retry_reader;
+			GRANT pg_execute_server_program TO snapshot_retry_reader;
+			ALTER TABLE snapshot_retry.t ENABLE ROW LEVEL SECURITY;
+			CREATE POLICY root_read ON snapshot_retry.t FOR SELECT TO snapshot_retry_reader USING (id <> 2)`)
+		cmd := exec.Command(gpbackupPath, "--dbname", "testdb", "--include-table", "snapshot_retry.t", "--without-globals",
+			"--no-history", "--no-history-sync-standby", "--backup-dir", backupDir)
+		cmd.Env = append(os.Environ(), "PGOPTIONS="+strings.TrimSpace(os.Getenv("PGOPTIONS")+" -c role=snapshot_retry_reader"))
+		output, err := cmd.CombinedOutput()
+		Expect(err).NotTo(HaveOccurred(), "%s", output)
+
+		restoreConn.MustExec("CREATE SCHEMA snapshot_retry")
+		gprestore(gprestorePath, restoreHelperPath, getBackupTimestamp(string(output)), "--redirect-db", "restoredb", "--backup-dir", backupDir)
+		Expect(snapshotRetryRows(restoreConn)).To(Equal([]int{1, 3}))
+	})
+
+	DescribeTable("preserves the root copy when ATTACH starts after the backup snapshot", func(nested, empty bool) {
 		backupConn.MustExec("CREATE TABLE snapshot_retry.t(id int) DISTRIBUTED BY(id) PARTITION BY RANGE(id)")
 		parent := "snapshot_retry.t"
 		if nested {
@@ -166,10 +189,14 @@ var _ = Describe("snapshot lock preparation", func() {
 				FOR VALUES FROM (0) TO (100) PARTITION BY RANGE(id)`)
 			parent = "snapshot_retry.middle"
 		}
-		backupConn.MustExec(fmt.Sprintf(`CREATE TABLE snapshot_retry.leaf PARTITION OF %s FOR VALUES FROM (0) TO (10);
-			INSERT INTO snapshot_retry.t VALUES (1),(2),(3);
-			CREATE TABLE snapshot_retry.new_leaf(id int) DISTRIBUTED BY(id);
-			INSERT INTO snapshot_retry.new_leaf VALUES (11),(12),(13)`, parent))
+		var expectedRows []int
+		if !empty {
+			backupConn.MustExec(fmt.Sprintf(`CREATE TABLE snapshot_retry.leaf PARTITION OF %s FOR VALUES FROM (0) TO (10);
+				INSERT INTO snapshot_retry.t VALUES (1),(2),(3)`, parent))
+			expectedRows = []int{1, 2, 3}
+		}
+		backupConn.MustExec(`CREATE TABLE snapshot_retry.new_leaf(id int) DISTRIBUTED BY(id);
+			INSERT INTO snapshot_retry.new_leaf VALUES (11),(12),(13)`)
 
 		pluginPath := filepath.Join(backupDir, "snapshot-plugin.bash")
 		pluginConfig := filepath.Join(backupDir, "snapshot-plugin.yaml")
@@ -192,38 +219,19 @@ var _ = Describe("snapshot lock preparation", func() {
 
 		writer := testutils.SetupTestDbConn("testdb")
 		defer writer.Close()
-		writer.MustExec("SET statement_timeout = '60s'")
-		var pid int
-		Expect(writer.Get(&pid, "SELECT pg_backend_pid()")).To(Succeed())
-		session := startSnapshotBackup("--include-table", "snapshot_retry.t", "--plugin-config", pluginConfig)
+		writer.MustExec("SET lock_timeout = '5s'")
+		session := startSnapshotBackup("--include-table", "snapshot_retry.t", "--plugin-config", pluginConfig, "--jobs", "2")
 		defer func() { _ = os.WriteFile(release, nil, 0600) }()
 		Eventually(gate, 30*time.Second).Should(BeAnExistingFile())
-		attachDone := make(chan error, 1)
-		go func() {
-			_, err := writer.Exec(fmt.Sprintf("ALTER TABLE %s ATTACH PARTITION snapshot_retry.new_leaf FOR VALUES FROM (10) TO (20)", parent))
-			attachDone <- err
-		}()
-		Eventually(func() (bool, error) {
-			select {
-			case err := <-attachDone:
-				return false, StopTrying(fmt.Sprintf("ATTACH finished before backup released the parent lock: %v", err))
-			default:
-			}
-			var waiting bool
-			query := fmt.Sprintf(`SELECT EXISTS (SELECT 1 FROM pg_locks WHERE pid=%d
-				AND relation='%s'::regclass AND mode='ShareUpdateExclusiveLock' AND NOT granted)`, pid, parent)
-			err := backupConn.Get(&waiting, query)
-			return waiting, err
-		}, 10*time.Second, 50*time.Millisecond).Should(BeTrue())
+		writer.MustExec(fmt.Sprintf("ALTER TABLE %s ATTACH PARTITION snapshot_retry.new_leaf FOR VALUES FROM (10) TO (20)", parent))
 		Expect(os.WriteFile(release, nil, 0600)).To(Succeed())
 		Eventually(session, 90*time.Second).Should(Exit(0))
-		Eventually(attachDone, 30*time.Second).Should(Receive(BeNil()))
 
 		ts := getBackupTimestamp(string(session.Out.Contents()))
 		gprestore(gprestorePath, restoreHelperPath, ts, "--redirect-db", "restoredb", "--plugin-config", pluginConfig)
-		Expect(snapshotRetryRows(restoreConn)).To(Equal([]int{1, 2, 3}))
-		Expect(snapshotRetryRows(backupConn)).To(Equal([]int{1, 2, 3, 11, 12, 13}))
-	}, Entry("on the root", false), Entry("on a subparent", true))
+		Expect(snapshotRetryRows(restoreConn)).To(Equal(expectedRows))
+		Expect(snapshotRetryRows(backupConn)).To(Equal(append(expectedRows, 11, 12, 13)))
+	}, Entry("on the root", false, false), Entry("on a subparent", true, false), Entry("on an empty root", false, true))
 	It("does not deadlock when another exclusive lock queues behind the backup", func() {
 		createTable("heap", false)
 		first := testutils.SetupTestDbConn("testdb")

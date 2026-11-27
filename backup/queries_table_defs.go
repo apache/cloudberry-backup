@@ -85,6 +85,7 @@ type TableDefinition struct {
 	PartitionKeyDef         string
 	AttachPartitionInfo     AttachPartitionInfo
 	ForceRowSecurity        bool
+	snapshotLeafOIDs        string
 }
 
 /*

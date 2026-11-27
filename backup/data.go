@@ -94,7 +94,16 @@ func CopyTableOut(connectionPool *dbconn.DBConn, table Table, destinationToWrite
 	if gplog.GetVerbosity() >= gplog.LOGVERBOSE {
 		workerInfo = fmt.Sprintf("Worker %d: ", connNum)
 	}
-	query := fmt.Sprintf("COPY %s%s TO %s WITH CSV DELIMITER '%s' ON SEGMENT IGNORE EXTERNAL PARTITIONS;", table.FQN(), columnNames, copyCommand, tableDelim)
+	source := table.FQN() + columnNames
+	if table.snapshotLeafOIDs != "" {
+		columns := "*"
+		if columnNames != "" {
+			columns = columnNames[1 : len(columnNames)-1]
+		}
+		// Keep the root's access checks and row policies while excluding later attachments.
+		source = fmt.Sprintf("(SELECT %s FROM %s WHERE tableoid = ANY ('%s'::pg_catalog.oid[]))", columns, table.FQN(), table.snapshotLeafOIDs)
+	}
+	query := fmt.Sprintf("COPY %s TO %s WITH CSV DELIMITER '%s' ON SEGMENT IGNORE EXTERNAL PARTITIONS;", source, copyCommand, tableDelim)
 	if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("7")) || connectionPool.Version.IsCBDB() {
 		utils.LogProgress(`%sExecuting "%s" on coordinator`, workerInfo, query)
 	} else {

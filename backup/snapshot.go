@@ -3,7 +3,6 @@ package backup
 import (
 	"errors"
 	"fmt"
-	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -62,49 +61,40 @@ func CheckSnapshotTableLocks(conn *dbconn.DBConn, tables []Relation) ([]string, 
 	return result, nil
 }
 
-func snapshotPartitionParents(conn *dbconn.DBConn, tables []Relation, missingLocksOnly bool) ([]string, error) {
-	if len(tables) == 0 {
-		return nil, nil
-	}
-	oids := make([]string, len(tables))
+// collectSnapshotPartitionLeaves reads the partition tree from the backup snapshot.
+func collectSnapshotPartitionLeaves(conn *dbconn.DBConn, tables []Table) error {
+	roots := make(map[uint32]int)
+	var oids []string
 	for i, table := range tables {
-		oids[i] = strconv.FormatUint(uint64(table.Oid), 10)
+		if table.PartitionLevelInfo.Level == "p" {
+			roots[table.Oid] = i
+			oids = append(oids, strconv.FormatUint(uint64(table.Oid), 10))
+		}
 	}
-	// Start at selected roots, but include subparents reached by COPY even if
-	// a filter omitted them from the explicit table list.
-	const query = `WITH RECURSIVE parents(oid, depth) AS (
-		SELECT c.oid, 0 FROM pg_catalog.pg_class c
-		WHERE c.oid = ANY($1::oid[]) AND c.relkind = 'p' AND NOT c.relispartition
+	if len(oids) == 0 {
+		return nil
+	}
+
+	const query = `WITH RECURSIVE partitions(root, oid, relkind) AS (
+		SELECT oid, oid, relkind FROM pg_catalog.pg_class
+		WHERE oid = ANY($1::oid[])
 		UNION ALL
-		SELECT c.oid, p.depth + 1 FROM parents p
+		SELECT p.root, c.oid, c.relkind FROM partitions p
 		JOIN pg_catalog.pg_inherits i ON i.inhparent = p.oid
 		JOIN pg_catalog.pg_class c ON c.oid = i.inhrelid
-		WHERE c.relkind = 'p' AND c.relispartition
+		WHERE p.relkind = 'p' AND NOT i.inhdetachpending
 	)
-	SELECT quote_ident(n.nspname) || '.' || quote_ident(c.relname)
-	FROM parents p JOIN pg_catalog.pg_class c ON c.oid = p.oid
-	JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-	WHERE NOT $2::boolean OR NOT EXISTS (
-		SELECT 1 FROM pg_catalog.pg_locks l
-		WHERE l.locktype = 'relation' AND l.relation = p.oid
-			AND l.database = (SELECT oid FROM pg_catalog.pg_database WHERE datname = current_database())
-			AND l.pid = pg_catalog.pg_backend_pid()
-			AND l.mode = 'ShareUpdateExclusiveLock' AND l.granted
-	)
-	ORDER BY p.depth, p.oid`
-	var parents []string
-	if err := conn.SelectWithArgs(&parents, query, "{"+strings.Join(oids, ",")+"}", missingLocksOnly); err != nil {
-		return nil, fmt.Errorf("checking partition parents for backup: %w", err)
+	SELECT root, COALESCE(array_agg(oid ORDER BY oid) FILTER (WHERE relkind <> 'p'), '{}'::oid[])::text AS leaves
+	FROM partitions GROUP BY root`
+	var partitions []struct {
+		Root   uint32
+		Leaves string
 	}
-	return parents, nil
-}
-
-func lockSnapshotPartitionParents(conn *dbconn.DBConn, parents []string) error {
-	for batch := range slices.Chunk(parents, 100) {
-		names := "ONLY " + strings.Join(batch, ", ONLY ")
-		if err := lockBackupTables(conn, names, "IN SHARE UPDATE EXCLUSIVE MODE"); err != nil {
-			return fmt.Errorf("locking partition parents %s in SHARE UPDATE EXCLUSIVE mode: %w", names, err)
-		}
+	if err := conn.SelectWithArgs(&partitions, query, "{"+strings.Join(oids, ",")+"}"); err != nil {
+		return fmt.Errorf("reading partition leaves from the backup snapshot: %w", err)
+	}
+	for _, partition := range partitions {
+		tables[roots[partition.Root]].snapshotLeafOIDs = partition.Leaves
 	}
 	return nil
 }
@@ -113,29 +103,16 @@ func lockSnapshotPartitionParents(conn *dbconn.DBConn, parents []string) error {
 // snapshot. The connection pool must have no open transactions on entry.
 func PrepareBackupSnapshot(opts *options.Options) error {
 	maxAttempts := MustGetFlagInt(options.SNAPSHOT_ATTEMPTS)
-	copyThroughParent := !MustGetFlagBool(options.METADATA_ONLY) && !MustGetFlagBool(options.LEAF_PARTITION_DATA)
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		if err := resolveSnapshotFilters(opts); err != nil {
 			return err
 		}
 		tables := ConvertRelationsOptionsToBackup(GetIncludedUserTableRelations(connectionPool, IncludedRelationFqns))
-		var parents []string
-		if copyThroughParent {
-			var err error
-			parents, err = snapshotPartitionParents(connectionPool, tables, false)
-			if err != nil {
-				return err
-			}
-		}
 		// A SELECT before LOCK would establish the transaction snapshot too early.
 		if err := connectionPool.Begin(0); err != nil {
 			return err
 		}
-		// ATTACH takes a lock on its parent that's compatible with ACCESS SHARE.
-		lockErr := lockSnapshotPartitionParents(connectionPool, parents)
-		if lockErr == nil {
-			lockErr = LockTables(connectionPool, tables)
-		}
+		lockErr := LockTables(connectionPool, tables)
 		var conflicts []string
 		if lockErr != nil {
 			var pgErr *pgconn.PgError
@@ -157,12 +134,6 @@ func PrepareBackupSnapshot(opts *options.Options) error {
 			conflicts, err = CheckSnapshotTableLocks(connectionPool, tables)
 			if err != nil {
 				return err
-			}
-			if copyThroughParent && len(conflicts) == 0 {
-				conflicts, err = snapshotPartitionParents(connectionPool, tables, true)
-				if err != nil {
-					return err
-				}
 			}
 		}
 		if len(conflicts) == 0 {

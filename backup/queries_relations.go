@@ -575,7 +575,11 @@ func LockTables(connectionPool *dbconn.DBConn, tables []Relation) error {
 		lockMode = `IN ACCESS SHARE MODE`
 	}
 	for i, currentBatch := range tableBatches {
-		if err := lockBackupTables(connectionPool, currentBatch, lockMode); err != nil {
+		if _, err := connectionPool.Exec(fmt.Sprintf("LOCK TABLE %s %s", currentBatch, lockMode)); err != nil {
+			if wasTerminated {
+				gplog.Warn("Interrupt received while acquiring ACCESS SHARE locks on tables")
+				select {} // Wait for signal cleanup to exit gpbackup.
+			}
 			return fmt.Errorf("locking tables %s: %w", currentBatch, err)
 		}
 		if i == len(tableBatches)-1 && lastBatchSize > 0 {
@@ -585,15 +589,6 @@ func LockTables(connectionPool *dbconn.DBConn, tables []Relation) error {
 	}
 
 	return nil
-}
-
-func lockBackupTables(conn *dbconn.DBConn, names, mode string) error {
-	_, err := conn.Exec(fmt.Sprintf("LOCK TABLE %s %s", names, mode))
-	if err != nil && wasTerminated {
-		gplog.Warn("Interrupt received while acquiring table locks")
-		select {} // Wait for signal cleanup to exit gpbackup.
-	}
-	return err
 }
 
 // GenerateTableBatches batches tables to reduce network congestion and

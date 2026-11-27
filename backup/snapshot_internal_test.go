@@ -114,16 +114,8 @@ var _ = Describe("snapshot preparation", func() {
 	tables := func() {
 		mock.ExpectQuery("SELECT n.oid AS schemaoid").WillReturnRows(sqlmock.NewRows([]string{"schemaoid", "oid", "schema", "name"}).AddRow(1, 10, "public", "t"))
 	}
-	partitionParents := func(missingLocksOnly bool, names ...string) {
-		rows := sqlmock.NewRows([]string{"fqn"})
-		for _, name := range names {
-			rows.AddRow(name)
-		}
-		mock.ExpectQuery("WITH RECURSIVE parents").WithArgs("{10}", missingLocksOnly).WillReturnRows(rows)
-	}
 	lock := func(err error) {
 		tables()
-		partitionParents(false)
 		begin()
 		expectation := mock.ExpectExec("LOCK TABLE public.t")
 		if err != nil {
@@ -158,7 +150,6 @@ var _ = Describe("snapshot preparation", func() {
 		lock(nil)
 		snapshot()
 		check()
-		partitionParents(true)
 		begin()
 		mock.ExpectExec("SET TRANSACTION SNAPSHOT 'new-snapshot'").WillReturnResult(sqlmock.NewResult(0, 0))
 		Expect(PrepareBackupSnapshot(opts)).To(Succeed())
@@ -185,7 +176,6 @@ var _ = Describe("snapshot preparation", func() {
 		lock(nil)
 		snapshot()
 		check()
-		partitionParents(true)
 		Expect(PrepareBackupSnapshot(opts)).To(Succeed())
 		Expect(heapFileHashes).To(Equal(map[uint32]string{10: "hash"}))
 	})
@@ -195,41 +185,11 @@ var _ = Describe("snapshot preparation", func() {
 		lock(nil)
 		snapshot()
 		check()
-		partitionParents(true)
 		Expect(PrepareBackupSnapshot(opts)).To(Succeed())
 	}, Entry("table", "42P01"), Entry("schema", "3F000"))
 	It("does not retry unrelated SQL errors", func() {
 		lock(&pgconn.PgError{Code: "42501", Message: "permission denied"})
 		Expect(PrepareBackupSnapshot(opts)).To(MatchError(ContainSubstring("permission denied")))
-	})
-	It("reports the partition parent and lock mode on a permission error", func() {
-		tables()
-		partitionParents(false, "public.t")
-		begin()
-		mock.ExpectExec("LOCK TABLE ONLY public.t IN SHARE UPDATE EXCLUSIVE MODE").
-			WillReturnError(&pgconn.PgError{Code: "42501", Message: "permission denied"})
-		Expect(PrepareBackupSnapshot(opts)).To(MatchError(ContainSubstring("public.t in SHARE UPDATE EXCLUSIVE mode")))
-	})
-	It("retries when ACCESS SHARE covers a newly attached subparent without a partition lock", func() {
-		tables()
-		partitionParents(false, "public.t")
-		begin()
-		mock.ExpectExec("LOCK TABLE ONLY public.t IN SHARE UPDATE EXCLUSIVE MODE").WillReturnResult(sqlmock.NewResult(0, 0))
-		mock.ExpectExec("LOCK TABLE public.t IN ACCESS SHARE MODE").WillReturnResult(sqlmock.NewResult(0, 0))
-		snapshot()
-		check()
-		partitionParents(true, "public.middle")
-		mock.ExpectRollback()
-
-		tables()
-		partitionParents(false, "public.t", "public.middle")
-		begin()
-		mock.ExpectExec("LOCK TABLE ONLY public.t, ONLY public.middle IN SHARE UPDATE EXCLUSIVE MODE").WillReturnResult(sqlmock.NewResult(0, 0))
-		mock.ExpectExec("LOCK TABLE public.t IN ACCESS SHARE MODE").WillReturnResult(sqlmock.NewResult(0, 0))
-		snapshot()
-		check()
-		partitionParents(true)
-		Expect(PrepareBackupSnapshot(opts)).To(Succeed())
 	})
 	It("does not import workers after a snapshot export failure", func() {
 		twoConnections()
