@@ -6,6 +6,7 @@ package utils
  */
 
 import (
+	"context"
 	"crypto/sha256"
 	"fmt"
 	"os"
@@ -193,15 +194,60 @@ func InitializeSignalHandler(cleanupFunc func(bool), procDesc string, termFlag *
 	}()
 }
 
+// RunWithContext returns the result of f, or ctx.Err() once ctx is done. f
+// keeps running in the background after that, so it must be safe to abandon.
+func RunWithContext(ctx context.Context, f func() error) error {
+	done := make(chan error, 1)
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				done <- fmt.Errorf("%v", r)
+			}
+		}()
+		done <- f()
+	}()
+	select {
+	case err := <-done:
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+// TerminateHangingCopySessions terminates the COPY sessions of appName that
+// still use this backup's pipes, giving up after timeout. It runs during
+// cleanup, where its session can wait without limit like any other, so it
+// stops waiting at the deadline and only logs errors, letting the rest of
+// cleanup run.
 // TODO: Uniquely identify COPY commands in the multiple data file case to allow terminating sessions
 func TerminateHangingCopySessions(fpInfo filepath.FilePathInfo, appName string, timeout time.Duration, interval time.Duration) {
 	gplog.Verbose("Checking for leftover COPY sessions")
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	err := RunWithContext(ctx, func() error {
+		termConn := dbconn.NewDBConnFromEnvironment("postgres")
+		defer termConn.Close()
+		// Connect runs setup queries that take no context, so the caller
+		// stops waiting for it at the deadline.
+		if err := termConn.Connect(1); err != nil {
+			return err
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		return terminateHangingCopySessionsWithConn(ctx, termConn, fpInfo.GetSegmentPipePathForCopyCommand(), appName, interval)
+	})
+	if err != nil {
+		if ctx.Err() != nil {
+			gplog.Warn("Timeout of %v reached while waiting for COPY command(s) to complete.", timeout)
+		} else {
+			gplog.Warn("Could not terminate leftover COPY sessions: %v", err)
+		}
+	}
+}
+
+func terminateHangingCopySessionsWithConn(ctx context.Context, termConn *dbconn.DBConn, copyFileName string, appName string, interval time.Duration) error {
 	var pidCol, queryCol string
-
-	termConn := dbconn.NewDBConnFromEnvironment("postgres")
-	termConn.MustConnect(1)
-	defer termConn.Close()
-
 	if termConn.Version.IsGPDB() && termConn.Version.Before("6") {
 		pidCol = "procpid"
 		queryCol = "current_query"
@@ -210,14 +256,10 @@ func TerminateHangingCopySessions(fpInfo filepath.FilePathInfo, appName string, 
 		queryCol = "query"
 	}
 
-	copyFileName := fpInfo.GetSegmentPipePathForCopyCommand()
 	fromClause := fmt.Sprintf(`FROM pg_stat_activity
 	WHERE application_name = '%s'
 	AND %s LIKE '%%%s%%'
 	AND %s <> pg_backend_pid()`, appName, queryCol, copyFileName, pidCol)
-
-	tickerTerminate := time.NewTicker(interval)
-	tickerCount := time.NewTicker(interval / 5)
 
 	termQuery := fmt.Sprintf(`SELECT
 		pg_terminate_backend(%s) %s`, pidCol, fromClause)
@@ -225,21 +267,30 @@ func TerminateHangingCopySessions(fpInfo filepath.FilePathInfo, appName string, 
 	countQuery := fmt.Sprintf(`SELECT
 		count(*) %s`, fromClause)
 
+	tickerTerminate := time.NewTicker(interval)
+	defer tickerTerminate.Stop()
+	tickerCount := time.NewTicker(interval / 5)
+	defer tickerCount.Stop()
+
 	// Terminate any COPY commands that are still running.
-	// Send a termination query every interval until no COPY commands are running, or timeout is reached.
+	// Send a termination query every interval until no COPY commands are running, or ctx is done.
 	// Check for remaining COPY commands every 20% of the interval duration.
 	for {
-		count := dbconn.MustSelectString(termConn, countQuery)
 		select {
+		case <-ctx.Done():
+			return ctx.Err()
 		case <-tickerCount.C:
-			if count == "0" {
-				return
+			var counts []int64
+			if err := termConn.SelectContext(ctx, &counts, countQuery); err != nil {
+				return err
+			}
+			if len(counts) == 1 && counts[0] == 0 {
+				return nil
 			}
 		case <-tickerTerminate.C:
-			termConn.MustExec(termQuery)
-		case <-time.After(timeout):
-			gplog.Warn("Timeout of %ds reached while waiting for %s COPY command(s) to complete.", timeout, count)
-			return
+			if _, err := termConn.ExecContext(ctx, termQuery); err != nil {
+				return err
+			}
 		}
 	}
 }

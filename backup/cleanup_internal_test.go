@@ -33,30 +33,29 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-var _ = Describe("runWithContext", func() {
-	It("returns the function's result", func() {
-		Expect(runWithContext(context.Background(), func() error { return nil })).To(Succeed())
-		Expect(runWithContext(context.Background(), func() error { return errors.New("boom") })).To(MatchError("boom"))
-	})
-	It("returns a panic as an error", func() {
-		Expect(runWithContext(context.Background(), func() error { panic("boom") })).To(MatchError("boom"))
-	})
-	It("stops waiting at the deadline for a function that does not return", func() {
-		release := make(chan struct{})
-		defer close(release)
-		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-		defer cancel()
-		Expect(runWithContext(ctx, func() error { <-release; return nil })).To(MatchError(context.DeadlineExceeded))
-	})
-})
+var _ = DescribeTable("findBlockedQueriesQuery",
+	func(dbType dbconn.DBType, version string, expected string) {
+		dbVersion := dbconn.NewVersion(version)
+		dbVersion.Type = dbType
+		Expect(findBlockedQueriesQuery(dbVersion, "20260101010101")).To(Equal(expected))
+	},
+	Entry("GPDB 5", dbconn.GPDB, "5.29.0", "SELECT procpid from pg_stat_activity WHERE application_name='gpbackup_20260101010101' AND waiting='t' AND waiting_reason='lock';"),
+	Entry("GPDB 6", dbconn.GPDB, "6.26.0", "SELECT pid from pg_stat_activity WHERE application_name='gpbackup_20260101010101' AND waiting='t' AND waiting_reason='lock';"),
+	Entry("GPDB 7", dbconn.GPDB, "7.1.0", "SELECT pid from pg_stat_activity WHERE application_name='gpbackup_20260101010101' AND wait_event_type='Lock';"),
+	Entry("Cloudberry", dbconn.CBDB, "1.6.0", "SELECT pid from pg_stat_activity WHERE application_name='gpbackup_20260101010101' AND wait_event_type='Lock';"),
+)
 
 var _ = Describe("cancelBlockedQueriesWithConn", func() {
-	const timestamp = "20260101010101"
+	const (
+		timestamp    = "20260101010101"
+		pollInterval = 10 * time.Millisecond
+	)
 	var (
 		conn         *dbconn.DBConn
 		mock         sqlmock.Sqlmock
 		blockedQuery = regexp.QuoteMeta("SELECT pid from pg_stat_activity WHERE application_name='gpbackup_20260101010101' AND wait_event_type='Lock';")
 		cancelQuery  = regexp.QuoteMeta("SELECT pg_cancel_backend(101)")
+		cancelQuery2 = regexp.QuoteMeta("SELECT pg_cancel_backend(102)")
 	)
 	BeforeEach(func() {
 		testhelper.SetupTestLogger()
@@ -70,30 +69,38 @@ var _ = Describe("cancelBlockedQueriesWithConn", func() {
 
 	It("does nothing when no query is blocked", func() {
 		mock.ExpectQuery(blockedQuery).WillReturnRows(sqlmock.NewRows([]string{"pid"}))
-		Expect(cancelBlockedQueriesWithConn(context.Background(), conn, timestamp)).To(Succeed())
+		Expect(cancelBlockedQueriesWithConn(context.Background(), conn, timestamp, pollInterval)).To(Succeed())
 	})
 	It("cancels blocked queries and waits until none are blocked", func() {
 		mock.ExpectQuery(blockedQuery).WillReturnRows(sqlmock.NewRows([]string{"pid"}).AddRow(101))
 		mock.ExpectExec(cancelQuery).WillReturnResult(sqlmock.NewResult(0, 1))
 		mock.ExpectQuery(blockedQuery).WillReturnRows(sqlmock.NewRows([]string{"pid"}))
-		Expect(cancelBlockedQueriesWithConn(context.Background(), conn, timestamp)).To(Succeed())
+		Expect(cancelBlockedQueriesWithConn(context.Background(), conn, timestamp, pollInterval)).To(Succeed())
+	})
+	It("still cancels the remaining queries when one cancel fails", func() {
+		mock.ExpectQuery(blockedQuery).WillReturnRows(sqlmock.NewRows([]string{"pid"}).AddRow(101).AddRow(102))
+		mock.ExpectExec(cancelQuery).WillReturnError(errors.New("cancel failed"))
+		mock.ExpectExec(cancelQuery2).WillReturnResult(sqlmock.NewResult(0, 1))
+		Expect(cancelBlockedQueriesWithConn(context.Background(), conn, timestamp, pollInterval)).To(MatchError("could not cancel 1 of 2 blocked queries"))
 	})
 	It("returns once the deadline passes while a query cannot run", func() {
 		mock.ExpectQuery(blockedQuery).WillDelayFor(time.Minute).WillReturnRows(sqlmock.NewRows([]string{"pid"}))
 		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 		defer cancel()
 		start := time.Now()
-		Expect(cancelBlockedQueriesWithConn(ctx, conn, timestamp)).NotTo(Succeed())
+		Expect(cancelBlockedQueriesWithConn(ctx, conn, timestamp, pollInterval)).NotTo(Succeed())
 		Expect(time.Since(start)).To(BeNumerically("<", 10*time.Second))
 	})
 	It("returns once the deadline passes while waiting for canceled queries", func() {
 		mock.ExpectQuery(blockedQuery).WillReturnRows(sqlmock.NewRows([]string{"pid"}).AddRow(101))
 		mock.ExpectExec(cancelQuery).WillReturnResult(sqlmock.NewResult(0, 1))
 		mock.ExpectQuery(blockedQuery).WillDelayFor(time.Minute).WillReturnRows(sqlmock.NewRows([]string{"pid"}).AddRow(101))
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		// The deadline leaves ample time for the first poll to start, so the
+		// last query is always reached.
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
 		start := time.Now()
-		Expect(cancelBlockedQueriesWithConn(ctx, conn, timestamp)).NotTo(Succeed())
+		Expect(cancelBlockedQueriesWithConn(ctx, conn, timestamp, pollInterval)).NotTo(Succeed())
 		Expect(time.Since(start)).To(BeNumerically("<", 10*time.Second))
 	})
 })
