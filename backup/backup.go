@@ -1,8 +1,8 @@
 package backup
 
 import (
+	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	path "path/filepath"
@@ -552,53 +552,106 @@ func DoCleanup(backupFailed bool) {
 	}
 }
 
-// Cancel blocked gpbackup queries waiting for locks.
-func cancelBlockedQueries(timestamp string) {
-	conn := dbconn.NewDBConnFromEnvironment(MustGetFlagString(options.DBNAME))
-	conn.MustConnect(1)
-	defer conn.Close()
+// cancelBlockedQueriesTimeout bounds the time cleanup spends canceling blocked
+// queries. The cancel queries run on a new session, which can wait without
+// limit, for example for a resource group slot held by sessions queued behind
+// this backup's locks. Those locks are only released when cleanup closes the
+// connection pool, so waiting here would hang both gpbackup and those sessions.
+const cancelBlockedQueriesTimeout = 20 * time.Second
 
+// cancelBlockedQueriesPollInterval is how often cleanup checks whether the
+// canceled queries are gone.
+const cancelBlockedQueriesPollInterval = 500 * time.Millisecond
+
+// Cancel blocked gpbackup queries waiting for locks. Errors are only logged, so
+// the rest of cleanup still runs.
+func cancelBlockedQueries(timestamp string) {
+	ctx, cancel := context.WithTimeout(context.Background(), cancelBlockedQueriesTimeout)
+	defer cancel()
+	if err := utils.RunWithContext(ctx, func() error {
+		return cancelBlockedQueriesInNewSession(ctx, timestamp)
+	}); err != nil {
+		if ctx.Err() != nil {
+			gplog.Warn("Timed out after %v attempting to cancel blocked queries", cancelBlockedQueriesTimeout)
+		} else {
+			gplog.Warn("Could not cancel blocked queries: %v", err)
+		}
+	}
+}
+
+func cancelBlockedQueriesInNewSession(ctx context.Context, timestamp string) error {
+	conn := dbconn.NewDBConnFromEnvironment(MustGetFlagString(options.DBNAME))
+	// Connect can fail after opening the connection, for example while
+	// querying the version, so close it on every path.
+	defer conn.Close()
+	// Connect runs setup queries that take no context and can wait just like
+	// the cancel queries, so the caller stops waiting for it at the deadline.
+	if err := conn.Connect(1); err != nil {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return cancelBlockedQueriesWithConn(ctx, conn, timestamp, cancelBlockedQueriesPollInterval)
+}
+
+func findBlockedQueriesQuery(version dbconn.GPDBVersion, timestamp string) string {
+	switch {
+	case version.IsGPDB() && version.Before("6"):
+		return fmt.Sprintf("SELECT procpid from pg_stat_activity WHERE application_name='gpbackup_%s' AND waiting='t' AND waiting_reason='lock';", timestamp)
+	case version.IsGPDB() && version.Is("6"):
+		return fmt.Sprintf("SELECT pid from pg_stat_activity WHERE application_name='gpbackup_%s' AND waiting='t' AND waiting_reason='lock';", timestamp)
+	default:
+		return fmt.Sprintf("SELECT pid from pg_stat_activity WHERE application_name='gpbackup_%s' AND wait_event_type='Lock';", timestamp)
+	}
+}
+
+func cancelBlockedQueriesWithConn(ctx context.Context, conn *dbconn.DBConn, timestamp string, pollInterval time.Duration) error {
 	// Query for all blocked queries
 	pids := make([]int64, 0)
-	var findBlockedQuery string
-	if conn.Version.IsGPDB() && conn.Version.Before("6") {
-		findBlockedQuery = fmt.Sprintf("SELECT procpid from pg_stat_activity WHERE application_name='gpbackup_%s' AND waiting='t' AND waiting_reason='lock';", timestamp)
+	findBlockedQuery := findBlockedQueriesQuery(conn.Version, timestamp)
+	if err := conn.SelectContext(ctx, &pids, findBlockedQuery); err != nil {
+		return err
 	}
-	if conn.Version.IsGPDB() && conn.Version.Is("6") {
-		findBlockedQuery = fmt.Sprintf("SELECT pid from pg_stat_activity WHERE application_name='gpbackup_%s' AND waiting='t' AND waiting_reason='lock';", timestamp)
-	} else if (conn.Version.IsGPDB() && conn.Version.AtLeast("7")) || conn.Version.IsCBDB() {
-		findBlockedQuery = fmt.Sprintf("SELECT pid from pg_stat_activity WHERE application_name='gpbackup_%s' AND wait_event_type='Lock';", timestamp)
-	}
-	err := conn.Select(&pids, findBlockedQuery)
-	gplog.FatalOnError(err)
 
 	if len(pids) == 0 {
-		return
+		return nil
 	}
 
 	gplog.Info("Canceling %d blocked queries", len(pids))
-	// Cancel all gpbackup queries waiting for a lock
+	// Cancel all gpbackup queries waiting for a lock. A failed cancel does not
+	// skip the remaining ones.
+	failed := 0
 	for _, pid := range pids {
-		conn.MustExec(fmt.Sprintf("SELECT pg_cancel_backend(%d)", pid))
+		if _, err := conn.ExecContext(ctx, fmt.Sprintf("SELECT pg_cancel_backend(%d)", pid)); err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			gplog.Warn("Could not cancel blocked query with pid %d: %v", pid, err)
+			failed++
+		}
+	}
+	// A query that could not be canceled stays blocked, so waiting for all of
+	// them to finish would only run into the deadline.
+	if failed > 0 {
+		return fmt.Errorf("could not cancel %d of %d blocked queries", failed, len(pids))
 	}
 
 	// Wait for the cancel queries to finish
-	tickerCheckCanceled := time.NewTicker(500 * time.Millisecond)
-	var count string
+	tickerCheckCanceled := time.NewTicker(pollInterval)
+	defer tickerCheckCanceled.Stop()
 	for {
 		select {
+		case <-ctx.Done():
+			return ctx.Err()
 		case <-tickerCheckCanceled.C:
-			blockedQueryCount := fmt.Sprintf("SELECT count(*) from pg_stat_activity WHERE application_name='gpbackup_%s' AND waiting='t' AND  waiting_reason='lock';", timestamp)
-			if (conn.Version.IsGPDB() && conn.Version.AtLeast("7")) || conn.Version.IsCBDB() {
-				blockedQueryCount = fmt.Sprintf("SELECT count(*) from pg_stat_activity WHERE application_name='gpbackup_%s' AND wait_event_type='Lock';", timestamp)
+			pids = pids[:0]
+			if err := conn.SelectContext(ctx, &pids, findBlockedQuery); err != nil {
+				return err
 			}
-			count = dbconn.MustSelectString(conn, blockedQueryCount)
-			if count == "0" {
-				return
+			if len(pids) == 0 {
+				return nil
 			}
-		case <-time.After(20 * time.Second):
-			tickerCheckCanceled.Stop()
-			gplog.FatalOnError(errors.New("Timeout attempting to cancel blocked queries"))
 		}
 	}
 }
