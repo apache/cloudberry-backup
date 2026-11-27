@@ -28,6 +28,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/apache/cloudberry-backup/history"
 	"github.com/apache/cloudberry-backup/testutils"
 	"github.com/apache/cloudberry-backup/toc"
 	"github.com/apache/cloudberry-go-libs/cluster"
@@ -42,7 +43,7 @@ import (
 func waitForSnapshotBackupLock(relation string) {
 	query := fmt.Sprintf(`SELECT count(*) FROM pg_locks l JOIN pg_stat_activity a ON a.pid=l.pid
   WHERE l.relation='%s'::regclass AND NOT l.granted AND l.mode='AccessShareLock'
-  AND a.datname=current_database() AND a.application_name LIKE 'gpbackup_%%' AND a.query LIKE 'LOCK TABLE%%'`, relation)
+  AND a.datname=current_database() AND a.application_name LIKE 'gpbackup_%%'`, relation)
 	Eventually(func() (int, error) { var count int; err := backupConn.Get(&count, query); return count, err }, 30*time.Second, 100*time.Millisecond).Should(BeNumerically(">", 0))
 }
 
@@ -181,6 +182,70 @@ var _ = Describe("snapshot lock preparation", func() {
 		Expect(snapshotRetryRows(restoreConn)).To(Equal([]int{1, 3}))
 	})
 
+	It("writes a failure report when snapshot preparation runs out of attempts", func() {
+		createTable("heap", false)
+		writer := testutils.SetupTestDbConn("testdb")
+		defer writer.Close()
+		writer.MustBegin()
+		defer func() {
+			if writer.Tx[0] != nil {
+				writer.MustRollback()
+			}
+		}()
+		writer.MustExec("LOCK TABLE snapshot_retry.t IN ACCESS EXCLUSIVE MODE")
+		session := startSnapshotBackup("--include-schema", "snapshot_retry")
+		waitForSnapshotBackupLock("snapshot_retry.t")
+		backupConn.MustExec("CREATE TABLE snapshot_retry.added(id int) DISTRIBUTED BY(id)")
+		writer.MustCommit()
+
+		Eventually(session, 90*time.Second).Should(Exit(2))
+		Expect(string(session.Out.Contents())).To(ContainSubstring("after 1 attempt(s): snapshot_retry.added"))
+		reports, err := filepath.Glob(filepath.Join(backupDir, "*-1", "backups", "*", "*", "*_report"))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(reports).To(HaveLen(1))
+		contents, err := os.ReadFile(reports[0])
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(contents)).To(ContainSubstring("backup status:"))
+		Expect(string(contents)).To(ContainSubstring("Failure"))
+		Expect(string(contents)).To(ContainSubstring("after 1 attempt(s): snapshot_retry.added"))
+		contents, err = os.ReadFile(strings.TrimSuffix(reports[0], "_report") + "_config.yaml")
+		Expect(err).NotTo(HaveOccurred())
+		var config history.BackupConfig
+		Expect(yaml.Unmarshal(contents, &config)).To(Succeed())
+		Expect(config.Status).To(Equal(history.BackupStatusFailed))
+	})
+
+	It("validates table filters before plugin setup and takes the snapshot afterward", func() {
+		createTable("heap", false)
+		pluginPath := filepath.Join(backupDir, "snapshot-plugin.bash")
+		pluginConfig := filepath.Join(backupDir, "snapshot-plugin.yaml")
+		setupMarker := filepath.Join(backupDir, "snapshot-plugin-started")
+		plugin, err := os.ReadFile(examplePluginExec)
+		Expect(err).NotTo(HaveOccurred())
+		setup := fmt.Sprintf(`setup_plugin_for_backup(){
+  if [[ "$3" == "coordinator" || "$3" == "master" ]]; then
+    touch %q
+    PGOPTIONS="${PGOPTIONS:-} -c lock_timeout=5000" psql -X -v ON_ERROR_STOP=1 -d testdb \
+      -c 'VACUUM FULL snapshot_retry.t' -c 'INSERT INTO snapshot_retry.t VALUES (4)'
+  fi`, setupMarker)
+		Expect(os.WriteFile(pluginPath, []byte(strings.Replace(string(plugin), "setup_plugin_for_backup(){", setup, 1)), 0755)).To(Succeed())
+		Expect(os.WriteFile(pluginConfig, []byte(fmt.Sprintf("executablepath: %s\noptions:\n  password: unknown\n", pluginPath)), 0600)).To(Succeed())
+		copyPluginToAllHosts(backupConn, pluginPath)
+
+		invalid := startSnapshotBackup("--include-table", "snapshot_retry.absent", "--plugin-config", pluginConfig)
+		Eventually(invalid, 90*time.Second).Should(Exit(2))
+		Expect(string(invalid.Out.Contents())).To(ContainSubstring("Table snapshot_retry.absent does not exist"))
+		Expect(setupMarker).NotTo(BeAnExistingFile())
+
+		session := startSnapshotBackup("--include-table", "snapshot_retry.t", "--plugin-config", pluginConfig)
+		Eventually(session, 90*time.Second).Should(Exit(0))
+		Expect(setupMarker).To(BeAnExistingFile())
+		ts := getBackupTimestamp(string(session.Out.Contents()))
+		restoreConn.MustExec("CREATE SCHEMA snapshot_retry")
+		gprestore(gprestorePath, restoreHelperPath, ts, "--redirect-db", "restoredb", "--plugin-config", pluginConfig)
+		Expect(snapshotRetryRows(restoreConn)).To(Equal([]int{1, 2, 3, 4}))
+	})
+
 	DescribeTable("preserves the root copy when ATTACH starts after the backup snapshot", func(nested, empty bool) {
 		backupConn.MustExec("CREATE TABLE snapshot_retry.t(id int) DISTRIBUTED BY(id) PARTITION BY RANGE(id)")
 		parent := "snapshot_retry.t"
@@ -198,37 +263,28 @@ var _ = Describe("snapshot lock preparation", func() {
 		backupConn.MustExec(`CREATE TABLE snapshot_retry.new_leaf(id int) DISTRIBUTED BY(id);
 			INSERT INTO snapshot_retry.new_leaf VALUES (11),(12),(13)`)
 
-		pluginPath := filepath.Join(backupDir, "snapshot-plugin.bash")
-		pluginConfig := filepath.Join(backupDir, "snapshot-plugin.yaml")
-		gate, release := filepath.Join(backupDir, "snapshot-ready"), filepath.Join(backupDir, "snapshot-release")
-		plugin, err := os.ReadFile(examplePluginExec)
-		Expect(err).NotTo(HaveOccurred())
-		gatedSetup := fmt.Sprintf(`setup_plugin_for_backup(){
-  if [[ "$3" == "coordinator" || "$3" == "master" ]]; then
-    touch %q
-    deadline=$((SECONDS + 45))
-    until [[ -f %q ]]; do
-      ((SECONDS < deadline)) || exit 1
-      sleep 0.1
-    done
-  fi`, gate, release)
-		Expect(os.WriteFile(pluginPath, []byte(strings.Replace(string(plugin), "setup_plugin_for_backup(){", gatedSetup, 1)), 0755)).To(Succeed())
-		Expect(os.WriteFile(pluginConfig, []byte(fmt.Sprintf("executablepath: %s\noptions:\n  password: unknown\n", pluginPath)), 0600)).To(Succeed())
-		copyPluginToAllHosts(backupConn, pluginPath)
-		restoreConn.MustExec("CREATE SCHEMA snapshot_retry")
+		gate := testutils.SetupTestDbConn("testdb")
+		defer gate.Close()
+		gate.MustBegin()
+		defer func() {
+			if gate.Tx[0] != nil {
+				gate.MustRollback()
+			}
+		}()
+		gate.MustExec("LOCK TABLE pg_catalog.pg_description IN ACCESS EXCLUSIVE MODE")
+		session := startSnapshotBackup("--include-table", "snapshot_retry.t", "--jobs", "2")
+		waitForSnapshotBackupLock("pg_catalog.pg_description")
 
 		writer := testutils.SetupTestDbConn("testdb")
 		defer writer.Close()
 		writer.MustExec("SET lock_timeout = '5s'")
-		session := startSnapshotBackup("--include-table", "snapshot_retry.t", "--plugin-config", pluginConfig, "--jobs", "2")
-		defer func() { _ = os.WriteFile(release, nil, 0600) }()
-		Eventually(gate, 30*time.Second).Should(BeAnExistingFile())
 		writer.MustExec(fmt.Sprintf("ALTER TABLE %s ATTACH PARTITION snapshot_retry.new_leaf FOR VALUES FROM (10) TO (20)", parent))
-		Expect(os.WriteFile(release, nil, 0600)).To(Succeed())
+		gate.MustCommit()
 		Eventually(session, 90*time.Second).Should(Exit(0))
 
 		ts := getBackupTimestamp(string(session.Out.Contents()))
-		gprestore(gprestorePath, restoreHelperPath, ts, "--redirect-db", "restoredb", "--plugin-config", pluginConfig)
+		restoreConn.MustExec("CREATE SCHEMA snapshot_retry")
+		gprestore(gprestorePath, restoreHelperPath, ts, "--redirect-db", "restoredb", "--backup-dir", backupDir)
 		Expect(snapshotRetryRows(restoreConn)).To(Equal(expectedRows))
 		Expect(snapshotRetryRows(backupConn)).To(Equal(append(expectedRows, 11, 12, 13)))
 	}, Entry("on the root", false, false), Entry("on a subparent", true, false), Entry("on an empty root", false, true))

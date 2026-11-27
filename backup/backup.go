@@ -62,6 +62,10 @@ func DoSetup() {
 	opts, err := options.NewOptions(cmdFlags)
 	gplog.FatalOnError(err)
 
+	if connectionPool.Version.IsCBDB() && MustGetFlagString(options.PLUGIN_CONFIG) != "" {
+		ValidateAndProcessFilterLists(opts)
+	}
+
 	clusterConfigConn := dbconn.NewDBConnFromEnvironment(MustGetFlagString(options.DBNAME))
 	clusterConfigConn.MustConnect(1)
 
@@ -85,6 +89,7 @@ func DoSetup() {
 	utils.InitializePipeThroughParameters(!MustGetFlagBool(options.NO_COMPRESSION), MustGetFlagString(options.COMPRESSION_TYPE), MustGetFlagInt(options.COMPRESSION_LEVEL))
 	// Signal cleanup needs globalFPInfo.Timestamp to cancel blocked sessions.
 	if connectionPool.Version.IsCBDB() {
+		setupBackupReportAndPlugin(timestamp, *opts)
 		gplog.FatalOnError(PrepareBackupSnapshot(opts))
 	} else {
 		ValidateAndProcessFilterLists(opts)
@@ -95,10 +100,16 @@ func DoSetup() {
 		heapFileHashes = VerifyHeapFileHashes(MustGetFlagString(options.DBNAME), hashedHeapTables, heapFileHashes)
 	}
 	getQuotedRoleNames(connectionPool)
+	if !connectionPool.Version.IsCBDB() {
+		setupBackupReportAndPlugin(timestamp, *opts)
+	}
+}
 
+func setupBackupReportAndPlugin(timestamp string, opts options.Options) {
 	pluginConfigFlag := MustGetFlagString(options.PLUGIN_CONFIG)
 
 	if pluginConfigFlag != "" {
+		var err error
 		pluginConfig, err = utils.ReadPluginConfig(pluginConfigFlag)
 		gplog.FatalOnError(err)
 		configFilename := path.Base(pluginConfig.ConfigPath)
@@ -108,7 +119,7 @@ func DoSetup() {
 		gplog.Debug("Plugin config path: %s", pluginConfig.ConfigPath)
 	}
 
-	initializeBackupReport(*opts)
+	initializeBackupReport(opts)
 
 	if pluginConfigFlag != "" {
 		backupReport.PluginVersion = pluginConfig.CheckPluginExistsOnAllHosts(globalCluster)
@@ -525,7 +536,6 @@ func DoCleanup(backupFailed bool) {
 	// panics, there should be no way for gpbackup to exit that leaves the entry in the initial status.
 
 	historyUpdated := false
-	// Cancellation during lock acquisition can precede report creation.
 	if backupReport != nil && !MustGetFlagBool(options.NO_HISTORY) {
 		var statusString string
 		if backupFailed {
