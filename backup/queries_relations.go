@@ -574,18 +574,9 @@ func LockTables(connectionPool *dbconn.DBConn, tables []Relation) error {
 	} else {
 		lockMode = `IN ACCESS SHARE MODE`
 	}
-	// The LOCK TABLE query could block if someone else is holding an
-	// AccessExclusiveLock on the table.  In the case gpbackup is interrupted,
-	// cancelBlockedQueries() will cancel these queries during cleanup.
 	for i, currentBatch := range tableBatches {
-		_, err := connectionPool.Exec(fmt.Sprintf("LOCK TABLE %s %s", currentBatch, lockMode))
-		if err != nil {
-			if wasTerminated {
-				gplog.Warn("Interrupt received while acquiring ACCESS SHARE locks on tables")
-				select {} // wait for cleanup thread to exit gpbackup
-			} else {
-				return fmt.Errorf("locking tables %s: %w", currentBatch, err)
-			}
+		if err := lockBackupTables(connectionPool, currentBatch, lockMode); err != nil {
+			return fmt.Errorf("locking tables %s: %w", currentBatch, err)
 		}
 		if i == len(tableBatches)-1 && lastBatchSize > 0 {
 			currentBatchSize = lastBatchSize
@@ -594,6 +585,15 @@ func LockTables(connectionPool *dbconn.DBConn, tables []Relation) error {
 	}
 
 	return nil
+}
+
+func lockBackupTables(conn *dbconn.DBConn, names, mode string) error {
+	_, err := conn.Exec(fmt.Sprintf("LOCK TABLE %s %s", names, mode))
+	if err != nil && wasTerminated {
+		gplog.Warn("Interrupt received while acquiring table locks")
+		select {} // Wait for signal cleanup to exit gpbackup.
+	}
+	return err
 }
 
 // GenerateTableBatches batches tables to reduce network congestion and
