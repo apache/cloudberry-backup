@@ -178,7 +178,7 @@ var _ = Describe("Deadlock handling", func() {
 
 		// Only the main worker thread, worker 0, will run COPY on all the test tables
 		for _, dataTable := range dataTables {
-			expectedString := fmt.Sprintf(`[DEBUG]:-Worker 0: Executing "COPY %s`, dataTable)
+			expectedString := fmt.Sprintf(`[DEBUG]:-Worker 0: Writing data for table %s to file`, dataTable)
 			Expect(stdout).To(ContainSubstring(expectedString))
 		}
 
@@ -346,7 +346,7 @@ var _ = Describe("Deadlock handling", func() {
 
 		// Only the main worker thread, worker 0, will run COPY on all the test tables
 		for _, dataTable := range dataTables {
-			expectedString := fmt.Sprintf(`[DEBUG]:-Worker 0: Executing "COPY %s`, dataTable)
+			expectedString := fmt.Sprintf(`[DEBUG]:-Worker 0: Writing data for table %s to file`, dataTable)
 			Expect(stdout).To(ContainSubstring(expectedString))
 		}
 
@@ -507,11 +507,11 @@ var _ = Describe("Deadlock handling", func() {
 
 		// Only the main worker thread, worker 0, will run COPY on the 2 locked test tables
 		for _, lockedTable := range lockedTables {
-			expectedString := fmt.Sprintf(`[DEBUG]:-Worker 0: Executing "COPY %s`, lockedTable)
+			expectedString := fmt.Sprintf(`[DEBUG]:-Worker 0: Writing data for table %s to file`, lockedTable)
 			Expect(stdout).To(ContainSubstring(expectedString))
 		}
 		for _, dataTable := range dataTables {
-			unexpectedString := fmt.Sprintf(`[DEBUG]:-Worker 0: Executing "COPY %s`, dataTable)
+			unexpectedString := fmt.Sprintf(`[DEBUG]:-Worker 0: Writing data for table %s to file`, dataTable)
 			Expect(stdout).ToNot(ContainSubstring(unexpectedString))
 		}
 		Expect(stdout).To(ContainSubstring("Backup completed successfully"))
