@@ -400,7 +400,7 @@ BEGIN
         IF v_segno = 0 THEN
             v_path := v_base;
         ELSE
-            v_path := v_base || '.' || v_segno;
+            v_path := v_base || '.' || v_segno::text;
         END IF;
 
         BEGIN
@@ -412,7 +412,7 @@ BEGIN
         IF v_mod >= v_now THEN
             RETURN '';
         END IF;
-        v_result := v_result || ';' || v_segno || ':' || v_mod::text || '|' || v_size;
+        v_result := v_result || ';' || v_segno::text || ':' || v_mod::text || '|' || v_size::text;
         v_segno := v_segno + 1;
     END LOOP;
 
@@ -649,11 +649,11 @@ func getHeapColumnHashes(connectionPool *dbconn.DBConn) (map[uint32]string, erro
 			FROM column_types ct
 				JOIN type_deps d ON d.typid = ct.typid
 		), type_defs(typid, def) AS (
-			SELECT enumtypid, 'e' || enumtypid::text || ':' || enumsortorder || ':' || enumlabel
+			SELECT enumtypid, 'e' || enumtypid::text || ':' || enumsortorder::text || ':' || enumlabel::text
 			FROM pg_enum
 			UNION ALL
-			SELECT t.oid, 'c' || t.oid::text || ':' || ta.attnum || ':' || ta.attname || ':' || ta.atttypid
-				|| ':' || ta.atttypmod || ':' || ta.attisdropped
+			SELECT t.oid, 'c' || t.oid::text || ':' || ta.attnum::text || ':' || ta.attname::text || ':' || ta.atttypid::text
+				|| ':' || ta.atttypmod::text || ':' || ta.attisdropped::text
 			FROM pg_type t
 				JOIN pg_attribute ta ON ta.attrelid = t.typrelid
 			WHERE t.typtype = 'c' AND ta.attnum > 0
@@ -675,8 +675,8 @@ func getHeapColumnHashes(connectionPool *dbconn.DBConn) (map[uint32]string, erro
 			FROM column_types ct
 				JOIN type_defs td ON td.typid = ct.typid
 			UNION ALL
-			SELECT ca.attrelid, 'a' || ca.attnum::text || ':' || ca.attname || ':' || ca.atttypid
-				|| ':' || ca.atttypmod || ':' || ca.attisdropped
+			SELECT ca.attrelid, 'a' || ca.attnum::text || ':' || ca.attname::text || ':' || ca.atttypid::text
+				|| ':' || ca.atttypmod::text || ':' || ca.attisdropped::text
 			FROM pg_attribute ca
 			WHERE ca.attnum > 0
 				AND ca.attrelid IN (SELECT relid FROM column_types)
