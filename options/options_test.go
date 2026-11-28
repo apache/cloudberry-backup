@@ -21,6 +21,49 @@ var _ = Describe("options", func() {
 		myflags = &pflag.FlagSet{}
 		options.SetBackupFlagDefaults(myflags)
 	})
+	Describe("snapshot attempts and filter reset", func() {
+		It("defaults to three attempts and rejects noninteger values", func() {
+			value, err := myflags.GetInt(options.SNAPSHOT_ATTEMPTS)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(value).To(Equal(3))
+			Expect(myflags.Set(options.SNAPSHOT_ATTEMPTS, "1.5")).NotTo(Succeed())
+			restoreFlags := pflag.NewFlagSet("restore", pflag.ContinueOnError)
+			options.SetRestoreFlagDefaults(restoreFlags)
+			Expect(restoreFlags.Lookup(options.SNAPSHOT_ATTEMPTS)).To(BeNil())
+		})
+		It("restores original names after expansion without reading the filter file again", func() {
+			file, err := os.CreateTemp("", "snapshot-filters")
+			Expect(err).NotTo(HaveOccurred())
+			defer os.Remove(file.Name())
+			_, err = file.WriteString("public.root\n")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(file.Close()).To(Succeed())
+			Expect(myflags.Set(options.INCLUDE_RELATION_FILE, file.Name())).To(Succeed())
+			subject, err := options.NewOptions(myflags)
+			Expect(err).NotTo(HaveOccurred())
+			subject.AddIncludedRelation("public.old_leaf")
+			Expect(myflags.Set(options.INCLUDE_RELATION, "public.old_leaf")).To(Succeed())
+			Expect(os.Remove(file.Name())).To(Succeed())
+			Expect(subject.ResetTableFilters(myflags)).To(Succeed())
+			Expect(subject.GetIncludedTables()).To(Equal([]string{"public.root"}))
+			Expect(options.MustGetFlagStringArray(myflags, options.INCLUDE_RELATION)).To(Equal([]string{"public.root"}))
+			Expect(subject.GetOriginalIncludedTables()).To(Equal([]string{"public.root"}))
+			Expect(subject.ResetTableFilters(myflags)).To(Succeed())
+		})
+		It("restores exclusions and owns copies of original names", func() {
+			Expect(myflags.Set(options.INCLUDE_RELATION, "public.root")).To(Succeed())
+			Expect(myflags.Set(options.EXCLUDE_RELATION, "public.omitted")).To(Succeed())
+			subject, err := options.NewOptions(myflags)
+			Expect(err).NotTo(HaveOccurred())
+			subject.IncludedRelations[0] = "public.changed"
+			subject.ExcludedRelations[0] = "public.changed"
+			Expect(subject.ResetTableFilters(myflags)).To(Succeed())
+			Expect(subject.GetIncludedTables()).To(Equal([]string{"public.root"}))
+			Expect(subject.GetExcludedTables()).To(Equal([]string{"public.omitted"}))
+			Expect(options.MustGetFlagStringArray(myflags, options.EXCLUDE_RELATION)).To(Equal([]string{"public.omitted"}))
+		})
+	})
+
 	Describe("Options initialization", func() {
 		It("returns no included tables when none specified", func() {
 			subject, err := options.NewOptions(myflags)

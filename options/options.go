@@ -23,6 +23,7 @@ type Options struct {
 	ExcludedSchemas           []string
 	IncludedSchemas           []string
 	originalIncludedRelations []string
+	originalExcludedRelations []string
 	RedirectSchema            string
 }
 
@@ -74,7 +75,8 @@ func NewOptions(initialFlags *pflag.FlagSet) (*Options, error) {
 		IncludedSchemas:           includedSchemas,
 		ExcludedSchemas:           excludedSchemas,
 		isLeafPartitionData:       leafPartitionData,
-		originalIncludedRelations: includedRelations,
+		originalIncludedRelations: append([]string(nil), includedRelations...),
+		originalExcludedRelations: append([]string(nil), excludedRelations...),
 		RedirectSchema:            redirectSchema,
 	}, nil
 }
@@ -134,6 +136,16 @@ func (o Options) GetIncludedSchemas() []string {
 
 func (o Options) GetExcludedSchemas() []string {
 	return o.ExcludedSchemas
+}
+
+// ResetTableFilters restores the input names without rereading filter files.
+func (o *Options) ResetTableFilters(flags *pflag.FlagSet) error {
+	o.IncludedRelations = append([]string(nil), o.originalIncludedRelations...)
+	o.ExcludedRelations = append([]string(nil), o.originalExcludedRelations...)
+	if err := flags.Lookup(INCLUDE_RELATION).Value.(pflag.SliceValue).Replace(o.IncludedRelations); err != nil {
+		return err
+	}
+	return flags.Lookup(EXCLUDE_RELATION).Value.(pflag.SliceValue).Replace(o.ExcludedRelations)
 }
 
 func (o *Options) AddIncludedRelation(relation string) {

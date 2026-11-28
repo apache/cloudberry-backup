@@ -1,15 +1,178 @@
 package backup
 
-/*
- * This file contains functions related to use of synchronized database snapshots.
- */
-
 import (
+	"errors"
 	"fmt"
+	"sort"
+	"strconv"
+	"strings"
 
+	"github.com/apache/cloudberry-backup/options"
 	"github.com/apache/cloudberry-go-libs/dbconn"
 	"github.com/apache/cloudberry-go-libs/gplog"
+	"github.com/jackc/pgx/v5/pgconn"
 )
+
+// CheckSnapshotTableLocks finds relations in the backup snapshot without a
+// lock, including descendants read through a parent.
+func CheckSnapshotTableLocks(conn *dbconn.DBConn, tables []Relation) ([]string, error) {
+	if len(tables) == 0 {
+		return nil, nil
+	}
+	conflicts := make(map[string]bool)
+	const batchSize = 1000
+	for start := 0; start < len(tables); start += batchSize {
+		end := start + batchSize
+		if end > len(tables) {
+			end = len(tables)
+		}
+		oids := make([]string, end-start)
+		for i, table := range tables[start:end] {
+			oids[i] = strconv.FormatUint(uint64(table.Oid), 10)
+		}
+		query := fmt.Sprintf(`WITH RECURSIVE relations(oid) AS (
+		SELECT oid FROM pg_catalog.pg_class WHERE oid IN (%s)
+		UNION
+		SELECT i.inhrelid FROM pg_catalog.pg_inherits i JOIN relations r ON i.inhparent = r.oid
+	)
+	SELECT quote_ident(n.nspname) || '.' || quote_ident(c.relname) AS fqn
+	FROM relations r JOIN pg_catalog.pg_class c ON c.oid = r.oid
+	JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+	WHERE NOT EXISTS (
+		SELECT 1 FROM pg_catalog.pg_locks l
+		WHERE l.locktype = 'relation' AND l.relation = c.oid
+			AND l.database = (SELECT oid FROM pg_catalog.pg_database WHERE datname = current_database())
+			AND l.pid = pg_catalog.pg_backend_pid()
+			AND l.mode = 'AccessShareLock' AND l.granted
+	)`, strings.Join(oids, ","))
+		var rows []struct{ FQN string }
+		if err := conn.Select(&rows, query); err != nil {
+			return nil, fmt.Errorf("checking backup table locks: %w", err)
+		}
+		for _, row := range rows {
+			conflicts[row.FQN] = true
+		}
+	}
+	result := make([]string, 0, len(conflicts))
+	for conflict := range conflicts {
+		result = append(result, conflict)
+	}
+	sort.Strings(result)
+	return result, nil
+}
+
+// collectSnapshotPartitionLeaves reads the partition tree from the backup snapshot.
+func collectSnapshotPartitionLeaves(conn *dbconn.DBConn, tables []Table) error {
+	roots := make(map[uint32]int)
+	var oids []string
+	for i, table := range tables {
+		if table.PartitionLevelInfo.Level == "p" {
+			roots[table.Oid] = i
+			oids = append(oids, strconv.FormatUint(uint64(table.Oid), 10))
+		}
+	}
+	if len(oids) == 0 {
+		return nil
+	}
+
+	const query = `WITH RECURSIVE partitions(root, oid, relkind) AS (
+		SELECT oid, oid, relkind FROM pg_catalog.pg_class
+		WHERE oid = ANY($1::oid[])
+		UNION ALL
+		SELECT p.root, c.oid, c.relkind FROM partitions p
+		JOIN pg_catalog.pg_inherits i ON i.inhparent = p.oid
+		JOIN pg_catalog.pg_class c ON c.oid = i.inhrelid
+		WHERE p.relkind = 'p' AND NOT i.inhdetachpending
+	)
+	SELECT root, COALESCE(array_agg(oid ORDER BY oid) FILTER (WHERE relkind <> 'p'), '{}'::oid[])::text AS leaves
+	FROM partitions GROUP BY root`
+	var partitions []struct {
+		Root   uint32
+		Leaves string
+	}
+	if err := conn.SelectWithArgs(&partitions, query, "{"+strings.Join(oids, ",")+"}"); err != nil {
+		return fmt.Errorf("reading partition leaves from the backup snapshot: %w", err)
+	}
+	for _, partition := range partitions {
+		tables[roots[partition.Root]].snapshotLeafOIDs = partition.Leaves
+	}
+	return nil
+}
+
+// PrepareBackupSnapshot locks Cloudberry tables before exporting the shared
+// snapshot. The connection pool must have no open transactions on entry.
+func PrepareBackupSnapshot(opts *options.Options) error {
+	maxAttempts := MustGetFlagInt(options.SNAPSHOT_ATTEMPTS)
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		if err := resolveSnapshotFilters(opts); err != nil {
+			return err
+		}
+		tables := ConvertRelationsOptionsToBackup(GetIncludedUserTableRelations(connectionPool, IncludedRelationFqns))
+		// A SELECT before LOCK would establish the transaction snapshot too early.
+		if err := connectionPool.Begin(0); err != nil {
+			return err
+		}
+		lockErr := LockTables(connectionPool, tables)
+		var conflicts []string
+		if lockErr != nil {
+			var pgErr *pgconn.PgError
+			if !errors.As(lockErr, &pgErr) || (pgErr.Code != "42P01" && pgErr.Code != "3F000") {
+				return lockErr
+			}
+			conflicts = []string{lockErr.Error()}
+		} else {
+			var err error
+			backupSnapshot, err = GetSynchronizedSnapshot(connectionPool)
+			if err != nil {
+				return err
+			}
+			if err = resolveSnapshotFilters(opts); err != nil {
+				return err
+			}
+			tables = ConvertRelationsOptionsToBackup(GetIncludedUserTableRelations(connectionPool, IncludedRelationFqns))
+			// Locking new tables here would reopen the concurrent TRUNCATE race.
+			conflicts, err = CheckSnapshotTableLocks(connectionPool, tables)
+			if err != nil {
+				return err
+			}
+		}
+		if len(conflicts) == 0 {
+			for connNum := 1; connNum < connectionPool.NumConns; connNum++ {
+				if err := SetSynchronizedSnapshot(connectionPool, connNum, backupSnapshot); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+		if err := connectionPool.Rollback(0); err != nil {
+			return fmt.Errorf("rolling back backup snapshot preparation: %w", err)
+		}
+		backupSnapshot = ""
+		details := snapshotConflictSummary(conflicts)
+		if attempt >= maxAttempts {
+			return fmt.Errorf("could not lock the backup table set before taking a snapshot after %d attempt(s): %s", attempt, details)
+		}
+		gplog.Warn("Backup table set changed: %s. Starting snapshot attempt %d of %d", details, attempt+1, maxAttempts)
+	}
+	return fmt.Errorf("snapshot preparation requires at least one attempt")
+}
+
+func resolveSnapshotFilters(opts *options.Options) error {
+	if err := opts.ResetTableFilters(cmdFlags); err != nil {
+		return err
+	}
+	filterRelationClause = ""
+	ValidateAndProcessFilterLists(opts)
+	return ExpandIncludesForPartitions(connectionPool, opts, GetOidsFromRelationList(IncludedRelationFqns), cmdFlags)
+}
+
+func snapshotConflictSummary(conflicts []string) string {
+	const limit = 10
+	if len(conflicts) > limit {
+		return fmt.Sprintf("%s; and %d more", strings.Join(conflicts[:limit], "; "), len(conflicts)-limit)
+	}
+	return strings.Join(conflicts, "; ")
+}
 
 const (
 	SNAPSHOT_GPDB_MIN_VERSION = "6.21.0"

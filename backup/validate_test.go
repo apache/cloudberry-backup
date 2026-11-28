@@ -214,6 +214,10 @@ var _ = Describe("backup/validate tests", func() {
 					Fail("Valid flag combination failed validation check")
 				}
 			},
+			Entry("snapshot attempts accepts one", "--snapshot-attempts 1", true),
+			Entry("snapshot attempts accepts larger values", "--snapshot-attempts 5", true),
+			Entry("snapshot attempts rejects zero", "--snapshot-attempts 0", false),
+			Entry("snapshot attempts rejects negative values", "--snapshot-attempts -2", false),
 			Entry("--backup-dir combo", "--backup-dir /tmp --plugin-config /tmp/config", false),
 			Entry("standby history sync timeout must be positive", "--history-sync-standby-timeout 0", false),
 			Entry("standby history sync timeout must not be negative", "--history-sync-standby-timeout -1", false),

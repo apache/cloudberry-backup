@@ -20,6 +20,7 @@ import (
 type Table struct {
 	Relation
 	TableDefinition
+	snapshotLeafOIDs string
 }
 
 func (t Table) SkipDataBackup() bool {
@@ -140,7 +141,7 @@ func ConstructDefinitionsForTables(connectionPool *dbconn.DBConn, tableRelations
 		if tableDef.Inherits == nil {
 			tableDef.Inherits = []string{}
 		}
-		tables = append(tables, Table{tableRel, tableDef})
+		tables = append(tables, Table{Relation: tableRel, TableDefinition: tableDef})
 	}
 	return tables
 }

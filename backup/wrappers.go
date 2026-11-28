@@ -45,7 +45,6 @@ func SetLoggerVerbosity() {
 
 func initializeConnectionPool(timestamp string) {
 	var numConns int
-	var err error
 	connectionPool = dbconn.NewDBConnFromEnvironment(MustGetFlagString(options.DBNAME))
 	/*
 	 * The additional connection is used to hold the locks and process any deferred
@@ -68,20 +67,36 @@ func initializeConnectionPool(timestamp string) {
 
 	utils.ValidateGPDBVersionCompatibility(connectionPool)
 	InitializeMetadataParams(connectionPool)
-	// Begin transactions, initialize the synchronized snapshot, and set session GUCs
+	gplog.FatalOnError(initializeBackupTransactions(timestamp))
+}
+
+// Set application_name outside transactions so cleanup can find sessions after rollback.
+func initializeBackupTransactions(timestamp string) error {
+	backupSnapshot = ""
 	for connNum := 0; connNum < connectionPool.NumConns; connNum++ {
-		connectionPool.MustExec(fmt.Sprintf("SET application_name TO 'gpbackup_%s'", timestamp), connNum)
-		// Begins transaction in repeatable read
-		connectionPool.MustBegin(connNum)
-		if ((connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast(SNAPSHOT_GPDB_MIN_VERSION)) || connectionPool.Version.IsCBDB()) && backupSnapshot == "" {
-			backupSnapshot, err = GetSynchronizedSnapshot(connectionPool)
-			if err != nil {
-				gplog.FatalOnError(err)
+		if _, err := connectionPool.Exec(fmt.Sprintf("SET application_name TO 'gpbackup_%s'", timestamp), connNum); err != nil {
+			return err
+		}
+		if connectionPool.Version.IsCBDB() {
+			// SetSessionGUCs runs a SELECT that would establish the snapshot.
+			SetSessionGUCs(connNum)
+			continue
+		}
+		if err := connectionPool.Begin(connNum); err != nil {
+			return err
+		}
+		if connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast(SNAPSHOT_GPDB_MIN_VERSION) {
+			if connNum == 0 {
+				var err error
+				backupSnapshot, err = GetSynchronizedSnapshot(connectionPool)
+				if err != nil {
+					return err
+				}
 			}
 		}
-
 		SetSessionGUCs(connNum)
 	}
+	return nil
 }
 
 func SetSessionGUCs(connNum int) {
@@ -204,10 +219,11 @@ func createBackupDirectoriesOnAllHosts() {
  */
 
 func RetrieveAndProcessTables() ([]Table, []Table) {
-	includedRelations := GetIncludedUserTableRelations(connectionPool, IncludedRelationFqns)
-	tableRelations := ConvertRelationsOptionsToBackup(includedRelations)
-
-	LockTables(connectionPool, tableRelations)
+	tableRelations := ConvertRelationsOptionsToBackup(GetIncludedUserTableRelations(connectionPool, IncludedRelationFqns))
+	// PrepareBackupSnapshot already holds these locks on Cloudberry.
+	if !connectionPool.Version.IsCBDB() {
+		gplog.FatalOnError(LockTables(connectionPool, tableRelations))
+	}
 
 	if (connectionPool.Version.IsGPDB() && connectionPool.Version.AtLeast("6")) || connectionPool.Version.IsCBDB() {
 		tableRelations = append(tableRelations, GetForeignTableRelations(connectionPool)...)
@@ -216,6 +232,9 @@ func RetrieveAndProcessTables() ([]Table, []Table) {
 	tables := ConstructDefinitionsForTables(connectionPool, tableRelations)
 
 	metadataTables, dataTables := SplitTablesByPartitionType(tables, IncludedRelationFqns)
+	if connectionPool.Version.IsCBDB() && !MustGetFlagBool(options.METADATA_ONLY) && !MustGetFlagBool(options.LEAF_PARTITION_DATA) {
+		gplog.FatalOnError(collectSnapshotPartitionLeaves(connectionPool, dataTables))
+	}
 	objectCounts["Tables"] = len(metadataTables)
 
 	return metadataTables, dataTables

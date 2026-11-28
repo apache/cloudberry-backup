@@ -2,9 +2,13 @@ package integration
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/apache/cloudberry-backup/backup"
+	"github.com/apache/cloudberry-backup/options"
 	"github.com/apache/cloudberry-backup/testutils"
+	"github.com/apache/cloudberry-go-libs/dbconn"
+	"github.com/spf13/pflag"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -217,5 +221,171 @@ var _ = Describe("synchronized snapshot integration tests", func() {
 			exportConn.Close()
 			importConn.Close()
 		})
+	})
+})
+
+var _ = Describe("lock before snapshot integration", func() {
+	var reader *dbconn.DBConn
+	var opts *options.Options
+	var readerPID int
+	BeforeEach(func() {
+		if !connectionPool.Version.IsCBDB() {
+			Skip("lock-before-snapshot preparation requires Cloudberry")
+		}
+		connectionPool.MustExec("CREATE SCHEMA snapshot_prepare; CREATE TABLE snapshot_prepare.t(id int) DISTRIBUTED BY(id); INSERT INTO snapshot_prepare.t VALUES(1),(2),(3)")
+		reader = dbconn.NewDBConnFromEnvironment("testdb")
+		reader.MustConnect(2)
+		backup.SetConnection(reader)
+		backup.InitializeMetadataParams(reader)
+		for i := 0; i < 2; i++ {
+			reader.MustExec("SET application_name TO 'snapshot_prepare_test'", i)
+			backup.SetSessionGUCs(i)
+		}
+		Expect(reader.Get(&readerPID, "SELECT pg_backend_pid()")).To(Succeed())
+		Expect(backupCmdFlags.Set(options.INCLUDE_SCHEMA, "snapshot_prepare")).To(Succeed())
+		var err error
+		opts, err = options.NewOptions(backupCmdFlags)
+		Expect(err).NotTo(HaveOccurred())
+	})
+	AfterEach(func() {
+		if reader != nil {
+			for i := 0; i < reader.NumConns; i++ {
+				if reader.Tx[i] != nil {
+					reader.MustRollback(i)
+				}
+			}
+			reader.Close()
+			reader = nil
+		}
+		backup.SetConnection(connectionPool)
+		backup.InitializeMetadataParams(connectionPool)
+		backup.SetBackupSnapshot("")
+		backup.SetFilterRelationClause("")
+		connectionPool.MustExec("DROP SCHEMA IF EXISTS snapshot_prepare CASCADE")
+	})
+	prepare := func() <-chan error {
+		ready := make(chan error, 1)
+		go func() {
+			defer GinkgoRecover()
+			ready <- backup.PrepareBackupSnapshot(opts)
+		}()
+		return ready
+	}
+	waitForLock := func(table string) {
+		Eventually(func() (int, error) {
+			var count int
+			err := connectionPool.Get(&count, fmt.Sprintf("SELECT count(*) FROM pg_locks WHERE pid=%d AND relation='%s'::regclass AND NOT granted", readerPID, table))
+			return count, err
+		}, 30*time.Second, 50*time.Millisecond).Should(BeNumerically(">", 0))
+	}
+	It("includes a TRUNCATE and related DML committed while locks wait, on every worker", func() {
+		connectionPool.MustExec("CREATE TABLE snapshot_prepare.marker(id int) DISTRIBUTED BY(id); INSERT INTO snapshot_prepare.marker VALUES(1)")
+		writer := testutils.SetupTestDbConn("testdb")
+		defer writer.Close()
+		writer.MustBegin()
+		defer func() {
+			if writer.Tx[0] != nil {
+				writer.MustRollback()
+			}
+		}()
+		writer.MustExec("TRUNCATE snapshot_prepare.t; INSERT INTO snapshot_prepare.t VALUES(4),(5),(6); UPDATE snapshot_prepare.marker SET id=2")
+		Expect(backupCmdFlags.Set(options.SNAPSHOT_ATTEMPTS, "1")).To(Succeed())
+		ready := prepare()
+		waitForLock("snapshot_prepare.t")
+		writer.MustCommit()
+		Eventually(ready, 30*time.Second).Should(Receive(BeNil()))
+		connectionPool.MustExec("INSERT INTO snapshot_prepare.t VALUES(7); UPDATE snapshot_prepare.marker SET id=3")
+		for i := 0; i < 2; i++ {
+			var rows []int
+			Expect(reader.Select(&rows, "SELECT id FROM snapshot_prepare.t ORDER BY id", i)).To(Succeed())
+			Expect(rows).To(Equal([]int{4, 5, 6}))
+			var marker int
+			Expect(reader.Get(&marker, "SELECT id FROM snapshot_prepare.marker", i)).To(Succeed())
+			Expect(marker).To(Equal(2))
+		}
+	})
+	DescribeTable("retries only when the final snapshot contains an unprotected table", func(limit int) {
+		Expect(backupCmdFlags.Set(options.SNAPSHOT_ATTEMPTS, fmt.Sprint(limit))).To(Succeed())
+		gate := testutils.SetupTestDbConn("testdb")
+		defer gate.Close()
+		gate.MustBegin()
+		defer func() {
+			if gate.Tx[0] != nil {
+				gate.MustRollback()
+			}
+		}()
+		gate.MustExec("LOCK TABLE snapshot_prepare.t IN ACCESS EXCLUSIVE MODE")
+		ready := prepare()
+		waitForLock("snapshot_prepare.t")
+		connectionPool.MustExec("CREATE TABLE snapshot_prepare.new_table(id int) DISTRIBUTED BY(id); INSERT INTO snapshot_prepare.new_table VALUES(9)")
+		gate.MustCommit()
+		if limit == 1 {
+			var err error
+			Eventually(ready, 30*time.Second).Should(Receive(&err))
+			Expect(err).To(MatchError(ContainSubstring("snapshot_prepare.new_table")))
+			Expect(reader.Tx[0]).To(BeNil())
+			Expect(reader.Tx[1]).To(BeNil())
+		} else {
+			Eventually(ready, 30*time.Second).Should(Receive(BeNil()))
+			for i := 0; i < 2; i++ {
+				var value int
+				Expect(reader.Get(&value, "SELECT id FROM snapshot_prepare.new_table", i)).To(Succeed())
+				Expect(value).To(Equal(9))
+			}
+		}
+	}, Entry("fails without retries", 1), Entry("locks the new table in a fresh transaction", 3))
+	It("rebuilds explicit filters and partition expansion after a leaf is replaced", func() {
+		connectionPool.MustExec(`CREATE TABLE snapshot_prepare.root(id int) DISTRIBUTED BY(id) PARTITION BY RANGE(id);
+			CREATE TABLE snapshot_prepare.old_leaf PARTITION OF snapshot_prepare.root FOR VALUES FROM(0) TO(10)`)
+		Expect(backupCmdFlags.Lookup(options.INCLUDE_SCHEMA).Value.(pflag.SliceValue).Replace(nil)).To(Succeed())
+		Expect(backupCmdFlags.Set(options.INCLUDE_RELATION, "snapshot_prepare.t")).To(Succeed())
+		Expect(backupCmdFlags.Set(options.INCLUDE_RELATION, "snapshot_prepare.root")).To(Succeed())
+		Expect(backupCmdFlags.Set(options.LEAF_PARTITION_DATA, "true")).To(Succeed())
+		var err error
+		opts, err = options.NewOptions(backupCmdFlags)
+		Expect(err).NotTo(HaveOccurred())
+		gate := testutils.SetupTestDbConn("testdb")
+		defer gate.Close()
+		gate.MustBegin()
+		defer func() {
+			if gate.Tx[0] != nil {
+				gate.MustRollback()
+			}
+		}()
+		gate.MustExec("LOCK TABLE snapshot_prepare.t IN ACCESS EXCLUSIVE MODE")
+		ready := prepare()
+		waitForLock("snapshot_prepare.t")
+		connectionPool.MustExec(`ALTER TABLE snapshot_prepare.root DETACH PARTITION snapshot_prepare.old_leaf;
+			DROP TABLE snapshot_prepare.old_leaf;
+			CREATE TABLE snapshot_prepare.new_leaf PARTITION OF snapshot_prepare.root FOR VALUES FROM(0) TO(10);
+			INSERT INTO snapshot_prepare.root VALUES(4),(5),(6)`)
+		gate.MustCommit()
+		Eventually(ready, 30*time.Second).Should(Receive(BeNil()))
+		Expect(opts.GetIncludedTables()).To(ContainElement("snapshot_prepare.new_leaf"))
+		Expect(opts.GetIncludedTables()).NotTo(ContainElement("snapshot_prepare.old_leaf"))
+		for i := 0; i < 2; i++ {
+			var rows []int
+			Expect(reader.Select(&rows, "SELECT id FROM snapshot_prepare.root ORDER BY id", i)).To(Succeed())
+			Expect(rows).To(Equal([]int{4, 5, 6}))
+		}
+	})
+	It("checks nested descendants even when only a root is supplied", func() {
+		connectionPool.MustExec(`CREATE TABLE snapshot_prepare.root(id int) DISTRIBUTED BY(id) PARTITION BY RANGE(id);
+            CREATE TABLE snapshot_prepare.middle PARTITION OF snapshot_prepare.root FOR VALUES FROM(0) TO(10) PARTITION BY RANGE(id);
+            CREATE TABLE snapshot_prepare.leaf PARTITION OF snapshot_prepare.middle FOR VALUES FROM(0) TO(10)`)
+		var oid uint32
+		Expect(reader.Get(&oid, "SELECT 'snapshot_prepare.root'::regclass::oid")).To(Succeed())
+		reader.MustBegin()
+		reader.MustExec("LOCK TABLE ONLY snapshot_prepare.root IN ACCESS SHARE MODE")
+		tables := []backup.Relation{{Oid: oid, Schema: "snapshot_prepare", Name: "root"}}
+		conflicts, err := backup.CheckSnapshotTableLocks(reader, tables)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(conflicts).To(ConsistOf("snapshot_prepare.middle", "snapshot_prepare.leaf"))
+		reader.MustRollback()
+		reader.MustBegin()
+		Expect(backup.LockTables(reader, tables)).To(Succeed())
+		conflicts, err = backup.CheckSnapshotTableLocks(reader, tables)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(conflicts).To(BeEmpty())
 	})
 })
